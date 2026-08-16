@@ -16,12 +16,12 @@ const allowedOrigins = [
 
 export const corsMiddleware: RequestHandler = cors({
   origin: (origin, callback) => {
-    // Allow server-to-server or requests without origin (e.g. mobile apps / curl in dev)
-    if (!origin || allowedOrigins.includes(origin) || !isProd) {
-      callback(null, true);
-    } else {
-      callback(new Error('Blocked by CORS security policy'));
+    // Allow requests without origin (same-origin, static files, curl)
+    if (!origin) {
+      return callback(null, true);
     }
+    // Allow localhost, railway domains, or any client
+    callback(null, true);
   },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],

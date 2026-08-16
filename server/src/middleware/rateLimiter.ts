@@ -6,6 +6,7 @@ export const apiLimiter = rateLimit({
   max: 120, // max 120 requests per minute
   standardHeaders: true,
   legacyHeaders: false,
+  validate: { xForwardedForHeader: false },
   message: {
     success: false,
     error: 'تم تجاوز الحد المسموح من الطلبات، يرجى الانتظار دقيقة والمحاولة مرة أخرى.',
@@ -18,6 +19,7 @@ export const authLimiter = rateLimit({
   max: 10, // Max 10 login attempts per 15 min per IP
   standardHeaders: true,
   legacyHeaders: false,
+  validate: { xForwardedForHeader: false },
   message: {
     success: false,
     error: 'تم تجميد محاولات الدخول مؤقتاً لحماية الحساب (10 محاولات غير صحيحة). يرجى المحاولة بعد 15 دقيقة.',
@@ -30,6 +32,7 @@ export const bookingLimiter = rateLimit({
   max: 15, // Max 15 bookings per hour per IP
   standardHeaders: true,
   legacyHeaders: false,
+  validate: { xForwardedForHeader: false },
   message: {
     success: false,
     error: 'لقد قمت بإنشاء عدد كبير من الحجوزات مؤخراً. يرجى الانتظار قليلاً.',
@@ -42,6 +45,7 @@ export const uploadLimiter = rateLimit({
   max: 20, // Max 20 uploads per hour per IP
   standardHeaders: true,
   legacyHeaders: false,
+  validate: { xForwardedForHeader: false },
   message: {
     success: false,
     error: 'تم تجاوز الحد المسموح لرفع الملفات والصور. يرجى المحاولة لاحقاً.',
