@@ -43,7 +43,6 @@ export const helmetMiddleware = helmet({
         'wss:',
         'https://generativelanguage.googleapis.com',
         'https://*.googleapis.com',
-        'https://*.supabase.co',
       ],
     },
   },
