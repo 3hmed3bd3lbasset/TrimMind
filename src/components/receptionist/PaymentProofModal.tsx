@@ -1,0 +1,262 @@
+import React, { useState } from 'react';
+import { useSalonStore } from '../../lib/store';
+import { Booking } from '../../types';
+import {
+  formatCurrency,
+  formatDateTime,
+  isReceiptImageExpired,
+  getRemainingReceiptImageMinutes,
+} from '../../lib/utils';
+import {
+  CheckCircle2,
+  XCircle,
+  X,
+  CreditCard,
+  Phone,
+  Receipt,
+  AlertTriangle,
+  ZoomIn,
+  Trash2,
+  Clock,
+  ShieldCheck,
+  Building2,
+} from 'lucide-react';
+import toast from 'react-hot-toast';
+
+interface PaymentProofModalProps {
+  booking: Booking | null;
+  isOpen: boolean;
+  onClose: () => void;
+}
+
+export const PaymentProofModal: React.FC<PaymentProofModalProps> = ({
+  booking,
+  isOpen,
+  onClose,
+}) => {
+  const { reviewPaymentProof } = useSalonStore();
+  const [rejectionReason, setRejectionReason] = useState('المبلغ المحول غير مطابق لقيمة العربون المطلوبة');
+  const [showRejectForm, setShowRejectForm] = useState(false);
+
+  if (!isOpen || !booking) return null;
+
+  const proof = booking.payment_proof;
+  const isImageExpired = isReceiptImageExpired(proof);
+  const remainingMinutes = getRemainingReceiptImageMinutes(proof);
+
+  const handleApprove = () => {
+    reviewPaymentProof(booking.id, 'approved');
+    toast.success(`تم قبول إيصال الحجز ${booking.id} وتأكيد الموعد بنجاح! سيتم حذف الصورة تلقائياً بعد ساعتين.`);
+    onClose();
+  };
+
+  const handleReject = () => {
+    reviewPaymentProof(booking.id, 'rejected', rejectionReason);
+    toast.error(`تم رفض الإيصال للحجز ${booking.id} مع إخطار العميل بالسبب.`);
+    onClose();
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-ink/60 backdrop-blur-sm animate-in fade-in duration-200">
+      <div className="clinic-card w-full max-w-2xl p-6 sm:p-7 shadow-clinic-3 space-y-5 animate-in zoom-in-95 duration-200 bg-white font-sans text-ink">
+        {/* Header */}
+        <div className="flex items-center justify-between border-b border-border pb-4">
+          <div className="flex items-center gap-3">
+            <div className="w-11 h-11 rounded-2xl bg-forest/10 text-forest border border-forest/20 flex items-center justify-center shadow-xs">
+              <Receipt className="w-6 h-6" />
+            </div>
+            <div>
+              <h3 className="font-serif font-bold text-ink text-base">تدقيق ومراجعة إثبات التحويل</h3>
+              <p className="text-xs text-ink-mute">
+                حجز رقم: <strong className="font-mono text-forest font-bold">{booking.id}</strong> • العميل: {booking.customer_name}
+              </p>
+            </div>
+          </div>
+          <button
+            onClick={onClose}
+            className="p-1.5 text-ink-mute hover:text-ink rounded-xl bg-paper-warm transition-colors"
+          >
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+
+        {/* 2-Hour Auto-Purge Security Notice */}
+        {proof?.status === 'approved' && (
+          <div
+            className={`p-3.5 rounded-2xl border text-xs flex items-center justify-between gap-3 ${
+              isImageExpired
+                ? 'bg-amber-500/10 border-amber-500/30 text-amber-900'
+                : 'bg-emerald-500/10 border-emerald-500/30 text-forest'
+            }`}
+          >
+            <div className="flex items-center gap-2">
+              <Clock className="w-4 h-4 shrink-0" />
+              <span>
+                {isImageExpired
+                  ? 'تم حذف وإتلاف صورة الإيصال تلقائياً بعد مرور ساعتين على تأكيد ومراجعة الحساب للحفاظ على المساحة والأمان.'
+                  : `سياسة الحفظ الآمن: تم تأكيد الإيصال وسيتم حذف الصورة تلقائياً بعد ساعتين (متبقي ${remainingMinutes} دقيقة).`}
+              </span>
+            </div>
+            <span className="font-mono font-bold text-[10px] bg-white px-2 py-0.5 rounded-full border border-border shrink-0">
+              {isImageExpired ? 'تم الإتلاف ✓' : `${remainingMinutes} دقيقة`}
+            </span>
+          </div>
+        )}
+
+        {/* Content: Image & Transfer Details */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 text-xs">
+          {/* Receipt Image Preview */}
+          <div className="space-y-2">
+            <label className="text-ink-soft font-bold flex items-center justify-between">
+              <span className="flex items-center gap-1.5">
+                <ZoomIn className="w-4 h-4 text-forest" />
+                <span>صورة الإيصال المضغوطة:</span>
+              </span>
+              <span className="text-[10px] text-ink-mute font-mono">WebP / JPG Optimized</span>
+            </label>
+
+            <div className="rounded-2xl overflow-hidden border border-border bg-paper-warm aspect-[3/4] flex items-center justify-center relative shadow-inner">
+              {isImageExpired ? (
+                <div className="text-center p-6 space-y-2 text-ink-mute">
+                  <Trash2 className="w-10 h-10 text-terra mx-auto opacity-70" />
+                  <p className="font-serif font-bold text-xs text-ink">تم إتلاف الصورة تلقائياً</p>
+                  <p className="text-[10px] leading-relaxed">
+                    مرت أكثر من ساعتين على اعتماد الحساب وتأكيد الموعد، وتم حذف ملف الصورة لتوفير مساحة التخزين.
+                  </p>
+                </div>
+              ) : proof?.image_path ? (
+                <img
+                  src={proof.image_path}
+                  alt="Receipt"
+                  className="w-full h-full object-contain p-2 hover:scale-105 transition-transform duration-300"
+                />
+              ) : (
+                <p className="text-ink-mute">لا توجد صورة إيصال مرفقة</p>
+              )}
+            </div>
+          </div>
+
+          {/* Audit Comparison Details */}
+          <div className="space-y-4 flex flex-col justify-between">
+            <div className="bg-paper-warm p-4 rounded-2xl border border-border space-y-3">
+              <h4 className="font-serif font-bold text-ink text-sm border-b border-border pb-2 flex items-center justify-between">
+                <span>بيانات المعاملة المالية:</span>
+                <span className="text-[10px] font-mono text-forest font-bold">
+                  {proof?.status === 'approved' ? 'معتمد ✓' : proof?.status === 'rejected' ? 'مرفوض ✗' : 'قيد المراجعة'}
+                </span>
+              </h4>
+
+              <div className="space-y-2 text-ink-soft">
+                <div className="flex justify-between">
+                  <span>طريقة الدفع:</span>
+                  <span className="font-bold text-forest uppercase font-mono">
+                    {proof?.payment_method || 'instapay'}
+                  </span>
+                </div>
+                <div className="flex justify-between">
+                  <span>رقم هاتف المحول:</span>
+                  <span className="font-mono font-bold text-ink">
+                    {proof?.sender_phone || booking.customer_phone}
+                  </span>
+                </div>
+                <div className="flex justify-between">
+                  <span>المبلغ المحول بالإيصال:</span>
+                  <span className="font-serif font-bold text-forest text-sm">
+                    {formatCurrency(proof?.transferred_amount || booking.booking_fee_at_booking)}
+                  </span>
+                </div>
+                <div className="flex justify-between">
+                  <span>قيمة العربون المطلوبة:</span>
+                  <span className="font-mono font-bold text-ink">
+                    {formatCurrency(booking.booking_fee_at_booking)}
+                  </span>
+                </div>
+                <div className="flex justify-between border-t border-border pt-2">
+                  <span>توقيت رفع الإيصال:</span>
+                  <span className="font-mono text-ink text-[11px]">
+                    {proof?.submitted_at ? formatDateTime(proof.submitted_at) : 'غير متوفر'}
+                  </span>
+                </div>
+                {proof?.reviewed_at && (
+                  <div className="flex justify-between">
+                    <span>توقيت المراجعة والاعتماد:</span>
+                    <span className="font-mono text-forest text-[11px]">
+                      {formatDateTime(proof.reviewed_at)}
+                    </span>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Actions for Reviewers */}
+            {proof?.status === 'pending_review' && (
+              <div className="space-y-3 pt-2">
+                {!showRejectForm ? (
+                  <div className="flex gap-2">
+                    <button
+                      type="button"
+                      onClick={handleApprove}
+                      className="btn-clinic-primary flex-1 py-3 text-xs font-bold shadow-md bg-forest text-paper"
+                    >
+                      <CheckCircle2 className="w-4 h-4" />
+                      <span>قبول الإيصال وتأكيد الحجز</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setShowRejectForm(true)}
+                      className="btn-clinic-ghost text-xs text-terra hover:bg-terra/10 border-terra/30 font-bold px-4"
+                    >
+                      <XCircle className="w-4 h-4" />
+                      <span>رفض الإيصال</span>
+                    </button>
+                  </div>
+                ) : (
+                  <div className="space-y-2 p-3 bg-red-50 rounded-2xl border border-red-200 animate-in fade-in">
+                    <label className="text-red-900 font-bold text-[11px] block">سبب رفض الإيصال:</label>
+                    <input
+                      type="text"
+                      value={rejectionReason}
+                      onChange={(e) => setRejectionReason(e.target.value)}
+                      className="w-full bg-white border border-red-300 rounded-xl px-3 py-2 text-xs text-ink outline-none"
+                    />
+                    <div className="flex gap-2 pt-1">
+                      <button
+                        type="button"
+                        onClick={handleReject}
+                        className="py-2 px-4 rounded-xl bg-terra text-white font-bold text-xs flex-1 hover:bg-terra-deep transition-colors"
+                      >
+                        تأكيد الرفض وإخطار العميل
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setShowRejectForm(false)}
+                        className="py-2 px-3 rounded-xl bg-paper-warm text-ink text-xs font-bold"
+                      >
+                        إلغاء
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Footer info */}
+        <div className="pt-3 border-t border-border flex items-center justify-between text-[11px] text-ink-mute">
+          <span className="flex items-center gap-1">
+            <ShieldCheck className="w-3.5 h-3.5 text-forest" />
+            <span>نظام التدقيق الرقمي المشفر - صالون النخبة VIP</span>
+          </span>
+          <button
+            type="button"
+            onClick={onClose}
+            className="text-ink font-bold hover:underline"
+          >
+            إغلاق
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
