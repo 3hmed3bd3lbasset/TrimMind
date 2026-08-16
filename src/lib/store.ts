@@ -321,52 +321,14 @@ export const useSalonStore = create<SalonStore>()(
       },
       setLastCalledCustomer: (event) => set({ lastCalledCustomer: event }),
 
-      switchRole: (role: UserRole, branchId?: string, barberId?: string) => {
-        const { profiles, barbers, branches, selectedBranchId } = get();
-        let profile: Profile | undefined;
-
+      switchRole: (role: UserRole) => {
         if (role === 'customer') {
-          profile = profiles.find((p) => p.role === 'customer') || INITIAL_PROFILES[0];
-        } else if (role === 'receptionist') {
-          const targetBranchId = branchId || selectedBranchId || branches[0]?.id;
-          profile =
-            profiles.find((p) => p.role === 'receptionist' && p.branch_id === targetBranchId) ||
-            profiles.find((p) => p.role === 'receptionist') ||
-            INITIAL_PROFILES.find((p) => p.role === 'receptionist');
-        } else if (role === 'manager') {
-          profile =
-            profiles.find((p) => p.role === 'manager' && p.is_super_admin) ||
-            profiles.find((p) => p.role === 'manager') ||
-            INITIAL_PROFILES.find((p) => p.role === 'manager');
-        } else {
-          // Barber role
-          const targetBarber =
-            barbers.find((b) => b.id === barberId) ||
-            barbers.find((b) => b.branch_id === (branchId || selectedBranchId)) ||
-            barbers[0];
-
-          profile =
-            profiles.find((p) => p.role === 'barber' && p.barber_id === targetBarber?.id) ||
-            profiles.find((p) => p.role === 'barber') || {
-              id: targetBarber ? `usr-barber-${targetBarber.id}` : 'usr-barber-1',
-              full_name: targetBarber?.full_name || 'كابتن الحلاقة',
-              phone: targetBarber?.phone,
-              role: 'barber' as const,
-              barber_id: targetBarber?.id || 'barber-1',
-              branch_id: targetBarber?.branch_id || branchId || selectedBranchId,
-              created_at: new Date().toISOString(),
-              updated_at: new Date().toISOString(),
-            };
-        }
-
-        if (profile) {
+          const defaultCustomer = INITIAL_PROFILES.find((p) => p.role === 'customer') || INITIAL_PROFILES[0];
           try {
-            localStorage.setItem('salon_current_user', JSON.stringify(profile));
+            localStorage.removeItem('salon_auth_token');
+            localStorage.setItem('salon_current_user', JSON.stringify(defaultCustomer));
           } catch {}
-          set({
-            currentUser: profile,
-            selectedBranchId: branchId || profile.branch_id || selectedBranchId,
-          });
+          set({ currentUser: defaultCustomer });
         }
       },
 

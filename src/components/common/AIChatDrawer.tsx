@@ -285,53 +285,31 @@ export const AIChatDrawer: React.FC = () => {
               </div>
             </div>
 
-            {/* Quick In-Chat Role Switcher Pills */}
-            <div className="flex items-center gap-1 bg-white/70 p-1 rounded-full border border-border text-[11px]">
-              <span className="text-ink-mute text-[10px] px-2 font-bold">المتحدث:</span>
-              <button
-                onClick={() => switchRole('customer')}
-                className={`flex-1 py-1 rounded-full font-bold flex items-center justify-center gap-1 transition-all ${
-                  currentUser.role === 'customer'
-                    ? 'bg-forest text-paper shadow-sm'
-                    : 'text-ink-soft hover:text-ink'
-                }`}
-              >
-                <User className="w-3 h-3" />
-                <span>عميل</span>
-              </button>
-              <button
-                onClick={() => switchRole('barber')}
-                className={`flex-1 py-1 rounded-full font-bold flex items-center justify-center gap-1 transition-all ${
-                  currentUser.role === 'barber'
-                    ? 'bg-forest text-paper shadow-sm'
-                    : 'text-ink-soft hover:text-ink'
-                }`}
-              >
-                <Scissors className="w-3 h-3" />
-                <span>كابتن</span>
-              </button>
-              <button
-                onClick={() => switchRole('receptionist')}
-                className={`flex-1 py-1 rounded-full font-bold flex items-center justify-center gap-1 transition-all ${
-                  currentUser.role === 'receptionist'
-                    ? 'bg-terra text-paper shadow-sm'
-                    : 'text-ink-soft hover:text-ink'
-                }`}
-              >
-                <UserCheck className="w-3 h-3" />
-                <span>استقبال</span>
-              </button>
-              <button
-                onClick={() => switchRole('manager')}
-                className={`flex-1 py-1 rounded-full font-bold flex items-center justify-center gap-1 transition-all ${
-                  currentUser.role === 'manager'
-                    ? 'bg-ink text-paper shadow-sm'
-                    : 'text-ink-soft hover:text-ink'
-                }`}
-              >
-                <Shield className="w-3 h-3" />
-                <span>مدير</span>
-              </button>
+            {/* Active Role Context Badge */}
+            <div className="flex items-center justify-between bg-white/70 px-3 py-1.5 rounded-2xl border border-border text-[11px]">
+              <div className="flex items-center gap-1.5">
+                {currentUser.role === 'manager' ? (
+                  <Shield className="w-3.5 h-3.5 text-ink" />
+                ) : currentUser.role === 'receptionist' ? (
+                  <UserCheck className="w-3.5 h-3.5 text-terra" />
+                ) : currentUser.role === 'barber' ? (
+                  <Scissors className="w-3.5 h-3.5 text-forest" />
+                ) : (
+                  <User className="w-3.5 h-3.5 text-forest" />
+                )}
+                <span className="font-bold text-ink">
+                  {currentUser.role === 'manager'
+                    ? 'المساعد الذكي لإدارة الصالون'
+                    : currentUser.role === 'receptionist'
+                    ? 'المساعد الذكي لموظف الاستقبال'
+                    : currentUser.role === 'barber'
+                    ? 'المساعد الذكي للكابتن'
+                    : 'مساعد خدمة العملاء والحجوزات'}
+                </span>
+              </div>
+              <span className="text-[10px] font-mono text-ink-mute bg-paper px-2 py-0.5 rounded-md border border-border">
+                {currentUser.role === 'customer' ? 'عميل' : currentUser.role.toUpperCase()}
+              </span>
             </div>
 
             {/* Quota Banner */}

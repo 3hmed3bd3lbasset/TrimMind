@@ -145,7 +145,14 @@ export const NotificationBell: React.FC<NotificationBellProps> = ({
 
       {/* Popover Card */}
       {isOpen && (
-        <div className="absolute left-0 sm:left-auto sm:right-0 mt-2 w-[340px] sm:w-[390px] bg-white rounded-3xl border border-border shadow-clinic-3 z-50 overflow-hidden animate-in fade-in zoom-in-95 duration-200 text-right font-sans text-ink">
+        <>
+          {/* Mobile backdrop */}
+          <div
+            className="fixed inset-0 bg-black/40 z-40 sm:hidden backdrop-blur-xs"
+            onClick={() => setIsOpen(false)}
+          />
+
+          <div className="fixed inset-x-4 top-20 sm:absolute sm:inset-auto sm:left-0 sm:right-auto sm:mt-2 w-auto sm:w-[390px] max-w-[calc(100vw-2rem)] mx-auto sm:mx-0 bg-white rounded-3xl border border-border shadow-clinic-3 z-50 overflow-hidden animate-in fade-in zoom-in-95 duration-200 text-right font-sans text-ink">
           {/* Header */}
           <div className="p-4 border-b border-border bg-paper-warm/40 flex items-center justify-between">
             <div className="flex items-center gap-2">
@@ -290,7 +297,8 @@ export const NotificationBell: React.FC<NotificationBellProps> = ({
               })
             )}
           </div>
-        </div>
+          </div>
+        </>
       )}
     </div>
   );

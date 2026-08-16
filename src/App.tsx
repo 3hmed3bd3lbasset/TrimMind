@@ -3,7 +3,6 @@ import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-route
 import { Toaster } from 'react-hot-toast';
 import { Navbar } from './components/common/Navbar';
 import { Footer } from './components/common/Footer';
-import { RoleSwitcher } from './components/common/RoleSwitcher';
 import { AIChatDrawer } from './components/common/AIChatDrawer';
 import { GlobalModalDialog } from './components/common/GlobalModalDialog';
 import { useSalonStore } from './lib/store';
@@ -53,7 +52,7 @@ function RoleGuard({
     if (!hasHydrated) {
       return null;
     }
-    return <Navigate to="/" replace />;
+    return <Navigate to="/auth" replace />;
   }
   return <>{children}</>;
 }
@@ -164,7 +163,6 @@ function AppLayout() {
 
       {!isDisplayScreen && <Footer />}
       {!isDisplayScreen && <AIChatDrawer />}
-      {import.meta.env.DEV && <RoleSwitcher />}
     </div>
   );
 }
