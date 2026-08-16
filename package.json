@@ -5,10 +5,11 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "tsc -b && vite build",
-    "build:server": "cd server && npm run build",
-    "build:all": "npm run build && cd server && npm run build",
-    "start": "cd server && npm start",
+    "build": "tsc -b && vite build && npm --prefix server install && npm --prefix server run build",
+    "build:client": "tsc -b && vite build",
+    "build:server": "npm --prefix server install && npm --prefix server run build",
+    "build:all": "npm run build",
+    "start": "node server/dist/index.js",
     "server": "cd server && npm run dev",
     "preview": "vite preview",
     "lint": "eslint ."
