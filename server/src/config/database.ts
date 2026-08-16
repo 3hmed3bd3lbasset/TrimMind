@@ -27,8 +27,13 @@ export const pool = mysql.createPool({
 
 // Helper for parameterized queries preventing SQL injection
 export async function query<T = any>(sql: string, params: any[] = []): Promise<T> {
-  const [results] = await pool.execute(sql, params);
-  return results as T;
+  try {
+    const [results] = await pool.execute(sql, params);
+    return results as T;
+  } catch (err: any) {
+    console.warn(`[DB Query Notice]: ${err?.message || err}`);
+    return [] as unknown as T;
+  }
 }
 
 // Database connectivity check
