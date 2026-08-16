@@ -328,9 +328,9 @@ export const INITIAL_SETTINGS: SalonSettings = {
 export const INITIAL_PROFILES: Profile[] = [
   {
     id: 'usr-customer-1',
-    full_name: 'عمر الخالد',
-    phone: '01011122233',
-    email: 'omar@example.com',
+    full_name: 'عميل زائر',
+    phone: '',
+    email: '',
     role: 'customer',
     created_at: new Date().toISOString(),
     updated_at: new Date().toISOString(),
