@@ -182,7 +182,16 @@ export async function initWhatsApp(): Promise<WhatsAppState> {
 
 // Send Text Message via WhatsApp
 export async function sendWhatsAppText(to: string, text: string): Promise<boolean> {
-  if (!sock || state.status !== 'connected') {
+  // Wait up to 8 seconds if connecting
+  for (let i = 0; i < 16; i++) {
+    if (sock && (state.status === 'connected' || sock.user)) {
+      state.status = 'connected';
+      break;
+    }
+    await new Promise((r) => setTimeout(r, 500));
+  }
+
+  if (!sock) {
     throw new Error('واتساب غير متصل حالياً بالسيرفر.');
   }
 
@@ -193,6 +202,7 @@ export async function sendWhatsAppText(to: string, text: string): Promise<boolea
     jid = `${clean}@s.whatsapp.net`;
   }
 
+  console.log(`📤 Sending WhatsApp reply to ${jid}: ${text.substring(0, 60)}...`);
   await sock.sendMessage(jid, { text });
   return true;
 }
