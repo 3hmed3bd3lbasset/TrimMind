@@ -39,7 +39,7 @@ export default function Landing() {
       ? allActiveBarbers
       : allActiveBarbers.filter((b) => b.branch_id === selectedBarberBranchFilter || !b.branch_id);
 
-  const completedCount = bookings.filter((b) => b.status === 'completed').length + 380;
+  const completedCount = bookings.filter((b) => b.status === 'completed').length;
 
   return (
     <div className="space-y-24 pb-24 font-sans text-ink">
@@ -162,21 +162,21 @@ export default function Landing() {
                   <div className="bg-paper-warm/80 p-3 rounded-2xl border border-border flex items-center justify-between">
                     <div>
                       <p className="text-ink-mute text-[10px]">الخدمة الأكثر طلباً:</p>
-                      <p className="font-bold text-ink text-xs sm:text-sm">باقة النخبة الملكية VIP</p>
+                      <p className="font-bold text-ink text-xs sm:text-sm">{activeServices[0]?.name || 'باقات العناية والحلاقة'}</p>
                     </div>
                     <span className="text-terra-deep font-bold text-xs sm:text-sm font-serif">
-                      {formatCurrency(350)}
+                      {activeServices[0] ? formatCurrency(activeServices[0].price) : 'حسب الاختيار'}
                     </span>
                   </div>
 
                   <div className="bg-paper-warm/80 p-3 rounded-2xl border border-border flex items-center justify-between">
                     <div>
                       <p className="text-ink-mute text-[10px]">كابتن الحلاقة الأبرز بالفرع:</p>
-                      <p className="font-bold text-ink text-xs sm:text-sm">{branchProminentBarber?.full_name || 'كابتن الصالون'}</p>
+                      <p className="font-bold text-ink text-xs sm:text-sm">{branchProminentBarber?.full_name || 'نخبة الحلاقين'}</p>
                     </div>
                     <span className="text-terra font-bold text-xs flex items-center gap-1 font-mono">
                       <Star className="w-3.5 h-3.5 fill-terra" />
-                      <span>{branchProminentBarber?.rating || 4.98}</span>
+                      <span>{branchProminentBarber?.rating || 5.0}</span>
                     </span>
                   </div>
                 </div>
@@ -321,7 +321,7 @@ export default function Landing() {
                     <div className="flex items-center gap-1 text-xs text-terra font-bold">
                       <Star className="w-3.5 h-3.5 fill-terra" />
                       <span>{barber.rating || 4.9}</span>
-                      <span className="text-ink-mute font-normal">({barber.rating_count || 50} تقييم)</span>
+                      <span className="text-ink-mute font-normal">({barber.rating_count || 0} تقييم)</span>
                     </div>
                   </div>
                 </div>

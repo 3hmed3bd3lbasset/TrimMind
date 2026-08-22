@@ -22,6 +22,7 @@ import {
   Award,
   Crown,
   Building2,
+  CalendarCheck,
 } from 'lucide-react';
 
 const PALETTE_COLORS = ['#1e3a2e', '#c2613d', '#f59e0b', '#2563eb', '#059669', '#d97706'];
@@ -34,48 +35,52 @@ export const AnalyticsCharts: React.FC = () => {
     ? branches.map((b) => b.id)
     : currentUser.assigned_branch_ids || (currentUser.branch_id ? [currentUser.branch_id] : [branches[0]?.id]);
 
-  const scopedBookings = bookings.filter((b) => allowedBranchIds.includes(b.branch_id));
-  const scopedBarbers = barbers.filter((b) => allowedBranchIds.includes(b.branch_id));
-  const scopedChairs = chairs.filter((c) => allowedBranchIds.includes(c.branch_id));
+  const scopedBookings = bookings.filter((b) => !b.branch_id || allowedBranchIds.includes(b.branch_id));
+  const scopedBarbers = barbers.filter((b) => !b.branch_id || allowedBranchIds.includes(b.branch_id));
+  const scopedChairs = chairs.filter((c) => !c.branch_id || allowedBranchIds.includes(c.branch_id));
 
-  // Metrics calculations
-  const totalRevenue = scopedBookings.reduce((sum, b) => sum + b.total_at_booking, 0);
+  // Dynamic real metrics calculations from live bookings
+  const totalRevenue = scopedBookings.reduce((sum, b) => sum + (b.total_at_booking || 0), 0);
   const completedBookings = scopedBookings.filter((b) => b.status === 'completed').length;
   const vipBookings = scopedBookings.filter((b) => b.booking_type === 'vip').length;
   const activeBarbersCount = scopedBarbers.filter((b) => b.is_active).length;
 
-  // Revenue by Day chart data
-  const revenueTrendData = [
-    { day: 'السبت', revenue: 3200, bookings: 14 },
-    { day: 'الأحد', revenue: 2800, bookings: 12 },
-    { day: 'الإثنين', revenue: 3900, bookings: 16 },
-    { day: 'الثلاثاء', revenue: 4500, bookings: 19 },
-    { day: 'الأربعاء', revenue: 5200, bookings: 22 },
-    { day: 'الخميس', revenue: 7800, bookings: 31 },
-    { day: 'الجمعة', revenue: 9400, bookings: 38 },
-  ];
-
-  // Service distribution data
-  const totalServiceCount = services.length;
-  const serviceDistributionData = services.map((s, index) => {
-    const count = scopedBookings.filter((b) => b.service_id === s.id).length || (8 - index);
+  // Real Dynamic Revenue by Day for past 7 days
+  const daysOfWeekArabic = ['الأحد', 'الإثنين', 'الثلاثاء', 'الأربعاء', 'الخميس', 'الجمعة', 'السبت'];
+  const now = new Date();
+  const revenueTrendData = Array.from({ length: 7 }).map((_, i) => {
+    const d = new Date();
+    d.setDate(now.getDate() - (6 - i));
+    const dateStr = d.toISOString().slice(0, 10);
+    const dayName = daysOfWeekArabic[d.getDay()];
+    const dayBookings = scopedBookings.filter((b) => b.starts_at?.startsWith(dateStr) || b.created_at?.startsWith(dateStr));
+    const dayRev = dayBookings.reduce((sum, b) => sum + (b.total_at_booking || 0), 0);
     return {
-      name: s.name.split('(')[0].trim(),
-      value: Math.max(1, count),
+      day: dayName,
+      revenue: dayRev,
+      bookings: dayBookings.length,
     };
   });
 
-  // Total cuts for percentage
-  const totalCutsCount = serviceDistributionData.reduce((acc, curr) => acc + curr.value, 0) || 1;
+  // Real Service distribution data
+  const serviceDistributionData = services
+    .map((s) => {
+      const count = scopedBookings.filter((b) => b.service_id === s.id).length;
+      return {
+        name: s.name.split('(')[0].trim(),
+        value: count,
+      };
+    })
+    .filter((s) => s.value > 0);
 
-  // Barber Performance leaderboard with complete branch and revenue metrics
-  const barberStats = scopedBarbers.map((barber, index) => {
+  const totalCutsCount = serviceDistributionData.reduce((acc, curr) => acc + curr.value, 0);
+
+  // Real Barber Performance leaderboard
+  const barberStats = scopedBarbers.map((barber) => {
     const barberBookings = scopedBookings.filter((b) => b.barber_id === barber.id);
     const branchObj = branches.find((br) => br.id === barber.branch_id);
-    const completedCount = barberBookings.filter((b) => b.status === 'completed').length || (24 - index * 3);
-    const calculatedRevenue =
-      barberBookings.reduce((sum, b) => sum + b.total_at_booking, 0) ||
-      (6800 - index * 850);
+    const completedCount = barberBookings.filter((b) => b.status === 'completed').length;
+    const calculatedRevenue = barberBookings.reduce((sum, b) => sum + (b.total_at_booking || 0), 0);
 
     return {
       id: barber.id,
@@ -83,11 +88,11 @@ export const AnalyticsCharts: React.FC = () => {
       branchName: branchObj ? branchObj.name.split('-')[0].trim() : 'فرع الصالون',
       fullBranchName: branchObj ? branchObj.name : 'فرع رئيسي',
       specialty: barber.specialty || 'حلاقة وتصفيف كلاسيكي',
-      rating: barber.rating || 4.9,
-      ratingCount: barber.rating_count || (120 - index * 15),
+      rating: barber.rating || 5.0,
+      ratingCount: barber.rating_count || 0,
       completedCuts: completedCount,
       revenue: calculatedRevenue,
-      photo: barber.photo_url || 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=400&auto=format&fit=crop&q=80',
+      photo: barber.photo_url || '',
     };
   });
 
@@ -100,11 +105,11 @@ export const AnalyticsCharts: React.FC = () => {
           <div className="space-y-0.5 sm:space-y-1 min-w-0">
             <p className="text-[10px] sm:text-xs text-ink-mute font-bold truncate">إجمالي الإيرادات</p>
             <h3 className="text-base sm:text-2xl font-serif font-extrabold text-forest truncate">
-              {formatCurrency(totalRevenue + 36800)}
+              {formatCurrency(totalRevenue)}
             </h3>
             <p className="text-[9px] sm:text-[11px] text-forest font-bold flex items-center gap-0.5 sm:gap-1 truncate">
               <TrendingUp className="w-3 h-3 shrink-0" />
-              <span>+18.4% نمو أسبوعي</span>
+              <span>مبيعات مباشرة</span>
             </p>
           </div>
           <div className="w-8 h-8 sm:w-12 sm:h-12 rounded-xl sm:rounded-2xl bg-forest/10 text-forest border border-forest/20 flex items-center justify-center shrink-0 shadow-xs">
@@ -117,11 +122,11 @@ export const AnalyticsCharts: React.FC = () => {
           <div className="space-y-0.5 sm:space-y-1 min-w-0">
             <p className="text-[10px] sm:text-xs text-ink-mute font-bold truncate">الحجوزات المنجزة</p>
             <h3 className="text-base sm:text-2xl font-serif font-extrabold text-ink truncate">
-              {completedBookings + 152} موعد
+              {completedBookings} موعد
             </h3>
             <p className="text-[9px] sm:text-[11px] text-[#b45309] font-bold flex items-center gap-0.5 sm:gap-1 truncate">
               <Star className="w-3 h-3 fill-[#f59e0b] text-[#f59e0b] shrink-0" />
-              <span>تقييم 4.93 / 5</span>
+              <span>حجوزات مكتملة</span>
             </p>
           </div>
           <div className="w-8 h-8 sm:w-12 sm:h-12 rounded-xl sm:rounded-2xl bg-terra/10 text-terra-deep border border-terra/20 flex items-center justify-center shrink-0 shadow-xs">
@@ -134,10 +139,10 @@ export const AnalyticsCharts: React.FC = () => {
           <div className="space-y-0.5 sm:space-y-1 min-w-0">
             <p className="text-[10px] sm:text-xs text-ink-mute font-bold truncate">جلسات جناح VIP</p>
             <h3 className="text-base sm:text-2xl font-serif font-extrabold text-terra-deep truncate">
-              {vipBookings + 48} جلسة
+              {vipBookings} جلسة
             </h3>
             <p className="text-[9px] sm:text-[11px] text-ink-mute font-bold truncate">
-              32% من الإيرادات
+              {totalRevenue > 0 ? `${Math.round((scopedBookings.filter(b => b.booking_type === 'vip').reduce((s, b) => s + b.total_at_booking, 0) / totalRevenue) * 100)}% من الإيراد` : '0% من الإيراد'}
             </p>
           </div>
           <div className="w-8 h-8 sm:w-12 sm:h-12 rounded-xl sm:rounded-2xl bg-[#fef3c7] text-[#b45309] border border-[#f59e0b]/30 flex items-center justify-center shrink-0 shadow-xs">
@@ -150,10 +155,10 @@ export const AnalyticsCharts: React.FC = () => {
           <div className="space-y-0.5 sm:space-y-1 min-w-0">
             <p className="text-[10px] sm:text-xs text-ink-mute font-bold truncate">فريق العمل والكراسي</p>
             <h3 className="text-base sm:text-2xl font-serif font-extrabold text-ink truncate">
-              {activeBarbersCount} حلاقين • {chairs.length} كراسي
+              {activeBarbersCount} حلاقين • {scopedChairs.length} كراسي
             </h3>
             <p className="text-[9px] sm:text-[11px] text-forest font-bold truncate">
-              جاهزية 100%
+              {branches.length} فروع مفعلة
             </p>
           </div>
           <div className="w-8 h-8 sm:w-12 sm:h-12 rounded-xl sm:rounded-2xl bg-forest/10 text-forest border border-forest/20 flex items-center justify-center shrink-0 shadow-xs">
@@ -162,7 +167,7 @@ export const AnalyticsCharts: React.FC = () => {
         </div>
       </div>
 
-      {/* Charts Row (Responsive Height & Zero-Overlap Donut) */}
+      {/* Charts Row */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6">
         {/* Revenue Trend Area Chart */}
         <div className="clinic-card p-4 sm:p-6 shadow-clinic-2 bg-white/95 space-y-3 sm:space-y-4">
@@ -211,7 +216,7 @@ export const AnalyticsCharts: React.FC = () => {
           </div>
         </div>
 
-        {/* Service Distribution Donut Chart with Zero Overlap HTML Legend */}
+        {/* Service Distribution Donut Chart */}
         <div className="clinic-card p-4 sm:p-6 shadow-clinic-2 bg-white/95 space-y-3 sm:space-y-4 flex flex-col justify-between">
           <div>
             <div className="flex items-center justify-between border-b border-border pb-3">
@@ -224,65 +229,74 @@ export const AnalyticsCharts: React.FC = () => {
               </span>
             </div>
 
-            {/* Donut Chart Container without overlapping SVG text */}
-            <div className="h-44 sm:h-48 w-full">
-              <ResponsiveContainer width="100%" height="100%">
-                <PieChart>
-                  <Pie
-                    data={serviceDistributionData}
-                    cx="50%"
-                    cy="50%"
-                    innerRadius={42}
-                    outerRadius={68}
-                    paddingAngle={4}
-                    dataKey="value"
-                  >
-                    {serviceDistributionData.map((_, index) => (
-                      <Cell
-                        key={`cell-${index}`}
-                        fill={PALETTE_COLORS[index % PALETTE_COLORS.length]}
-                      />
-                    ))}
-                  </Pie>
-                  <Tooltip
-                    contentStyle={{
-                      backgroundColor: '#ffffff',
-                      borderColor: '#e5e0d3',
-                      borderRadius: '14px',
-                      boxShadow: '0 4px 20px rgba(0,0,0,0.08)',
-                      fontSize: '11px',
-                    }}
-                    formatter={(val: any, name: any) => [`${val} طلب (${Math.round((Number(val) / totalCutsCount) * 100)}%)`, name]}
-                  />
-                </PieChart>
-              </ResponsiveContainer>
-            </div>
+            {serviceDistributionData.length > 0 ? (
+              <div className="h-44 sm:h-48 w-full">
+                <ResponsiveContainer width="100%" height="100%">
+                  <PieChart>
+                    <Pie
+                      data={serviceDistributionData}
+                      cx="50%"
+                      cy="50%"
+                      innerRadius={42}
+                      outerRadius={68}
+                      paddingAngle={4}
+                      dataKey="value"
+                    >
+                      {serviceDistributionData.map((_, index) => (
+                        <Cell
+                          key={`cell-${index}`}
+                          fill={PALETTE_COLORS[index % PALETTE_COLORS.length]}
+                        />
+                      ))}
+                    </Pie>
+                    <Tooltip
+                      contentStyle={{
+                        backgroundColor: '#ffffff',
+                        borderColor: '#e5e0d3',
+                        borderRadius: '14px',
+                        boxShadow: '0 4px 20px rgba(0,0,0,0.08)',
+                        fontSize: '11px',
+                      }}
+                      formatter={(val: any, name: any) => [`${val} طلب (${Math.round((Number(val) / (totalCutsCount || 1)) * 100)}%)`, name]}
+                    />
+                  </PieChart>
+                </ResponsiveContainer>
+              </div>
+            ) : (
+              <div className="h-44 sm:h-48 flex flex-col items-center justify-center text-center p-4 text-ink-mute space-y-2">
+                <CalendarCheck className="w-8 h-8 text-border-soft" />
+                <p className="text-xs font-semibold">لا توجد حجوزات مسجلة بعد</p>
+                <span className="text-[10px]">ستظهر نسب الخدمات فور تسجيل الحجوزات الفعلية</span>
+              </div>
+            )}
           </div>
 
-          {/* Clean Responsive HTML Legend (Zero overlapping on all screen sizes) */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5 pt-2 border-t border-border">
-            {serviceDistributionData.map((s, index) => {
-              const color = PALETTE_COLORS[index % PALETTE_COLORS.length];
-              const pct = Math.round((s.value / totalCutsCount) * 100);
-              return (
-                <div
-                  key={index}
-                  className="flex items-center justify-between text-[11px] bg-paper-warm/70 px-2.5 py-1 rounded-lg border border-border/50"
-                >
-                  <div className="flex items-center gap-1.5 min-w-0">
-                    <span
-                      className="w-2.5 h-2.5 rounded-full shrink-0"
-                      style={{ backgroundColor: color }}
-                    />
-                    <span className="text-ink truncate font-medium">{s.name}</span>
+          {/* Legend */}
+          {serviceDistributionData.length > 0 && (
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5 pt-2 border-t border-border">
+              {serviceDistributionData.map((s, index) => {
+                const color = PALETTE_COLORS[index % PALETTE_COLORS.length];
+                const pct = Math.round((s.value / (totalCutsCount || 1)) * 100);
+                return (
+                  <div
+                    key={index}
+                    className="flex items-center justify-between text-[11px] bg-paper-warm/70 px-2.5 py-1 rounded-lg border border-border/50"
+                  >
+                    <div className="flex items-center gap-1.5 min-w-0">
+                      <span
+                        className="w-2.5 h-2.5 rounded-full shrink-0"
+                        style={{ backgroundColor: color }}
+                      />
+                      <span className="text-ink truncate font-medium">{s.name}</span>
+                    </div>
+                    <span className="font-mono text-ink-mute font-bold text-[10px] shrink-0">
+                      {pct}% ({s.value})
+                    </span>
                   </div>
-                  <span className="font-mono text-ink-mute font-bold text-[10px] shrink-0">
-                    {pct}% ({s.value})
-                  </span>
-                </div>
-              );
-            })}
-          </div>
+                );
+              })}
+            </div>
+          )}
         </div>
       </div>
 
@@ -304,68 +318,82 @@ export const AnalyticsCharts: React.FC = () => {
           </span>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4">
-          {barberStats.map((b, idx) => (
-            <div
-              key={b.id}
-              className="p-4 sm:p-5 rounded-2xl bg-paper-warm border border-border space-y-3.5 shadow-sm hover:border-forest/40 hover:shadow-clinic-1 transition-all flex flex-col justify-between"
-            >
-              {/* Header with Photo and Info */}
-              <div className="flex items-start gap-3">
-                <img
-                  src={b.photo}
-                  alt={b.name}
-                  className="w-14 h-14 sm:w-16 sm:h-16 rounded-2xl object-cover border border-border shadow-xs shrink-0 bg-white"
-                />
-                <div className="flex-1 min-w-0 space-y-0.5 sm:space-y-1">
-                  <div className="flex items-center justify-between gap-1">
-                    <h5 className="font-serif font-bold text-xs sm:text-sm text-ink truncate">{b.name}</h5>
-                    <span className="text-[9px] sm:text-[10px] font-mono font-bold text-forest bg-forest/15 px-2 py-0.5 rounded-full shrink-0">
-                      #{idx + 1}
-                    </span>
+        {barberStats.length > 0 ? (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4">
+            {barberStats.map((b, idx) => (
+              <div
+                key={b.id}
+                className="p-4 sm:p-5 rounded-2xl bg-paper-warm border border-border space-y-3.5 shadow-sm hover:border-forest/40 hover:shadow-clinic-1 transition-all flex flex-col justify-between"
+              >
+                {/* Header with Photo and Info */}
+                <div className="flex items-start gap-3">
+                  {b.photo ? (
+                    <img
+                      src={b.photo}
+                      alt={b.name}
+                      className="w-14 h-14 sm:w-16 sm:h-16 rounded-2xl object-cover border border-border shadow-xs shrink-0 bg-white"
+                    />
+                  ) : (
+                    <div className="w-14 h-14 sm:w-16 sm:h-16 rounded-2xl bg-forest/10 text-forest border border-forest/20 flex items-center justify-center font-serif text-lg font-bold shrink-0">
+                      {b.name.trim().charAt(0)}
+                    </div>
+                  )}
+                  <div className="flex-1 min-w-0 space-y-0.5 sm:space-y-1">
+                    <div className="flex items-center justify-between gap-1">
+                      <h5 className="font-serif font-bold text-xs sm:text-sm text-ink truncate">{b.name}</h5>
+                      <span className="text-[9px] sm:text-[10px] font-mono font-bold text-forest bg-forest/15 px-2 py-0.5 rounded-full shrink-0">
+                        #{idx + 1}
+                      </span>
+                    </div>
+
+                    <p className="text-[10px] sm:text-[11px] text-ink-soft font-bold flex items-center gap-1">
+                      <Building2 className="w-3 h-3 text-terra shrink-0" />
+                      <span className="truncate">{b.fullBranchName}</span>
+                    </p>
+
+                    <p className="text-[9px] sm:text-[10px] text-ink-mute truncate">{b.specialty}</p>
+                  </div>
+                </div>
+
+                {/* Metrics Grid */}
+                <div className="grid grid-cols-2 gap-2 text-xs">
+                  <div className="bg-white p-2.5 sm:p-3 rounded-xl border border-border space-y-0.5">
+                    <span className="text-[9px] sm:text-[10px] text-ink-mute block">الجلسات:</span>
+                    <strong className="font-serif font-bold text-ink text-xs sm:text-sm block">
+                      {b.completedCuts} <span className="text-[10px] font-normal text-ink-soft">جلسة</span>
+                    </strong>
                   </div>
 
-                  <p className="text-[10px] sm:text-[11px] text-ink-soft font-bold flex items-center gap-1">
-                    <Building2 className="w-3 h-3 text-terra shrink-0" />
-                    <span className="truncate">{b.fullBranchName}</span>
-                  </p>
-
-                  <p className="text-[9px] sm:text-[10px] text-ink-mute truncate">{b.specialty}</p>
-                </div>
-              </div>
-
-              {/* Metrics Grid */}
-              <div className="grid grid-cols-2 gap-2 text-xs">
-                <div className="bg-white p-2.5 sm:p-3 rounded-xl border border-border space-y-0.5">
-                  <span className="text-[9px] sm:text-[10px] text-ink-mute block">الجلسات:</span>
-                  <strong className="font-serif font-bold text-ink text-xs sm:text-sm block">
-                    {b.completedCuts} <span className="text-[10px] font-normal text-ink-soft">جلسة</span>
-                  </strong>
+                  <div className="bg-white p-2.5 sm:p-3 rounded-xl border border-border space-y-0.5">
+                    <span className="text-[9px] sm:text-[10px] text-ink-mute block">إجمالي الدخل:</span>
+                    <strong className="font-serif font-bold text-forest text-xs sm:text-sm block truncate">
+                      {formatCurrency(b.revenue)}
+                    </strong>
+                  </div>
                 </div>
 
-                <div className="bg-white p-2.5 sm:p-3 rounded-xl border border-border space-y-0.5">
-                  <span className="text-[9px] sm:text-[10px] text-ink-mute block">إجمالي الدخل:</span>
-                  <strong className="font-serif font-bold text-forest text-xs sm:text-sm block truncate">
-                    {formatCurrency(b.revenue)}
-                  </strong>
+                {/* Rating and Progress */}
+                <div className="pt-2 border-t border-border/80 flex items-center justify-between text-xs">
+                  <span className="flex items-center gap-1 font-bold text-[#b45309]">
+                    <Star className="w-3.5 h-3.5 fill-[#f59e0b] text-[#f59e0b]" />
+                    <span className="font-mono text-xs sm:text-sm font-extrabold">{b.rating}</span>
+                    <span className="text-ink-mute text-[9px] sm:text-[10px] font-mono">({b.ratingCount})</span>
+                  </span>
+
+                  <span className="text-[9px] sm:text-[10px] font-mono text-forest font-bold bg-forest/10 px-2 py-0.5 rounded-lg">
+                    {b.completedCuts > 0 ? 'نشط بالخدمة' : 'جاهز للعمل'}
+                  </span>
                 </div>
               </div>
-
-              {/* Rating and Progress */}
-              <div className="pt-2 border-t border-border/80 flex items-center justify-between text-xs">
-                <span className="flex items-center gap-1 font-bold text-[#b45309]">
-                  <Star className="w-3.5 h-3.5 fill-[#f59e0b] text-[#f59e0b]" />
-                  <span className="font-mono text-xs sm:text-sm font-extrabold">{b.rating}</span>
-                  <span className="text-ink-mute text-[9px] sm:text-[10px] font-mono">({b.ratingCount})</span>
-                </span>
-
-                <span className="text-[9px] sm:text-[10px] font-mono text-forest font-bold bg-forest/10 px-2 py-0.5 rounded-lg">
-                  معدل تميز 98%
-                </span>
-              </div>
-            </div>
-          ))}
-        </div>
+            ))}
+          </div>
+        ) : (
+          <div className="p-8 text-center text-ink-mute space-y-2">
+            <Users className="w-10 h-10 mx-auto text-border-soft" />
+            <p className="text-sm font-semibold">لم يتم إضافة حلاقين بعد</p>
+            <p className="text-xs">يمكنك إضافة كباتن الحلاقة من قسم "الحلاقين وفريق العمل"</p>
+          </div>
+        )}
       </div>
     </div>
   );
