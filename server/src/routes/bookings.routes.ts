@@ -222,10 +222,19 @@ router.patch(
         if (booking.customer_phone) {
           import('../services/whatsapp.service.js').then(({ sendWhatsAppText }) => {
             const clientName = booking.customer_name || 'عزيزنا العميل';
-            const msg = `ألف مبروك يا ${clientName}! 🎉\nتم اعتماد إيصال التحويل وتأكيد حجزك رقم #${booking.id} بنجاح لدى الصالون.\n\n✂️ الخدمة: ${booking.service_name || 'خدمة الصالون'}\n💈 الكابتن: ${booking.barber_name || 'كابتن الصالون الرئيسي'}\n\n📍 دورك وموقعك في الطابور المباشر:\nhttps://trimmind.up.railway.app/track?q=${booking.id}\n\nأول ما يقرب دورك هنبعتلك تذكير بالوصول فوراً! 👑`;
+            const totalVal = booking.total_at_booking || 180;
+            const depositVal = booking.booking_fee_at_booking || 50;
+            const remainingVal = Math.max(0, totalVal - depositVal);
+            const msg = `ألف مبروك يا ${clientName}! 🎉👑\nتم اعتماد إيصال التحويل وتأكيد حجزك رقم #${booking.id} بنجاح لدى صالون الحداد VIP!\n\n📋 تفاصيل الحجز المؤكد:\n✂️ الخدمة: ${booking.service_name || 'خدمة الصالون'}\n💈 الكابتن: ${booking.barber_name || 'كابتن الصالون الرئيسي'}\n📅 الموعد: ${booking.starts_at ? booking.starts_at.replace('T', ' ').substring(0, 16) : 'موعد فوري'}\n🔢 رقم الدور: رقم #${booking.queue_number || 1} في طابور اليوم\n\n💵 تفاصيل الفاتورة والحساب:\n• إجمالي الفاتورة: ${totalVal} ج.م\n• العربون المسدد: ${depositVal} ج.م ✓\n• المتبقي للدفع بالصالون: ${remainingVal} ج.م\n\n📍 رابط متابعة دورك لحظة بلحظة:\nhttps://trimmind.up.railway.app/track?q=${booking.id}\n\nأول ما يقرب دورك في نفس اليوم هنبعتلك تذكير فوري لتجهيز الكرسي لك! نتشرف بزيارتك 💈✨`;
             sendWhatsAppText(booking.customer_phone, msg).catch(() => {});
           }).catch(() => {});
         }
+      } else if (status === 'completed' && booking.customer_phone) {
+        import('../services/whatsapp.service.js').then(({ sendWhatsAppText }) => {
+          const clientName = booking.customer_name || 'عزيزنا العميل';
+          const msg = `نعيماً يا ${clientName}! 💈✂️✨\nسعدنا جداً بزيارتك وتشريفك لنا في صالون TrimMind (الحداد VIP) اليوم.\n\nنتمنى تكون الحلاقة وتجربتك معنا نالت إعجابك ورضاك التام 👑\n\n⭐ يسعدنا جداً مشاركتنا تقييمك ورأيك في الخدمة والكابتن عبر الرابط التالي:\nhttps://trimmind.up.railway.app/track?q=${booking.id}\n\nمع تحيات فريق عمل وكباتن صالون الحداد VIP! ننتظر زيارتك القادمة دائماً 💈❤️`;
+          sendWhatsAppText(booking.customer_phone, msg).catch(() => {});
+        }).catch(() => {});
       } else if ((status === 'cancelled' || status === 'rejected') && booking.customer_phone) {
         import('../services/whatsapp.service.js').then(({ sendWhatsAppText }) => {
           const clientName = booking.customer_name || 'عزيزنا العميل';
@@ -352,7 +361,10 @@ router.patch('/:id/payment-proof', optionalAuth, async (req: AuthenticatedReques
       if (booking.customer_phone) {
         import('../services/whatsapp.service.js').then(({ sendWhatsAppText }) => {
           const clientName = booking.customer_name || 'عزيزنا العميل';
-          const msg = `ألف مبروك يا ${clientName}! 🎉\nتم اعتماد إيصال التحويل وتأكيد حجزك رقم #${booking.id} بنجاح لدى الصالون.\n\n✂️ الخدمة: ${booking.service_name || 'خدمة الصالون'}\n💈 الكابتن: ${booking.barber_name || 'كابتن الصالون الرئيسي'}\n\n📍 دورك وموقعك في الطابور المباشر:\nhttps://trimmind.up.railway.app/track?q=${booking.id}\n\nأول ما يقرب دورك هنبعتلك تذكير بالوصول فوراً! 👑`;
+          const totalVal = booking.total_at_booking || 180;
+          const depositVal = booking.booking_fee_at_booking || 50;
+          const remainingVal = Math.max(0, totalVal - depositVal);
+          const msg = `ألف مبروك يا ${clientName}! 🎉👑\nتم اعتماد إيصال التحويل وتأكيد حجزك رقم #${booking.id} بنجاح لدى صالون الحداد VIP!\n\n📋 تفاصيل الحجز المؤكد:\n✂️ الخدمة: ${booking.service_name || 'خدمة الصالون'}\n💈 الكابتن: ${booking.barber_name || 'كابتن الصالون الرئيسي'}\n📅 الموعد: ${booking.starts_at ? booking.starts_at.replace('T', ' ').substring(0, 16) : 'موعد فوري'}\n🔢 رقم الدور: رقم #${booking.queue_number || 1} في طابور اليوم\n\n💵 تفاصيل الفاتورة والحساب:\n• إجمالي الفاتورة: ${totalVal} ج.م\n• العربون المسدد: ${depositVal} ج.م ✓\n• المتبقي للدفع بالصالون: ${remainingVal} ج.م\n\n📍 رابط متابعة دورك لحظة بلحظة:\nhttps://trimmind.up.railway.app/track?q=${booking.id}\n\nأول ما يقرب دورك في نفس اليوم هنبعتلك تذكير فوري لتجهيز الكرسي لك! نتشرف بزيارتك 💈✨`;
           sendWhatsAppText(booking.customer_phone, msg).catch(() => {});
         }).catch(() => {});
       }

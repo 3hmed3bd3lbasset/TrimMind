@@ -182,6 +182,15 @@ export async function createBooking(payload: any, actor?: any, ipAddress?: strin
   broadcastToBranch(payload.branchId, 'BOOKING_CREATED', createdBooking);
   broadcastGlobal('SYNC_STATE', { type: 'BOOKING_CREATED', bookingId });
 
+  // 🔔 Send WhatsApp Acknowledgement on Web/Online Booking Creation & Proof Submission
+  if (payload.customerPhone) {
+    import('./whatsapp.service.js').then(({ sendWhatsAppText }) => {
+      const clientName = payload.customerName || 'عزيزنا العميل';
+      const msg = `أهلاً بك يا ${clientName} في صالون TrimMind (الحداد VIP)! 💈✨\n\nتم استلام طلب حجزك المبدئي وإيصال التحويل بنجاح! 📋\n🎫 رقم الحجز: #${bookingId}\n✂️ الخدمة: ${primaryService?.name || 'خدمة الصالون'}\n📅 الموعد: ${payload.startsAt ? payload.startsAt.replace('T', ' ').substring(0, 16) : 'موعد اليوم'}\n🔢 رقم الدور: رقم #${assignedQueueNumber} في طابور اليوم\n\n⏳ جاري مراجعة واعتماد إيصال التحويل من موظف الاستقبال في غضون 10 دقائق كحد أقصى.\nبمجرد الموافقة سيصلك إشعار فوري هنا على الواتساب بتأكيد الحجز وموقعك المباشر في الطابور! 👑\n\n📍 رابط تتبع حجزك:\nhttps://trimmind.up.railway.app/track?q=${bookingId}`;
+      sendWhatsAppText(payload.customerPhone, msg).catch(() => {});
+    }).catch(() => {});
+  }
+
   return createdBooking;
 }
 
