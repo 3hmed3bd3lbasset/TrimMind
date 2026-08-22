@@ -1,6 +1,8 @@
 import { z } from 'zod';
 
 export const createBookingSchema = z.object({
+  id: z.string().optional(),
+  bookingId: z.string().optional(),
   customerName: z
     .string({ required_error: 'اسم العميل مطلوب' })
     .min(2, 'الاسم يجب أن لا يقل عن حرفين')

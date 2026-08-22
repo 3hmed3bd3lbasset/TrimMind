@@ -456,6 +456,8 @@ export const useSalonStore = create<SalonStore>()(
 
         // Authoritative Server Backend Dispatch (Calculates final prices, records DB audit, emits WebSockets)
         api.createBooking({
+          id: bookingId,
+          bookingId: bookingId,
           customerName: payload.customerName,
           customerPhone: payload.customerPhone,
           branchId: payload.branchId,

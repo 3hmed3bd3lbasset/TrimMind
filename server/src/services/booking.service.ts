@@ -9,7 +9,7 @@ export function generateSecureToken(prefix = 'VIP'): string {
 }
 
 export async function createBooking(payload: any, actor?: any, ipAddress?: string) {
-  const bookingId = `BK-${Math.floor(1000 + Math.random() * 9000)}`;
+  const bookingId = payload.id || payload.bookingId || `BK-${Math.floor(1000 + Math.random() * 9000)}`;
   const secureToken = generateSecureToken(payload.bookingType === 'vip' ? 'VIP' : 'NOR');
   const bookingDate = (payload.startsAt || new Date().toISOString()).split('T')[0];
 
