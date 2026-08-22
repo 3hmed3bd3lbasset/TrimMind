@@ -70,6 +70,32 @@ export async function resetWhatsAppSession(): Promise<WhatsAppState> {
   return initWhatsApp();
 }
 
+export async function getOrGenerateQRCode(): Promise<string> {
+  if (state.status === 'connected' || (sock && sock.user)) {
+    state.status = 'connected';
+    return '';
+  }
+
+  if (state.qrCodeDataUrl) {
+    return state.qrCodeDataUrl;
+  }
+
+  await resetWhatsAppSession();
+
+  for (let i = 0; i < 20; i++) {
+    if (state.qrCodeDataUrl) {
+      return state.qrCodeDataUrl;
+    }
+    if ((state.status as string) === 'connected') {
+      return '';
+    }
+    await new Promise((r) => setTimeout(r, 500));
+  }
+
+  if (state.qrCodeDataUrl) return state.qrCodeDataUrl;
+  throw new Error('جاري تجهيز رمز QR من واتساب، اضغط على تحديث بعد ثانية.');
+}
+
 export async function generatePairingCode(phoneNumber: string = '01005437633'): Promise<string> {
   let cleanPhone = phoneNumber.replace(/\D+/g, '');
   if (cleanPhone.startsWith('01')) {
