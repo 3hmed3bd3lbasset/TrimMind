@@ -96,4 +96,62 @@ router.post(
   }
 );
 
+// GET /api/auth/profiles (Manager only - list all staff accounts)
+router.get('/profiles', requireAuth, requireRoles('manager'), async (_req, res: Response) => {
+  try {
+    const profiles = await query<any[]>(
+      'SELECT id, full_name, phone, email, role, is_super_admin, branch_id, barber_id, is_active, created_at, updated_at FROM profiles ORDER BY created_at ASC'
+    );
+    return res.json({ success: true, data: profiles });
+  } catch (error: any) {
+    return res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// PATCH /api/auth/profiles/:id (Manager only)
+router.patch('/profiles/:id', requireAuth, requireRoles('manager'), async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const { full_name, phone, email, password, role, branch_id, barber_id, is_super_admin, is_active } = req.body;
+    const fields: string[] = [];
+    const values: any[] = [];
+
+    if (full_name !== undefined) { fields.push('full_name = ?'); values.push(full_name); }
+    if (phone !== undefined) { fields.push('phone = ?'); values.push(phone); }
+    if (email !== undefined) { fields.push('email = ?'); values.push(email); }
+    if (role !== undefined) { fields.push('role = ?'); values.push(role); }
+    if (branch_id !== undefined) { fields.push('branch_id = ?'); values.push(branch_id); }
+    if (barber_id !== undefined) { fields.push('barber_id = ?'); values.push(barber_id); }
+    if (is_super_admin !== undefined) { fields.push('is_super_admin = ?'); values.push(is_super_admin ? 1 : 0); }
+    if (is_active !== undefined) { fields.push('is_active = ?'); values.push(is_active ? 1 : 0); }
+    if (password) {
+      const hash = await hashPassword(password);
+      fields.push('password_hash = ?');
+      values.push(hash);
+    }
+
+    if (fields.length > 0) {
+      values.push(req.params.id);
+      await query(`UPDATE profiles SET ${fields.join(', ')} WHERE id = ?`, values);
+    }
+
+    const updated = await query<any[]>(
+      'SELECT id, full_name, phone, email, role, is_super_admin, branch_id, barber_id, is_active FROM profiles WHERE id = ?',
+      [req.params.id]
+    );
+    return res.json({ success: true, message: 'تم تحديث حساب الموظف بنجاح', data: updated[0] });
+  } catch (error: any) {
+    return res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// DELETE /api/auth/profiles/:id (Manager only)
+router.delete('/profiles/:id', requireAuth, requireRoles('manager'), async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    await query('DELETE FROM profiles WHERE id = ?', [req.params.id]);
+    return res.json({ success: true, message: 'تم حذف حساب الموظف بنجاح' });
+  } catch (error: any) {
+    return res.status(500).json({ success: false, error: error.message });
+  }
+});
+
 export default router;

@@ -43,12 +43,15 @@ apiClient.interceptors.response.use(
 
 // API Service Endpoints
 export const api = {
-  // Auth
+  // Auth & Staff
   login: (credentials: { identifier: string; password: string }) =>
     apiClient.post('/auth/login', credentials),
   getMe: () => apiClient.get('/auth/me'),
   logout: () => apiClient.post('/auth/logout'),
+  getProfiles: () => apiClient.get('/auth/profiles'),
   createStaff: (staffData: any) => apiClient.post('/auth/create-staff', staffData),
+  updateProfile: (id: string, data: any) => apiClient.patch(`/auth/profiles/${id}`, data),
+  deleteProfile: (id: string) => apiClient.delete(`/auth/profiles/${id}`),
 
   // Bookings
   createBooking: (bookingData: any) => apiClient.post('/bookings', bookingData),

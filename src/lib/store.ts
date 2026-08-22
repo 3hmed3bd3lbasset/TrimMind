@@ -1297,6 +1297,7 @@ export const useSalonStore = create<SalonStore>()(
         };
         set((state) => ({ profiles: [...state.profiles, newProfile] }));
         broadcastEvent('SYNC_STATE');
+        api.createStaff({ ...newProfile, role: 'manager' }).catch((e) => console.warn('API createStaff manager notice:', e?.message));
       },
 
       updateManager: (id, updates) => {
@@ -1310,6 +1311,7 @@ export const useSalonStore = create<SalonStore>()(
               : state.currentUser,
         }));
         broadcastEvent('SYNC_STATE');
+        api.updateProfile(id, updates).catch((e) => console.warn('API updateProfile manager notice:', e?.message));
       },
 
       deleteManager: (id) => {
@@ -1317,6 +1319,7 @@ export const useSalonStore = create<SalonStore>()(
           profiles: state.profiles.filter((p) => p.id !== id),
         }));
         broadcastEvent('SYNC_STATE');
+        api.deleteProfile(id).catch((e) => console.warn('API deleteProfile manager notice:', e?.message));
       },
 
       addReceptionist: (receptionist) => {
@@ -1329,6 +1332,7 @@ export const useSalonStore = create<SalonStore>()(
         };
         set((state) => ({ profiles: [...state.profiles, newProfile] }));
         broadcastEvent('SYNC_STATE');
+        api.createStaff({ ...newProfile, role: 'receptionist' }).catch((e) => console.warn('API createStaff receptionist notice:', e?.message));
       },
 
       updateReceptionist: (id, updates) => {
@@ -1342,6 +1346,7 @@ export const useSalonStore = create<SalonStore>()(
               : state.currentUser,
         }));
         broadcastEvent('SYNC_STATE');
+        api.updateProfile(id, updates).catch((e) => console.warn('API updateProfile receptionist notice:', e?.message));
       },
 
       deleteReceptionist: (id) => {
@@ -1349,6 +1354,7 @@ export const useSalonStore = create<SalonStore>()(
           profiles: state.profiles.filter((p) => p.id !== id),
         }));
         broadcastEvent('SYNC_STATE');
+        api.deleteProfile(id).catch((e) => console.warn('API deleteProfile receptionist notice:', e?.message));
       },
 
       updateSettings: (newSettings) => {

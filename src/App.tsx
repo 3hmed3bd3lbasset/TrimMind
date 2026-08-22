@@ -68,7 +68,7 @@ function AppLayout() {
     // 1. Hydrate state from server DB on startup
     const hydrateFromBackend = async () => {
       try {
-        const [branchesRes, barbersRes, chairsRes, servicesRes, productsRes, settingsRes, bookingsRes] = await Promise.allSettled([
+        const [branchesRes, barbersRes, chairsRes, servicesRes, productsRes, settingsRes, bookingsRes, profilesRes] = await Promise.allSettled([
           api.getBranches(),
           api.getBarbers(),
           api.getChairs(),
@@ -76,6 +76,7 @@ function AppLayout() {
           api.getProducts(),
           api.getSettings(),
           api.getBookings(),
+          api.getProfiles(),
         ]);
 
         const stateUpdates: any = {};
@@ -100,6 +101,9 @@ function AppLayout() {
         }
         if (bookingsRes.status === 'fulfilled' && (bookingsRes.value as any)?.success && Array.isArray((bookingsRes.value as any)?.data)) {
           stateUpdates.bookings = (bookingsRes.value as any).data;
+        }
+        if (profilesRes.status === 'fulfilled' && (profilesRes.value as any)?.success && Array.isArray((profilesRes.value as any)?.data) && (profilesRes.value as any).data.length > 0) {
+          stateUpdates.profiles = (profilesRes.value as any).data;
         }
 
         if (Object.keys(stateUpdates).length > 0) {
