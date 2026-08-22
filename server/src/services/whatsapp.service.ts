@@ -267,6 +267,28 @@ export async function initWhatsApp(): Promise<WhatsAppState> {
           }
           if (textKey) processedContentKeys.set(textKey, now);
 
+          // Resolve real Egyptian mobile number from candidate JIDs if remoteJid is LID
+          let senderPhone = '';
+          const candidateJids = [
+            (msg.key as any).remoteJidAlt,
+            (msg.key as any).participant,
+            (msg as any).participant,
+            remoteJid,
+          ].filter(Boolean);
+
+          for (const cJid of candidateJids) {
+            if (typeof cJid === 'string' && cJid.includes('@s.whatsapp.net')) {
+              let clean = cJid.replace('@s.whatsapp.net', '').replace(/[^0-9]/g, '');
+              if (clean.startsWith('20') && clean.length === 12) {
+                clean = '0' + clean.substring(2);
+              }
+              if (clean.startsWith('01') && clean.length === 11) {
+                senderPhone = clean;
+                break;
+              }
+            }
+          }
+
           // Prune cache
           if (processedMessageIds.size > 2000) {
             for (const [id, time] of processedMessageIds.entries()) {
@@ -279,10 +301,10 @@ export async function initWhatsApp(): Promise<WhatsAppState> {
             }
           }
 
-          console.log(`📩 Incoming WhatsApp from ${remoteJid}: ${text || '[Image Receipt]'}`);
+          console.log(`📩 Incoming WhatsApp from ${senderPhone || remoteJid}: ${text || '[Image Receipt]'}`);
 
           // Forward to n8n Webhook
-          forwardToN8nWebhook(msg, base64ImageUrl);
+          forwardToN8nWebhook(msg, base64ImageUrl, senderPhone);
         }
       }
     });
@@ -325,14 +347,16 @@ export async function sendWhatsAppText(to: string, text: string): Promise<boolea
 }
 
 // Helper to forward incoming message to n8n Webhook
-function forwardToN8nWebhook(msg: proto.IWebMessageInfo, imageUrl?: string | null) {
+function forwardToN8nWebhook(msg: proto.IWebMessageInfo, imageUrl?: string | null, senderPhone?: string | null) {
   try {
     const payload = JSON.stringify({
       event: 'messages.upsert',
       instance: 'trimmind_salon',
+      senderPhone: senderPhone || null,
       imageUrl: imageUrl || null,
       data: {
         ...msg,
+        senderPhone: senderPhone || null,
         imageUrl: imageUrl || null,
       },
     });
