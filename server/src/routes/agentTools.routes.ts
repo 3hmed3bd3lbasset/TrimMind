@@ -697,6 +697,11 @@ router.post('/bookings/cancel', async (req: Request, res: Response) => {
       phone: cleanPhone,
     });
 
+    const targetLive = liveSyncedBookings.find((b) => b.id === booking.id);
+    if (targetLive) {
+      targetLive.status = 'cancelled';
+    }
+
     return res.json({
       success: true,
       message: `تم إلغاء الحجز #${booking.id} بنجاح.`,
