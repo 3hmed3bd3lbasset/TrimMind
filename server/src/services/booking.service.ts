@@ -262,7 +262,15 @@ export async function cancelBooking(bookingId: string, reason?: string, actor?: 
   };
 
   broadcastToBranch(booking.branch_id, 'BOOKING_CANCELLED', eventPayload);
-  broadcastGlobal('BOOKING_CANCELLED', eventPayload);
+  broadcastGlobal('SYNC_STATE');
 
-  return { success: true, message: 'تم إلغاء الحجز بنجاح وتحديث الأدوار فورياً' };
+  if (booking.customer_phone) {
+    import('./whatsapp.service.js').then(({ sendWhatsAppText }) => {
+      const clientName = booking.customer_name || 'عزيزنا العميل';
+      const msg = `تم إلغاء حجزك رقم #${booking.id} بنجاح يا ${clientName}. ❌\n\nنتشرف بزيارتك في أي وقت آخر، وتقدر تحجز موعد جديد في أي وقت! 💈✨`;
+      sendWhatsAppText(booking.customer_phone, msg).catch(() => {});
+    }).catch(() => {});
+  }
+
+  return { success: true, bookingId };
 }
