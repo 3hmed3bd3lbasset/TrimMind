@@ -182,11 +182,28 @@ router.patch(
       broadcastToBranch(booking.branch_id, 'SYNC_STATE', updated);
       broadcastGlobal('SYNC_STATE', { bookingId: req.params.id, status });
 
-      // Automatic WhatsApp Notification on Confirmation / Payment Approval
-      if (status === 'confirmed' && booking.customer_phone) {
+      // Automatic WhatsApp Notification on Confirmation / Payment Approval + Add Revenue to Manager Financials
+      if (status === 'confirmed') {
+        const depositFee = booking.booking_fee_at_booking || 50;
+
+        // Record revenue in financial_records table
+        query(
+          `INSERT INTO financial_records (id, branch_id, type, category, amount, payment_method, reference_id, notes, recorded_by, created_at)
+           VALUES (?, ?, 'income', 'booking_fee', ?, 'online', ?, 'عربون حجز مؤكد عبر واتساب', 'system', NOW())`,
+          [uuidv4(), booking.branch_id || 'branch-elhdad', depositFee, booking.id]
+        ).catch(() => {});
+
+        if (booking.customer_phone) {
+          import('../services/whatsapp.service.js').then(({ sendWhatsAppText }) => {
+            const clientName = booking.customer_name || 'عزيزنا العميل';
+            const msg = `ألف مبروك يا ${clientName}! 🎉\nتم اعتماد إيصال التحويل وتأكيد حجزك رقم #${booking.id} بنجاح لدى الصالون.\n\n✂️ الخدمة: ${booking.service_name || 'خدمة الصالون'}\n💈 الكابتن: ${booking.barber_name || 'كابتن الصالون الرئيسي'}\n\n📍 دورك وموقعك في الطابور المباشر:\nhttps://trimmind.up.railway.app/track?q=${booking.id}\n\nأول ما يقرب دورك هنبعتلك تذكير بالوصول فوراً! 👑`;
+            sendWhatsAppText(booking.customer_phone, msg).catch(() => {});
+          }).catch(() => {});
+        }
+      } else if ((status === 'cancelled' || status === 'rejected') && booking.customer_phone) {
         import('../services/whatsapp.service.js').then(({ sendWhatsAppText }) => {
           const clientName = booking.customer_name || 'عزيزنا العميل';
-          const msg = `ألف مبروك يا ${clientName}! 🎉\nتم تأكيد حجزك رقم #${booking.id} بنجاح لدى الصالون.\n\n✂️ الخدمة: ${booking.service_name || 'خدمة الصالون'}\n💈 الكابتن: ${booking.barber_name || 'كابتن الصالون الرئيسي'}\n\n📍 دورك وموقعك في الطابور المباشر:\nhttps://trimmind.up.railway.app/track?q=${booking.id}\n\nأول ما يقرب دورك هنبعتلك تذكير بالوصول فوراً! 👑`;
+          const msg = `عزيزنا ${clientName}، نعتذر منك، لم يتم اعتماد إيصال التحويل للحجز رقم #${booking.id}.\nيرجى التواصل مع إدارة الصالون أو إعادة إرسال الإيصال الصحيح. 💈`;
           sendWhatsAppText(booking.customer_phone, msg).catch(() => {});
         }).catch(() => {});
       }
