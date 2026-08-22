@@ -26,6 +26,7 @@ import {
   Smartphone,
   Wallet,
   Coins,
+  Clock,
 } from 'lucide-react';
 import { PaymentProofModal } from '../receptionist/PaymentProofModal';
 import { ThermalInvoice } from '../receptionist/ThermalInvoice';
@@ -99,31 +100,59 @@ export const BookingRevenuesManager: React.FC = () => {
     });
   }, [bookings, selectedBranchId, selectedMethod, dateFilter, searchQuery]);
 
+  // Helper to calculate actual collected deposit vs pending balance
+  const getBookingFinancials = (b: Booking) => {
+    const totalServicePrice = Number(b.total_at_booking || b.service_price_at_booking || 180);
+    const depositAmount = Number(b.payment_proof?.transferred_amount || b.booking_fee_at_booking || 50);
+
+    // If completed: full bill is collected (deposit + remaining)
+    if (b.status === 'completed') {
+      return {
+        collected: totalServicePrice,
+        pending: 0,
+        total: totalServicePrice,
+        isCompleted: true,
+      };
+    }
+
+    // If confirmed / in_service: only the 50 EGP deposit has been collected in treasury!
+    return {
+      collected: depositAmount,
+      pending: Math.max(0, totalServicePrice - depositAmount),
+      total: totalServicePrice,
+      isCompleted: false,
+    };
+  };
+
   // Aggregate financial metrics
-  const totalRevenues = useMemo(() => {
-    return confirmedBookings.reduce((sum, b) => {
-      // Use transferred_amount if approved proof, otherwise total_at_booking
-      const amount = b.payment_proof?.transferred_amount || b.total_at_booking || 0;
-      return sum + amount;
-    }, 0);
+  const totalCollectedRevenues = useMemo(() => {
+    return confirmedBookings.reduce((sum, b) => sum + getBookingFinancials(b).collected, 0);
+  }, [confirmedBookings]);
+
+  const totalPendingInSalon = useMemo(() => {
+    return confirmedBookings.reduce((sum, b) => sum + getBookingFinancials(b).pending, 0);
+  }, [confirmedBookings]);
+
+  const totalContractValues = useMemo(() => {
+    return confirmedBookings.reduce((sum, b) => sum + getBookingFinancials(b).total, 0);
   }, [confirmedBookings]);
 
   const instapayRevenues = useMemo(() => {
     return confirmedBookings
       .filter((b) => b.payment_proof?.payment_method === 'instapay')
-      .reduce((sum, b) => sum + (b.payment_proof?.transferred_amount || b.total_at_booking || 0), 0);
+      .reduce((sum, b) => sum + getBookingFinancials(b).collected, 0);
   }, [confirmedBookings]);
 
   const vodafoneRevenues = useMemo(() => {
     return confirmedBookings
       .filter((b) => b.payment_proof?.payment_method === 'vodafone_cash')
-      .reduce((sum, b) => sum + (b.payment_proof?.transferred_amount || b.total_at_booking || 0), 0);
+      .reduce((sum, b) => sum + getBookingFinancials(b).collected, 0);
   }, [confirmedBookings]);
 
   const cashRevenues = useMemo(() => {
     return confirmedBookings
       .filter((b) => !b.payment_proof || b.payment_proof.payment_method === 'cash')
-      .reduce((sum, b) => sum + (b.total_at_booking || 0), 0);
+      .reduce((sum, b) => sum + getBookingFinancials(b).collected, 0);
   }, [confirmedBookings]);
 
   return (
@@ -153,74 +182,74 @@ export const BookingRevenuesManager: React.FC = () => {
 
       {/* 1. Summary KPI Financial Cards */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
-        {/* Total Confirmed - Solid High-Contrast Forest Green Card */}
+        {/* Actual Collected in Cash Drawer */}
         <div className="p-4 rounded-2xl bg-[#1e3a2e] text-white shadow-clinic-2 flex flex-col justify-between space-y-2 border border-[#142920]">
           <div className="flex items-center justify-between">
-            <span className="text-xs font-bold text-white/90">إجمالي الإيرادات المؤكدة</span>
+            <span className="text-xs font-bold text-white/90">المقبوضات المحصلة بالخزينة</span>
             <div className="w-8 h-8 rounded-xl bg-white/20 flex items-center justify-center shadow-xs">
               <TrendingUp className="w-4.5 h-4.5 text-white" />
             </div>
           </div>
           <div>
             <p className="text-2xl sm:text-3xl font-serif font-black text-white font-mono tracking-tight drop-shadow-xs">
-              {formatCurrency(totalRevenues)}
+              {formatCurrency(totalCollectedRevenues)}
             </p>
             <span className="text-[10.5px] text-white/90 bg-white/15 px-2 py-0.5 rounded-full inline-block mt-1 font-bold">
-              ✓ {confirmedBookings.length} حجز مؤكد ومقبوض
+              ✓ عربونات مؤكدة ومبالغ مستلمة
             </span>
           </div>
         </div>
 
-        {/* InstaPay */}
-        <div className="clinic-card p-3.5 sm:p-4 rounded-2xl bg-paper-warm/80 border border-border flex flex-col justify-between space-y-2">
+        {/* Pending to collect in salon */}
+        <div className="p-4 rounded-2xl bg-white border border-amber-200 text-ink shadow-xs flex flex-col justify-between space-y-2">
           <div className="flex items-center justify-between">
-            <span className="text-[11px] font-bold text-ink-soft">تحويلات إنستاباي</span>
-            <div className="w-7 h-7 rounded-lg bg-purple-100 text-purple-700 flex items-center justify-center">
+            <span className="text-xs font-bold text-amber-800">متبقي للتحصيل بالصالون</span>
+            <div className="w-8 h-8 rounded-xl bg-amber-50 text-amber-700 flex items-center justify-center border border-amber-200">
+              <Clock className="w-4 h-4" />
+            </div>
+          </div>
+          <div>
+            <p className="text-2xl sm:text-3xl font-serif font-bold text-amber-900 font-mono tracking-tight">
+              {formatCurrency(totalPendingInSalon)}
+            </p>
+            <span className="text-[10.5px] text-amber-700 font-bold block mt-1">
+              يُدفع نقداً/إلكترونياً عند انتهاء الخدمة
+            </span>
+          </div>
+        </div>
+
+        {/* Total Contract / Bill Values */}
+        <div className="p-4 rounded-2xl bg-white border border-border text-ink shadow-xs flex flex-col justify-between space-y-2">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-bold text-ink-mute">إجمالي قيمة الفواتير</span>
+            <div className="w-8 h-8 rounded-xl bg-paper-warm text-ink-soft flex items-center justify-center border border-border">
+              <Receipt className="w-4 h-4" />
+            </div>
+          </div>
+          <div>
+            <p className="text-2xl sm:text-3xl font-serif font-bold text-ink font-mono tracking-tight">
+              {formatCurrency(totalContractValues)}
+            </p>
+            <span className="text-[10.5px] text-ink-mute font-bold block mt-1">
+              قيمة الخدمات المحجوزة
+            </span>
+          </div>
+        </div>
+
+        {/* Online Channels (Instapay / Vodafone) */}
+        <div className="p-4 rounded-2xl bg-white border border-purple-200 text-ink shadow-xs flex flex-col justify-between space-y-2">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-bold text-purple-900">إنستاباي وفودافون كاش</span>
+            <div className="w-8 h-8 rounded-xl bg-purple-50 text-purple-700 flex items-center justify-center border border-purple-200">
               <Smartphone className="w-4 h-4" />
             </div>
           </div>
           <div>
-            <p className="text-lg sm:text-xl font-serif font-bold text-purple-900 font-mono">
-              {formatCurrency(instapayRevenues)}
+            <p className="text-2xl sm:text-3xl font-serif font-bold text-purple-900 font-mono tracking-tight">
+              {formatCurrency(instapayRevenues + vodafoneRevenues)}
             </p>
-            <span className="text-[10px] bg-purple-50 text-purple-700 px-1.5 py-0.2 rounded border border-purple-200 inline-block mt-0.5 font-bold">
-              InstaPay
-            </span>
-          </div>
-        </div>
-
-        {/* Vodafone Cash */}
-        <div className="clinic-card p-3.5 sm:p-4 rounded-2xl bg-paper-warm/80 border border-border flex flex-col justify-between space-y-2">
-          <div className="flex items-center justify-between">
-            <span className="text-[11px] font-bold text-ink-soft">فودافون كاش</span>
-            <div className="w-7 h-7 rounded-lg bg-red-100 text-red-700 flex items-center justify-center">
-              <Wallet className="w-4 h-4" />
-            </div>
-          </div>
-          <div>
-            <p className="text-lg sm:text-xl font-serif font-bold text-red-900 font-mono">
-              {formatCurrency(vodafoneRevenues)}
-            </p>
-            <span className="text-[10px] bg-red-50 text-red-700 px-1.5 py-0.2 rounded border border-red-200 inline-block mt-0.5 font-bold">
-              VF-Cash
-            </span>
-          </div>
-        </div>
-
-        {/* Cash / In-Salon */}
-        <div className="clinic-card p-3.5 sm:p-4 rounded-2xl bg-paper-warm/80 border border-border flex flex-col justify-between space-y-2">
-          <div className="flex items-center justify-between">
-            <span className="text-[11px] font-bold text-ink-soft">كاش بالصالون</span>
-            <div className="w-7 h-7 rounded-lg bg-emerald-100 text-emerald-800 flex items-center justify-center">
-              <Coins className="w-4 h-4" />
-            </div>
-          </div>
-          <div>
-            <p className="text-lg sm:text-xl font-serif font-bold text-emerald-900 font-mono">
-              {formatCurrency(cashRevenues)}
-            </p>
-            <span className="text-[10px] bg-emerald-50 text-emerald-800 px-1.5 py-0.2 rounded border border-emerald-200 inline-block mt-0.5 font-bold">
-              نقداً بالفرع
+            <span className="text-[10.5px] text-purple-700 font-bold block mt-1">
+              عربونات محولة إلكترونياً
             </span>
           </div>
         </div>
@@ -316,7 +345,7 @@ export const BookingRevenuesManager: React.FC = () => {
             const primarySrv = services.find((s) => s.id === b.service_id);
             const branch = branches.find((br) => br.id === b.branch_id);
             const method = b.payment_proof?.payment_method || 'cash';
-            const confirmedAmount = b.payment_proof?.transferred_amount || b.total_at_booking;
+            const fin = getBookingFinancials(b);
 
             return (
               <div
@@ -336,7 +365,10 @@ export const BookingRevenuesManager: React.FC = () => {
 
                   <div className="text-left font-mono">
                     <span className="font-serif font-bold text-forest text-sm block">
-                      +{formatCurrency(confirmedAmount)}
+                      +{formatCurrency(fin.collected)}
+                    </span>
+                    <span className="text-[9.5px] text-ink-mute">
+                      {fin.isCompleted ? 'مسدد بالكامل' : 'عربون مؤكد بالخزينة'}
                     </span>
                   </div>
                 </div>
@@ -355,8 +387,26 @@ export const BookingRevenuesManager: React.FC = () => {
                   </div>
                 </div>
 
+                {/* Financial breakdown pill */}
+                <div className="p-2.5 bg-paper-warm/80 rounded-xl border border-border flex items-center justify-between text-xs font-mono">
+                  <div>
+                    <span className="text-[10px] text-ink-mute block">إجمالي الفاتورة:</span>
+                    <strong className="text-ink text-xs">{formatCurrency(fin.total)}</strong>
+                  </div>
+                  <div className="text-center">
+                    <span className="text-[10px] text-emerald-800 block">المحصل:</span>
+                    <strong className="text-emerald-700 text-xs">{formatCurrency(fin.collected)}</strong>
+                  </div>
+                  <div className="text-left">
+                    <span className="text-[10px] text-amber-800 block">المتبقي:</span>
+                    <strong className={`text-xs ${fin.pending > 0 ? 'text-amber-800 font-bold' : 'text-forest'}`}>
+                      {fin.pending > 0 ? formatCurrency(fin.pending) : '0 (خالص)'}
+                    </strong>
+                  </div>
+                </div>
+
                 {/* Payment Channel Badge & Approver */}
-                <div className="p-2 bg-paper-warm/80 rounded-xl border border-border flex items-center justify-between text-xs">
+                <div className="p-2 bg-white rounded-xl border border-border flex items-center justify-between text-xs">
                   <div className="flex items-center gap-1.5">
                     {method === 'instapay' ? (
                       <span className="bg-purple-100 text-purple-800 font-bold px-2 py-0.5 rounded text-[10px] border border-purple-200">
@@ -371,17 +421,11 @@ export const BookingRevenuesManager: React.FC = () => {
                         كاش بالصالون
                       </span>
                     )}
-
-                    {b.payment_proof?.sender_phone && (
-                      <span className="font-mono text-[10px] text-ink-soft">
-                        من: {b.payment_proof.sender_phone}
-                      </span>
-                    )}
                   </div>
 
                   <span className="text-[10px] text-forest font-bold flex items-center gap-1">
                     <CheckCircle2 className="w-3 h-3 text-emerald-600" />
-                    <span>مقبوض ومؤكد</span>
+                    <span>{b.status === 'completed' ? 'خدمة مكتملة' : 'حجز ساري'}</span>
                   </span>
                 </div>
 
@@ -393,10 +437,10 @@ export const BookingRevenuesManager: React.FC = () => {
                       className="inline-flex items-center gap-1 text-[11px] text-terra-deep hover:underline font-bold"
                     >
                       <Eye className="w-3.5 h-3.5" />
-                      <span>معاينة الإيصال الأصلي</span>
+                      <span>معاينة الإيصال</span>
                     </button>
                   ) : (
-                    <span className="text-[10.5px] text-ink-mute">دفع نقدي مباشر</span>
+                    <span className="text-[10.5px] text-ink-mute">دفع مباشر</span>
                   )}
 
                   <button
@@ -428,9 +472,10 @@ export const BookingRevenuesManager: React.FC = () => {
                 <th className="py-3.5 px-4 font-bold">رقم الحجز والتاريخ</th>
                 <th className="py-3.5 px-4 font-bold">العميل ورقم الهاتف</th>
                 <th className="py-3.5 px-4 font-bold">الخدمة والفرع</th>
-                <th className="py-3.5 px-4 font-bold">كابتن الحلاقة</th>
                 <th className="py-3.5 px-4 font-bold">طريقة الدفع</th>
-                <th className="py-3.5 px-4 font-bold">المبلغ المقبوض والمؤكد</th>
+                <th className="py-3.5 px-4 font-bold">المحصل بالخزينة</th>
+                <th className="py-3.5 px-4 font-bold">المتبقي بالصالون</th>
+                <th className="py-3.5 px-4 font-bold">إجمالي الفاتورة</th>
                 <th className="py-3.5 px-4 font-bold text-center">الإجراءات</th>
               </tr>
             </thead>
@@ -441,7 +486,7 @@ export const BookingRevenuesManager: React.FC = () => {
                   const primarySrv = services.find((s) => s.id === b.service_id);
                   const branch = branches.find((br) => br.id === b.branch_id);
                   const method = b.payment_proof?.payment_method || 'cash';
-                  const confirmedAmount = b.payment_proof?.transferred_amount || b.total_at_booking;
+                  const fin = getBookingFinancials(b);
 
                   return (
                     <tr key={b.id} className="hover:bg-paper-warm/40 transition-colors">
@@ -465,11 +510,6 @@ export const BookingRevenuesManager: React.FC = () => {
                         <span className="text-[10.5px] text-ink-soft block">{branch?.name}</span>
                       </td>
 
-                      {/* Barber */}
-                      <td className="py-3.5 px-4 text-ink-soft font-medium">
-                        {barber?.full_name || 'فريق الصالون'}
-                      </td>
-
                       {/* Payment Method Badge */}
                       <td className="py-3.5 px-4">
                         {method === 'instapay' ? (
@@ -477,22 +517,12 @@ export const BookingRevenuesManager: React.FC = () => {
                             <span className="bg-purple-100 text-purple-800 font-bold px-2 py-0.5 rounded text-[10.5px] border border-purple-200 inline-block">
                               إنستاباي (InstaPay)
                             </span>
-                            {b.payment_proof?.sender_phone && (
-                              <p className="font-mono text-[10px] text-ink-mute">
-                                {b.payment_proof.sender_phone}
-                              </p>
-                            )}
                           </div>
                         ) : method === 'vodafone_cash' ? (
                           <div className="space-y-0.5">
                             <span className="bg-red-100 text-red-800 font-bold px-2 py-0.5 rounded text-[10.5px] border border-red-200 inline-block">
                               فودافون كاش
                             </span>
-                            {b.payment_proof?.sender_phone && (
-                              <p className="font-mono text-[10px] text-ink-mute">
-                                {b.payment_proof.sender_phone}
-                              </p>
-                            )}
                           </div>
                         ) : (
                           <span className="bg-emerald-100 text-emerald-800 font-bold px-2 py-0.5 rounded text-[10.5px] border border-emerald-200 inline-block">
@@ -501,15 +531,33 @@ export const BookingRevenuesManager: React.FC = () => {
                         )}
                       </td>
 
-                      {/* Confirmed Amount */}
+                      {/* Confirmed / Collected Amount */}
                       <td className="py-3.5 px-4">
                         <span className="font-serif font-bold text-forest text-sm block font-mono">
-                          +{formatCurrency(confirmedAmount)}
+                          +{formatCurrency(fin.collected)}
                         </span>
                         <span className="text-[9.5px] text-emerald-700 font-bold flex items-center gap-0.5">
                           <CheckCircle2 className="w-2.5 h-2.5" />
-                          <span>تم التأكيد والإيداع</span>
+                          <span>{fin.isCompleted ? 'مسدد بالكامل' : 'عربون بالخزينة'}</span>
                         </span>
+                      </td>
+
+                      {/* Pending In-Salon Amount */}
+                      <td className="py-3.5 px-4 font-mono">
+                        {fin.pending > 0 ? (
+                          <span className="font-bold text-amber-800 bg-amber-50 px-2 py-0.5 rounded border border-amber-200 text-xs">
+                            {formatCurrency(fin.pending)}
+                          </span>
+                        ) : (
+                          <span className="text-forest font-bold text-xs bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
+                            0 (مسدد بالكامل ✓)
+                          </span>
+                        )}
+                      </td>
+
+                      {/* Total Service Price */}
+                      <td className="py-3.5 px-4 font-mono font-bold text-ink text-xs">
+                        {formatCurrency(fin.total)}
                       </td>
 
                       {/* Actions */}
@@ -518,18 +566,20 @@ export const BookingRevenuesManager: React.FC = () => {
                           {b.payment_proof && (
                             <button
                               onClick={() => setSelectedProofBooking(b)}
-                              className="p-1.5 rounded-lg bg-paper-warm hover:bg-white text-terra-deep border border-border"
-                              title="معاينة إيصال التحويل"
+                              className="p-1.5 rounded-lg bg-paper-warm hover:bg-paper-deep text-terra-deep transition-colors"
+                              title="معاينة إثبات التحويل"
                             >
-                              <Eye className="w-3.5 h-3.5" />
+                              <Eye className="w-4 h-4" />
                             </button>
                           )}
+
                           <button
                             onClick={() => setSelectedInvoiceBooking(b)}
-                            className="p-1.5 rounded-lg bg-paper-warm hover:bg-white text-forest border border-border"
-                            title="طباعة الفاتورة"
+                            className="p-1.5 px-2.5 rounded-lg bg-forest hover:bg-forest/90 text-paper transition-all flex items-center gap-1 text-[11px] font-bold shadow-xs"
+                            title="طباعة الفاتورة الحرارية الشاملة"
                           >
                             <Printer className="w-3.5 h-3.5" />
+                            <span>فاتورة POS</span>
                           </button>
                         </div>
                       </td>
