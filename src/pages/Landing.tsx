@@ -22,7 +22,7 @@ import {
 import { formatCurrency, format12Hour } from '../lib/utils';
 
 export default function Landing() {
-  const { branches, services, barbers, bookings, setAiDrawerOpen, setSelectedBranchId } = useSalonStore();
+  const { branches, services, barbers, bookings, products, setAiDrawerOpen, setSelectedBranchId } = useSalonStore();
   const navigate = useNavigate();
 
   const [selectedHeroBranchId, setSelectedHeroBranchId] = useState<string>(branches[0]?.id || '');
@@ -40,6 +40,7 @@ export default function Landing() {
       : allActiveBarbers.filter((b) => b.branch_id === selectedBarberBranchFilter || !b.branch_id);
 
   const completedCount = bookings.filter((b) => b.status === 'completed').length;
+  const activeProducts = products.filter((p) => p.is_active);
 
   return (
     <div className="space-y-24 pb-24 font-sans text-ink">
@@ -350,7 +351,76 @@ export default function Landing() {
         </div>
       </section>
 
-      {/* 4. LUXURY VIP LOUNGE EXPERIENCE (Clean Hospitality Banner) */}
+      {/* 4. SALON CAFE & REFRESHMENTS (Conditional: Only appears when products/drinks exist in store) */}
+      {activeProducts.length > 0 && (
+        <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 space-y-8">
+          <div className="text-center space-y-3 max-w-2xl mx-auto">
+            <span className="text-xs font-mono font-bold text-terra uppercase tracking-wider flex items-center justify-center gap-1.5">
+              <Coffee className="w-4 h-4" />
+              <span>SALON CAFE & REFRESHMENTS</span>
+            </span>
+            <h2 className="font-serif text-3xl sm:text-4xl text-ink">ركن الكافيه والضيافة الفاخرة</h2>
+            <p className="text-ink-soft text-sm">
+              استمتع بتشكيلة مختارة من المشروبات الساخنة والعصائر الطبيعية المنعشة ومنتجات العناية أثناء زيارتك وجلستك.
+            </p>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+            {activeProducts.map((product) => (
+              <div
+                key={product.id}
+                className="clinic-card p-6 flex flex-col justify-between space-y-4 hover:-translate-y-1 transition-transform bg-white/95 border border-border"
+              >
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <div className="w-12 h-12 rounded-2xl bg-paper-warm flex items-center justify-center text-forest border border-border shadow-xs">
+                      {product.category === 'hot_drink' ? (
+                        <Coffee className="w-6 h-6" />
+                      ) : product.category === 'cold_drink' ? (
+                        <Sparkles className="w-6 h-6 text-terra" />
+                      ) : (
+                        <Crown className="w-6 h-6 text-[#b45309]" />
+                      )}
+                    </div>
+                    <span className="text-[10px] font-bold px-2.5 py-1 rounded-full bg-paper-warm border border-border text-ink-soft">
+                      {product.category === 'hot_drink'
+                        ? 'مشروبات ساخنة ☕'
+                        : product.category === 'cold_drink'
+                        ? 'عصائر ومشروبات 🥤'
+                        : product.category === 'care_product'
+                        ? 'عناية وزيوت 💈'
+                        : 'ضيافة خاصة ✨'}
+                    </span>
+                  </div>
+
+                  <div>
+                    <h3 className="font-serif font-bold text-lg text-ink">{product.name}</h3>
+                    {product.description && (
+                      <p className="text-xs text-ink-mute leading-relaxed line-clamp-2 mt-1">
+                        {product.description}
+                      </p>
+                    )}
+                  </div>
+                </div>
+
+                <div className="pt-4 border-t border-border-soft flex items-center justify-between">
+                  <span className="font-serif font-bold text-lg text-forest">
+                    {formatCurrency(product.price)}
+                  </span>
+                  <Link
+                    to="/book"
+                    className="px-3.5 py-1.5 rounded-full bg-forest text-paper text-xs font-bold hover:bg-forest-soft transition-colors"
+                  >
+                    طلب مع الحجز
+                  </Link>
+                </div>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
+
+      {/* 5. LUXURY VIP LOUNGE EXPERIENCE (Clean Hospitality Banner) */}
       <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="bg-forest rounded-clinic-lg p-8 sm:p-12 text-paper relative overflow-hidden shadow-clinic-3">
           <div className="absolute top-0 right-0 w-96 h-96 bg-terra/20 rounded-full blur-3xl pointer-events-none" />
