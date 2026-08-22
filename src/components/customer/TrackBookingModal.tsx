@@ -447,16 +447,22 @@ export const TrackBookingSection: React.FC = () => {
               <div className="w-10 h-10 rounded-xl bg-rose-100 text-rose-700 flex items-center justify-center shrink-0 border border-rose-200">
                 <XCircle className="w-5 h-5" />
               </div>
-              <div className="space-y-1 text-xs">
+              <div className="space-y-1.5 text-xs">
                 <h4 className="font-serif font-bold text-rose-900 text-sm">تم إلغاء هذا الحجز</h4>
                 <p className="text-rose-700 leading-relaxed">
                   تم إلغاء هذا الحجز مسبقاً وتحديث منظومة الطابور فورياً وترحيل الأدوار للعملاء التاليين.
                 </p>
                 {selectedBooking.cancellation_reason && (
-                  <p className="text-rose-800 font-bold mt-1">
+                  <p className="text-rose-800 font-bold">
                     السبب: {selectedBooking.cancellation_reason}
                   </p>
                 )}
+                <div className="mt-2 p-2.5 rounded-xl bg-rose-100/80 border border-rose-300 text-rose-900 font-semibold flex items-center gap-2">
+                  <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0" />
+                  <span>
+                    ⚠️ <strong>تنبيه مالي وسياسة الصالون:</strong> قيمة رسم الحجز والعربون المدفوع (50 ج.م) غير قابلة للاسترداد بعد تثبيت الموعد، نظراً لحجز وقت ومقعد مخصص لكم في الصالون.
+                  </span>
+                </div>
               </div>
             </div>
           )}
@@ -584,27 +590,32 @@ export const TrackBookingSection: React.FC = () => {
                 <Receipt className="w-4 h-4 text-forest" />
                 <span>تفاصيل الحساب والفاتورة:</span>
               </p>
-              <div className="space-y-1.5 text-ink-soft">
-                <div className="flex justify-between">
-                  <span>إجمالي الحساب:</span>
-                  <strong className="text-forest font-serif font-bold text-base">
-                    {formatCurrency(selectedBooking.total_at_booking)}
+              <div className="space-y-2 text-ink-soft">
+                <div className="flex justify-between items-center">
+                  <span>إجمالي قيمة الخدمة:</span>
+                  <strong className="text-ink font-mono text-sm">
+                    {formatCurrency(selectedBooking.total_at_booking || service?.price || 180)}
                   </strong>
                 </div>
-                <div className="flex justify-between">
-                  <span>حالة الدفع والعربون:</span>
-                  <span className="text-forest font-bold">مدفوع ومؤكد ✓</span>
+                <div className="flex justify-between items-center">
+                  <span>العربون المسدد (رسم الحجز):</span>
+                  <span className="text-emerald-700 font-bold bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-200">
+                    {formatCurrency(selectedBooking.booking_fee_at_booking || 50)} ✓
+                  </span>
                 </div>
-                <div className="flex justify-between">
-                  <span>خدمة عملاء الفرع:</span>
-                  <div className="flex items-center gap-2">
-                    <a
-                      href={`tel:${customerServicePhone}`}
-                      className="text-forest font-mono font-bold hover:underline"
-                    >
-                      {customerServicePhone}
-                    </a>
-                  </div>
+                <div className="flex justify-between items-center border-t border-border/80 pt-1.5">
+                  <span className="font-bold text-ink">المتبقي للدفع بالصالون:</span>
+                  <strong className="text-forest font-serif font-bold text-base">
+                    {formatCurrency(
+                      Math.max(0, (selectedBooking.total_at_booking || service?.price || 180) - (selectedBooking.booking_fee_at_booking || 50))
+                    )}
+                  </strong>
+                </div>
+                <div className="flex justify-between text-[11px] pt-1">
+                  <span>حالة الدفع:</span>
+                  <span className="text-forest font-bold">
+                    {selectedBooking.status === 'cancelled' ? 'ملغي (عربون غير مسترد)' : 'عربون مؤكد بالخزينة ✓'}
+                  </span>
                 </div>
               </div>
             </div>

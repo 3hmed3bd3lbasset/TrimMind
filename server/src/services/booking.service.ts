@@ -276,7 +276,7 @@ export async function cancelBooking(bookingId: string, reason?: string, actor?: 
   if (booking.customer_phone) {
     import('./whatsapp.service.js').then(({ sendWhatsAppText }) => {
       const clientName = booking.customer_name || 'عزيزنا العميل';
-      const msg = `تم إلغاء حجزك رقم #${booking.id} بنجاح يا ${clientName}. ❌\n\nنتشرف بزيارتك في أي وقت آخر، وتقدر تحجز موعد جديد في أي وقت! 💈✨`;
+      const msg = `تم إلغاء حجزك رقم #${booking.id} بنجاح يا ${clientName}. ❌\n\n⚠️ تنبيه هام: وفقاً لسياسة حجز المواعيد بالصالون، فإن قيمة رسم الحجز والعربون المدفوع (50 ج.م) غير قابلة للاسترداد نظراً لحجز وقت ومقعد مخصص لكم.\n\nنتشرف بزيارتك في أي وقت آخر، وتقدر تحجز موعد جديد في أي وقت! 💈✨`;
       sendWhatsAppText(booking.customer_phone, msg).catch(() => {});
     }).catch(() => {});
   }
