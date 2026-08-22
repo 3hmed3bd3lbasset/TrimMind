@@ -81,9 +81,9 @@ export const TrackBookingSection: React.FC = () => {
   const mapRemoteBooking = (b: any): Booking => {
     const localMatch = bookings.find((local) => local.id === (b.id || b.bookingId));
     const proofObj = typeof b.payment_proof === 'string' ? JSON.parse(b.payment_proof) : b.payment_proof;
-    const depositAmount = localMatch?.booking_fee_at_booking || proofObj?.transferred_amount || proofObj?.amount || b.booking_fee_at_booking || b.depositRequired || 50;
-    const totalAmount = localMatch?.total_at_booking || b.total_at_booking || b.totalAmount || b.service_price_at_booking || 180;
-    const srvPrice = localMatch?.service_price_at_booking || b.service_price_at_booking || totalAmount;
+    const depositAmount = proofObj?.transferred_amount || proofObj?.amount || b.booking_fee_at_booking || localMatch?.booking_fee_at_booking || (b.booking_type === 'vip' ? 100 : 50);
+    const totalAmount = b.total_at_booking || b.totalAmount || localMatch?.total_at_booking || b.service_price_at_booking || 180;
+    const srvPrice = b.service_price_at_booking || localMatch?.service_price_at_booking || totalAmount;
 
     return {
       id: b.id || b.bookingId,
@@ -595,14 +595,28 @@ export const TrackBookingSection: React.FC = () => {
                 <div className="flex justify-between items-center">
                   <span>العربون المسدد (رسم الحجز):</span>
                   <span className="text-emerald-700 font-bold bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-200">
-                    {formatCurrency(selectedBooking.booking_fee_at_booking || 50)} ✓
+                    {formatCurrency(
+                      selectedBooking.payment_proof?.transferred_amount ||
+                      (selectedBooking.payment_proof as any)?.amount ||
+                      selectedBooking.booking_fee_at_booking ||
+                      (selectedBooking.booking_type === 'vip' ? 100 : 50)
+                    )} ✓
                   </span>
                 </div>
                 <div className="flex justify-between items-center border-t border-border/80 pt-1.5">
                   <span className="font-bold text-ink">المتبقي للدفع بالصالون:</span>
                   <strong className="text-forest font-serif font-bold text-base">
                     {formatCurrency(
-                      Math.max(0, (selectedBooking.total_at_booking || service?.price || 180) - (selectedBooking.booking_fee_at_booking || 50))
+                      Math.max(
+                        0,
+                        (selectedBooking.total_at_booking || service?.price || 180) -
+                        Number(
+                          selectedBooking.payment_proof?.transferred_amount ||
+                          (selectedBooking.payment_proof as any)?.amount ||
+                          selectedBooking.booking_fee_at_booking ||
+                          (selectedBooking.booking_type === 'vip' ? 100 : 50)
+                        )
+                      )
                     )}
                   </strong>
                 </div>

@@ -82,13 +82,18 @@ export async function createBooking(payload: any, actor?: any, ipAddress?: strin
     }
   }
 
-  // 4. Fetch booking fee from settings
-  let bookingFee = payload.bookingType === 'vip' ? 150 : 50;
+  // 4. Fetch booking fee from payload paymentProof or settings
+  let bookingFee = payload.paymentProof?.amount
+    ? Number(payload.paymentProof.amount)
+    : (payload.bookingType === 'vip' ? 100 : 50);
+
   try {
     const settingsRows = await query<any[]>('SELECT setting_value FROM settings WHERE setting_key = "general" LIMIT 1');
     if (settingsRows && settingsRows.length > 0) {
       const val = typeof settingsRows[0].setting_value === 'string' ? JSON.parse(settingsRows[0].setting_value) : settingsRows[0].setting_value;
-      bookingFee = payload.bookingType === 'vip' ? Number(val.booking_fee_vip || 150) : Number(val.booking_fee_normal || 50);
+      if (!payload.paymentProof?.amount) {
+        bookingFee = payload.bookingType === 'vip' ? Number(val.booking_fee_vip || 100) : Number(val.booking_fee_normal || 50);
+      }
     }
   } catch {}
 
@@ -287,8 +292,15 @@ export async function getBookingById(bookingId: string) {
   const proofs = await query<any[]>('SELECT * FROM payment_proofs WHERE booking_id = ? LIMIT 1', [bookingId]);
   const ratings = await query<any[]>('SELECT * FROM ratings WHERE booking_id = ? LIMIT 1', [bookingId]);
 
+  const actualDeposit = proofs[0]?.transferred_amount
+    ? Number(proofs[0].transferred_amount)
+    : (b.booking_fee_at_booking ? Number(b.booking_fee_at_booking) : (b.booking_type === 'vip' ? 100 : 50));
+
   return {
     ...b,
+    booking_fee_at_booking: actualDeposit,
+    service_price_at_booking: Number(b.service_price_at_booking || b.total_at_booking || 180),
+    total_at_booking: Number(b.total_at_booking || b.service_price_at_booking || 180),
     additional_service_ids: typeof b.additional_service_ids === 'string' ? JSON.parse(b.additional_service_ids || '[]') : b.additional_service_ids,
     last_modified_by: typeof b.last_modified_by === 'string' ? JSON.parse(b.last_modified_by || 'null') : b.last_modified_by,
     items,
