@@ -13,6 +13,8 @@ import { bookingLimiter } from '../middleware/rateLimiter.js';
 import { requireAuth, AuthenticatedRequest } from '../middleware/auth.js';
 import { broadcastToBranch, broadcastGlobal } from '../socket/realtime.js';
 
+import { liveSyncedBookings } from './agentTools.routes.js';
+
 const router = Router();
 
 // GET /api/bookings/track?q=... (Public Search & Track Booking)
@@ -24,20 +26,36 @@ router.get('/track', async (req, res: Response) => {
     }
 
     const cleanPhone = q.replace(/\s+/g, '');
+    const cleanQuery = q.toLowerCase();
 
-    // Search by ID, Phone, or Secure Token
-    const rows = await query<any[]>(
-      `SELECT * FROM bookings 
-       WHERE id = ? OR customer_phone = ? OR secure_token = ?
-       ORDER BY created_at DESC LIMIT 5`,
-      [q, cleanPhone, q]
+    // 1. Search in MySQL
+    let detailedBookings: any[] = [];
+    try {
+      const rows = await query<any[]>(
+        `SELECT * FROM bookings 
+         WHERE id = ? OR customer_phone = ? OR secure_token = ?
+         ORDER BY created_at DESC LIMIT 5`,
+        [q, cleanPhone, q]
+      );
+      if (rows && rows.length > 0) {
+        detailedBookings = await Promise.all(rows.map((b) => getBookingById(b.id)));
+      }
+    } catch {}
+
+    // 2. Search in liveSyncedBookings (in-memory created via WhatsApp)
+    const memMatches = liveSyncedBookings.filter(
+      (b) =>
+        b.id?.toLowerCase() === cleanQuery ||
+        b.bookingId?.toLowerCase() === cleanQuery ||
+        (b.customer_phone && b.customer_phone.includes(cleanPhone)) ||
+        (b.secure_token && b.secure_token.toLowerCase() === cleanQuery)
     );
 
-    const detailedBookings = await Promise.all(rows.map((b) => getBookingById(b.id)));
+    const merged = [...detailedBookings, ...memMatches.filter(m => !detailedBookings.some(d => d && d.id === m.id))];
 
     return res.json({
       success: true,
-      data: detailedBookings,
+      data: merged,
     });
   } catch (error: any) {
     return res.status(500).json({ success: false, error: error.message });

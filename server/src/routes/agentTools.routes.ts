@@ -95,7 +95,9 @@ router.post('/customer/lookup', async (req: Request, res: Response) => {
   }
 });
 
-let liveSyncedState: {
+export const liveSyncedBookings: any[] = [];
+
+export let liveSyncedState: {
   branches: any[];
   services: any[];
   barbers: any[];
@@ -404,45 +406,81 @@ router.post('/bookings/create-pending', async (req: Request, res: Response) => {
       };
 
       const newBooking = await createBooking(payload, { role: 'whatsapp_agent' }, req.ip);
+      const bookingData = {
+        id: newBooking.id,
+        bookingId: newBooking.id,
+        customer_name: newBooking.customer_name,
+        customerName: newBooking.customer_name,
+        customer_phone: cleanPhone,
+        customerPhone: cleanPhone,
+        service_id: payload.serviceId,
+        service_name: newBooking.service_name || 'خدمة الصالون',
+        serviceName: newBooking.service_name || 'خدمة الصالون',
+        branch_id: finalBranchId,
+        branch_name: 'الحداد - ELHDAD',
+        status: newBooking.status,
+        queue_number: newBooking.queue_number,
+        queueNumber: newBooking.queue_number,
+        starts_at: newBooking.starts_at,
+        startsAt: newBooking.starts_at,
+        booking_fee_at_booking: newBooking.booking_fee_at_booking || 50,
+        depositRequired: newBooking.booking_fee_at_booking || 50,
+        total_at_booking: newBooking.total_at_booking || 80,
+        totalAmount: newBooking.total_at_booking || 80,
+        secure_token: newBooking.secure_token || `TK-${newBooking.id}`,
+        created_at: new Date().toISOString(),
+        trackingUrl: `https://trimmind.up.railway.app/track?q=${newBooking.id}`,
+        paymentInstructions: {
+          instapay: '01005437633',
+          vodafoneCash: '01005437633',
+        },
+      };
+
+      liveSyncedBookings.unshift(bookingData);
+
       return res.status(201).json({
         success: true,
         message: 'تم إنشاء الحجز المبدئي بنجاح.',
-        data: {
-          bookingId: newBooking.id,
-          customerName: newBooking.customer_name,
-          serviceName: newBooking.service_name || 'خدمة الصالون',
-          status: newBooking.status,
-          queueNumber: newBooking.queue_number,
-          startsAt: newBooking.starts_at,
-          depositRequired: newBooking.booking_fee_at_booking || 50,
-          totalAmount: newBooking.total_at_booking || 80,
-          trackingUrl: `https://trimmind.up.railway.app/queue`,
-          paymentInstructions: {
-            instapay: '01005437633',
-            vodafoneCash: '01005437633',
-          },
-        },
+        data: bookingData,
       });
     } catch (dbErr) {
       // Graceful fallback response if MySQL row insertion has constraint or table state
+      const fallbackBooking = {
+        id: bookingId,
+        bookingId: bookingId,
+        customer_name: finalCustomerName,
+        customerName: finalCustomerName,
+        customer_phone: cleanPhone,
+        customerPhone: cleanPhone,
+        service_id: serviceId || 'srv-haircut',
+        service_name: serviceId === 'srv-beard' ? 'تحديد وتشذيب اللحية الملكي' : 'قص وتصفيف الشعر',
+        serviceName: serviceId === 'srv-beard' ? 'تحديد وتشذيب اللحية الملكي' : 'قص وتصفيف الشعر',
+        branch_id: finalBranchId,
+        branch_name: 'الحداد - ELHDAD',
+        status: 'awaiting_payment',
+        queue_number: Math.floor(1 + Math.random() * 5),
+        queueNumber: Math.floor(1 + Math.random() * 5),
+        starts_at: startsAt || new Date().toISOString(),
+        startsAt: startsAt || new Date().toISOString(),
+        depositRequired: 50,
+        booking_fee_at_booking: 50,
+        totalAmount: serviceId === 'srv-beard' ? 50 : 80,
+        total_at_booking: serviceId === 'srv-beard' ? 50 : 80,
+        secure_token: `TK-${bookingId}`,
+        created_at: new Date().toISOString(),
+        trackingUrl: `https://trimmind.up.railway.app/track?q=${bookingId}`,
+        paymentInstructions: {
+          instapay: '01005437633',
+          vodafoneCash: '01005437633',
+        },
+      };
+
+      liveSyncedBookings.unshift(fallbackBooking);
+
       return res.status(201).json({
         success: true,
         message: 'تم إنشاء الحجز المبدئي بنجاح.',
-        data: {
-          bookingId: bookingId,
-          customerName: customerName.trim(),
-          serviceName: 'قص وتصفيف الشعر',
-          status: 'awaiting_payment',
-          queueNumber: Math.floor(1 + Math.random() * 5),
-          startsAt: startsAt || new Date().toISOString(),
-          depositRequired: 50,
-          totalAmount: 80,
-          trackingUrl: `https://trimmind.up.railway.app/queue`,
-          paymentInstructions: {
-            instapay: '01005437633',
-            vodafoneCash: '01005437633',
-          },
-        },
+        data: fallbackBooking,
       });
     }
   } catch (err: any) {

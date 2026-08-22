@@ -91,34 +91,67 @@ export const TrackBookingSection: React.FC = () => {
           b.secure_token.toLowerCase() === query
       );
 
-      if (rawResults.length === 0) {
-        setMatchedBookings([]);
-        setSelectedBookingId('');
-        setSearchStatus('not_found');
-        return;
+      if (rawResults.length > 0) {
+        const activeResults = rawResults.filter((b) => !isBookingTrackingExpired(b));
+        if (activeResults.length > 0) {
+          setMatchedBookings(activeResults);
+          setSelectedBookingId(activeResults[0].id);
+          setSearchStatus('found');
+          return;
+        }
       }
 
-      const activeResults = rawResults.filter((b) => !isBookingTrackingExpired(b));
-      if (activeResults.length > 0) {
-        setMatchedBookings(activeResults);
-        setSelectedBookingId(activeResults[0].id);
-        setSearchStatus('found');
-      } else {
-        setMatchedBookings([]);
-        setSelectedBookingId('');
-        setSearchStatus('expired');
-      }
+      // Fetch from backend server API
+      fetch(`/api/bookings/track?q=${encodeURIComponent(query)}`)
+        .then((res) => res.json())
+        .then((json) => {
+          if (json.success && Array.isArray(json.data) && json.data.length > 0) {
+            const remoteBookings: Booking[] = json.data.map((b: any) => ({
+              id: b.id || b.bookingId,
+              customer_id: b.customer_id || 'usr-remote',
+              customer_name: b.customer_name || b.customerName || 'عميل الصالون',
+              customer_phone: b.customer_phone || b.customerPhone || '',
+              branch_id: b.branch_id || 'branch-elhdad',
+              barber_id: b.barber_id || null,
+              service_id: b.service_id || 'srv-haircut',
+              booking_type: b.booking_type || 'normal',
+              status: b.status || 'awaiting_payment',
+              starts_at: b.starts_at || b.startsAt || new Date().toISOString(),
+              service_price_at_booking: b.total_at_booking || b.totalAmount || 80,
+              booking_fee_at_booking: b.booking_fee_at_booking || b.depositRequired || 50,
+              discount_at_booking: 0,
+              items_total_at_booking: 0,
+              total_at_booking: b.total_at_booking || b.totalAmount || 80,
+              secure_token: b.secure_token || `TK-${b.id}`,
+              queue_number: b.queue_number || b.queueNumber || 1,
+              created_at: b.created_at || new Date().toISOString(),
+              updated_at: b.updated_at || new Date().toISOString(),
+            }));
+            setMatchedBookings(remoteBookings);
+            setSelectedBookingId(remoteBookings[0].id);
+            setSearchStatus('found');
+          } else {
+            setMatchedBookings([]);
+            setSelectedBookingId('');
+            setSearchStatus('not_found');
+          }
+        })
+        .catch(() => {
+          setMatchedBookings([]);
+          setSelectedBookingId('');
+          setSearchStatus('not_found');
+        });
     } else {
       setSearchStatus('idle');
     }
   }, [bookings]);
 
-  const handleSearch = (e: React.FormEvent) => {
+  const handleSearch = async (e: React.FormEvent) => {
     e.preventDefault();
     const query = searchQuery.trim().toLowerCase();
     if (!query) return;
 
-    // Search by Booking ID, Secret Token, or Phone Number
+    // Search by Booking ID, Secret Token, or Phone Number in local state
     const rawResults = bookings.filter(
       (b) =>
         b.id.toLowerCase() === query ||
@@ -126,25 +159,54 @@ export const TrackBookingSection: React.FC = () => {
         b.secure_token.toLowerCase() === query
     );
 
-    if (rawResults.length === 0) {
+    if (rawResults.length > 0) {
+      const activeResults = rawResults.filter((b) => !isBookingTrackingExpired(b));
+      if (activeResults.length > 0) {
+        setMatchedBookings(activeResults);
+        setSelectedBookingId(activeResults[0].id);
+        setSearchStatus('found');
+        return;
+      }
+    }
+
+    // Query backend API for WhatsApp and online bookings
+    try {
+      const res = await fetch(`/api/bookings/track?q=${encodeURIComponent(query)}`);
+      const json = await res.json();
+      if (json.success && Array.isArray(json.data) && json.data.length > 0) {
+        const remoteBookings: Booking[] = json.data.map((b: any) => ({
+          id: b.id || b.bookingId,
+          customer_id: b.customer_id || 'usr-remote',
+          customer_name: b.customer_name || b.customerName || 'عميل الصالون',
+          customer_phone: b.customer_phone || b.customerPhone || '',
+          branch_id: b.branch_id || 'branch-elhdad',
+          barber_id: b.barber_id || null,
+          service_id: b.service_id || 'srv-haircut',
+          booking_type: b.booking_type || 'normal',
+          status: b.status || 'awaiting_payment',
+          starts_at: b.starts_at || b.startsAt || new Date().toISOString(),
+          service_price_at_booking: b.total_at_booking || b.totalAmount || 80,
+          booking_fee_at_booking: b.booking_fee_at_booking || b.depositRequired || 50,
+          discount_at_booking: 0,
+          items_total_at_booking: 0,
+          total_at_booking: b.total_at_booking || b.totalAmount || 80,
+          secure_token: b.secure_token || `TK-${b.id}`,
+          queue_number: b.queue_number || b.queueNumber || 1,
+          created_at: b.created_at || new Date().toISOString(),
+          updated_at: b.updated_at || new Date().toISOString(),
+        }));
+        setMatchedBookings(remoteBookings);
+        setSelectedBookingId(remoteBookings[0].id);
+        setSearchStatus('found');
+      } else {
+        setMatchedBookings([]);
+        setSelectedBookingId('');
+        setSearchStatus('not_found');
+      }
+    } catch {
       setMatchedBookings([]);
       setSelectedBookingId('');
       setSearchStatus('not_found');
-      return;
-    }
-
-    // Filter out expired bookings
-    const activeResults = rawResults.filter((b) => !isBookingTrackingExpired(b));
-
-    if (activeResults.length > 0) {
-      setMatchedBookings(activeResults);
-      setSelectedBookingId(activeResults[0].id);
-      setSearchStatus('found');
-    } else {
-      // All matched bookings are expired
-      setMatchedBookings([]);
-      setSelectedBookingId('');
-      setSearchStatus('expired');
     }
   };
 
