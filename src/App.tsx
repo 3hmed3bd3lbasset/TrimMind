@@ -7,6 +7,7 @@ import { AIChatDrawer } from './components/common/AIChatDrawer';
 import { GlobalModalDialog } from './components/common/GlobalModalDialog';
 import { useSalonStore } from './lib/store';
 import { initRealtimeSync } from './lib/sync';
+import { api } from './lib/api';
 import { UserRole } from './types';
 import Landing from './pages/Landing';
 import BookingPage from './pages/BookingPage';
@@ -62,12 +63,59 @@ function AppLayout() {
   const isDisplayScreen =
     location.pathname === '/display' || location.pathname === '/queue-display';
 
-  // Cross-tab real-time live synchronization + Auto-sync store to backend for WhatsApp bot
+  // Cross-tab real-time live synchronization + Auto-sync store to backend for WhatsApp bot + Live DB Hydration
   useEffect(() => {
+    // 1. Hydrate state from server DB on startup
+    const hydrateFromBackend = async () => {
+      try {
+        const [branchesRes, barbersRes, chairsRes, servicesRes, productsRes, settingsRes, bookingsRes] = await Promise.allSettled([
+          api.getBranches(),
+          api.getBarbers(),
+          api.getChairs(),
+          api.getServices(),
+          api.getProducts(),
+          api.getSettings(),
+          api.getBookings(),
+        ]);
+
+        const stateUpdates: any = {};
+
+        if (branchesRes.status === 'fulfilled' && (branchesRes.value as any)?.success && Array.isArray((branchesRes.value as any)?.data) && (branchesRes.value as any).data.length > 0) {
+          stateUpdates.branches = (branchesRes.value as any).data;
+        }
+        if (barbersRes.status === 'fulfilled' && (barbersRes.value as any)?.success && Array.isArray((barbersRes.value as any)?.data) && (barbersRes.value as any).data.length > 0) {
+          stateUpdates.barbers = (barbersRes.value as any).data;
+        }
+        if (chairsRes.status === 'fulfilled' && (chairsRes.value as any)?.success && Array.isArray((chairsRes.value as any)?.data) && (chairsRes.value as any).data.length > 0) {
+          stateUpdates.chairs = (chairsRes.value as any).data;
+        }
+        if (servicesRes.status === 'fulfilled' && (servicesRes.value as any)?.success && Array.isArray((servicesRes.value as any)?.data) && (servicesRes.value as any).data.length > 0) {
+          stateUpdates.services = (servicesRes.value as any).data;
+        }
+        if (productsRes.status === 'fulfilled' && (productsRes.value as any)?.success && Array.isArray((productsRes.value as any)?.data) && (productsRes.value as any).data.length > 0) {
+          stateUpdates.products = (productsRes.value as any).data;
+        }
+        if (settingsRes.status === 'fulfilled' && (settingsRes.value as any)?.success && (settingsRes.value as any)?.data) {
+          stateUpdates.settings = { ...useSalonStore.getState().settings, ...(settingsRes.value as any).data };
+        }
+        if (bookingsRes.status === 'fulfilled' && (bookingsRes.value as any)?.success && Array.isArray((bookingsRes.value as any)?.data)) {
+          stateUpdates.bookings = (bookingsRes.value as any).data;
+        }
+
+        if (Object.keys(stateUpdates).length > 0) {
+          useSalonStore.setState(stateUpdates);
+        }
+      } catch (err) {
+        console.warn('Backend hydration notice:', err);
+      }
+    };
+
+    hydrateFromBackend();
+
     const syncToBackend = () => {
       try {
         const { branches, services, barbers, settings } = useSalonStore.getState();
-        if (branches.length > 0 || services.length > 0 || barbers.length > 0) {
+        if (branches.length > 0 && services.length > 0) {
           fetch('/api/agent-tools/sync-store', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -76,9 +124,6 @@ function AppLayout() {
         }
       } catch (e) {}
     };
-
-    // Sync on mount
-    syncToBackend();
 
     // Sync on store update
     const unsubStore = useSalonStore.subscribe((state, prevState) => {
@@ -94,6 +139,7 @@ function AppLayout() {
 
     const unsubscribe = initRealtimeSync(() => {
       useSalonStore.persist?.rehydrate();
+      hydrateFromBackend();
       syncToBackend();
     });
 
