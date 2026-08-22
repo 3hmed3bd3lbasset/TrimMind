@@ -45,6 +45,10 @@ const state: WhatsAppState = {
 let sock: any = null;
 let isInitializing = false;
 
+// Global persistent de-duplication cache across reconnects (TTL 10 minutes)
+const processedMessageIds = new Map<string, number>();
+const processedContentKeys = new Map<string, number>();
+
 export function getWhatsAppState(): WhatsAppState {
   const isTrulyConnected = Boolean(sock && sock.user && sock.user.id);
   return {
@@ -56,6 +60,7 @@ export function getWhatsAppState(): WhatsAppState {
 export async function resetWhatsAppSession(): Promise<WhatsAppState> {
   if (sock) {
     try {
+      sock.ws?.close();
       sock.end(undefined);
     } catch {}
     sock = null;
@@ -137,16 +142,33 @@ export async function initWhatsApp(): Promise<WhatsAppState> {
   isInitializing = true;
   state.status = 'connecting';
 
+  if (sock) {
+    try {
+      sock.ws?.close();
+      sock.end(undefined);
+    } catch {}
+    sock = null;
+  }
+
   try {
     const { state: authState, saveCreds } = await useMultiFileAuthState(AUTH_DIR);
-    const { version } = await fetchLatestBaileysVersion();
+    const { version, isLatest } = await fetchLatestBaileysVersion();
+    console.log(`Using Baileys v${version.join('.')}, isLatest: ${isLatest}`);
+
+    const logger = pino({ level: 'silent' });
 
     sock = makeWASocket({
       version,
-      logger: pino({ level: 'silent' }),
+      logger,
       printQRInTerminal: false,
       auth: authState,
       browser: ['TrimMind Salon', 'Chrome', '120.0.0'],
+      syncFullHistory: false,
+      generateHighQualityLinkPreview: false,
+      connectTimeoutMs: 60000,
+      defaultQueryTimeoutMs: 60000,
+      keepAliveIntervalMs: 25000,
+      retryRequestDelayMs: 2000,
     });
 
     sock.ev.on('creds.update', saveCreds);
@@ -158,6 +180,7 @@ export async function initWhatsApp(): Promise<WhatsAppState> {
         state.qrCodeRaw = qr;
         state.qrCodeDataUrl = await QRCode.toDataURL(qr);
         state.status = 'qr_ready';
+        console.log('📲 New WhatsApp QR Code Generated for Pairing!');
       }
 
       if (connection === 'close') {
@@ -165,7 +188,9 @@ export async function initWhatsApp(): Promise<WhatsAppState> {
         const shouldReconnect = statusCode !== DisconnectReason.loggedOut;
         state.status = 'disconnected';
         state.qrCodeDataUrl = null;
+        state.pairingCode = null;
         isInitializing = false;
+        console.log(`WhatsApp connection closed (status: ${statusCode}). Reconnecting: ${shouldReconnect}`);
 
         if (shouldReconnect) {
           setTimeout(() => initWhatsApp(), 4000);
@@ -179,10 +204,6 @@ export async function initWhatsApp(): Promise<WhatsAppState> {
         console.log('🎉 WhatsApp Connected Successfully on Persistent Storage!');
       }
     });
-
-    // De-duplication cache for message IDs and content (TTL 10 minutes)
-    const processedMessageIds = new Map<string, number>();
-    const processedContentKeys = new Map<string, number>();
 
     // Handle Incoming Messages & Forward to n8n Webhook
     sock.ev.on('messages.upsert', async (m: any) => {
