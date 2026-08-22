@@ -31,10 +31,15 @@ export async function authenticateStaff(identifier: string, plainPassword: strin
   try {
     const cleanId = identifier.trim().toLowerCase();
     const cleanPhone = identifier.trim().replace(/\D+/g, '');
-    const envManagerPassword = process.env.MANAGER_PASSWORD || process.env.ADMIN_PASSWORD || 'Admin@123456';
+    const envManagerEmail = (process.env.MANAGER_EMAIL || process.env.VITE_MANAGER_EMAIL || 'admin@salon.com').trim().toLowerCase();
+    const envManagerPhone = (process.env.MANAGER_PHONE || process.env.VITE_MANAGER_PHONE || '01011122233').trim().replace(/\D+/g, '');
+    const envManagerName = process.env.MANAGER_NAME || process.env.MANAGER_FULL_NAME || process.env.VITE_MANAGER_FULL_NAME || 'المدير العام (المالك)';
+    const envManagerPassword = process.env.MANAGER_PASSWORD || process.env.ADMIN_PASSWORD || process.env.VITE_INITIAL_MANAGER_PASSWORD || 'Admin@123456';
 
     // 1. Direct Super Admin / Manager Environment Variable Check
     const isManagerIdentifier =
+      cleanId === envManagerEmail ||
+      cleanPhone === envManagerPhone ||
       cleanId === 'admin@salon.com' ||
       cleanPhone === '01011122233' ||
       cleanId === 'admin' ||
@@ -44,9 +49,9 @@ export async function authenticateStaff(identifier: string, plainPassword: strin
       if (plainPassword === envManagerPassword || plainPassword === 'Admin@123456' || plainPassword === 'admin123456') {
         const adminUser = {
           id: 'prof-super-admin',
-          full_name: 'المهندس أحمد المنشاوي (المدير العام)',
-          phone: '01011122233',
-          email: 'admin@salon.com',
+          full_name: envManagerName,
+          phone: envManagerPhone,
+          email: envManagerEmail,
           role: 'manager',
           is_super_admin: 1,
           branch_id: null,
