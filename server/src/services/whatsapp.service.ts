@@ -46,7 +46,11 @@ let sock: any = null;
 let isInitializing = false;
 
 export function getWhatsAppState(): WhatsAppState {
-  return { ...state };
+  const isTrulyConnected = Boolean(sock && sock.user && sock.user.id);
+  return {
+    ...state,
+    status: isTrulyConnected ? 'connected' : state.qrCodeDataUrl || state.pairingCode ? 'qr_ready' : 'disconnected'
+  };
 }
 
 export async function resetWhatsAppSession(): Promise<WhatsAppState> {
@@ -71,22 +75,19 @@ export async function resetWhatsAppSession(): Promise<WhatsAppState> {
 }
 
 export async function getOrGenerateQRCode(): Promise<string> {
-  if (state.status === 'connected' || (sock && sock.user)) {
+  if (sock && sock.user && sock.user.id) {
     state.status = 'connected';
     return '';
   }
 
-  if (state.qrCodeDataUrl) {
-    return state.qrCodeDataUrl;
-  }
-
   await resetWhatsAppSession();
 
-  for (let i = 0; i < 20; i++) {
+  for (let i = 0; i < 25; i++) {
     if (state.qrCodeDataUrl) {
       return state.qrCodeDataUrl;
     }
-    if ((state.status as string) === 'connected') {
+    if (sock && sock.user && sock.user.id) {
+      state.status = 'connected';
       return '';
     }
     await new Promise((r) => setTimeout(r, 500));
