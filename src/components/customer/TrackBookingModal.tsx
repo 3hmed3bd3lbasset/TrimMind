@@ -77,6 +77,43 @@ export const TrackBookingSection: React.FC = () => {
   const [isRatingModalOpen, setIsRatingModalOpen] = useState(false);
   const [isCancelModalOpen, setIsCancelModalOpen] = useState(false);
 
+  // Helper to map remote API booking to full local Booking type
+  const mapRemoteBooking = (b: any): Booking => {
+    const localMatch = bookings.find((local) => local.id === (b.id || b.bookingId));
+    const proofObj = typeof b.payment_proof === 'string' ? JSON.parse(b.payment_proof) : b.payment_proof;
+    const depositAmount = localMatch?.booking_fee_at_booking || proofObj?.transferred_amount || proofObj?.amount || b.booking_fee_at_booking || b.depositRequired || 50;
+    const totalAmount = localMatch?.total_at_booking || b.total_at_booking || b.totalAmount || b.service_price_at_booking || 180;
+    const srvPrice = localMatch?.service_price_at_booking || b.service_price_at_booking || totalAmount;
+
+    return {
+      id: b.id || b.bookingId,
+      customer_id: b.customer_id || localMatch?.customer_id || 'usr-remote',
+      customer_name: b.customer_name || b.customerName || localMatch?.customer_name || 'عميل الصالون',
+      customer_phone: b.customer_phone || b.customerPhone || localMatch?.customer_phone || '',
+      branch_id: b.branch_id || localMatch?.branch_id || 'branch-elhdad',
+      barber_id: b.barber_id || localMatch?.barber_id || null,
+      service_id: b.service_id || localMatch?.service_id || 'srv-haircut',
+      additional_service_ids: b.additional_service_ids || localMatch?.additional_service_ids || [],
+      booking_type: b.booking_type || localMatch?.booking_type || 'normal',
+      status: b.status || localMatch?.status || 'pending_review',
+      starts_at: b.starts_at || b.startsAt || localMatch?.starts_at || new Date().toISOString(),
+      ends_at: b.ends_at || localMatch?.ends_at || null,
+      service_price_at_booking: Number(srvPrice),
+      booking_fee_at_booking: Number(depositAmount),
+      discount_at_booking: 0,
+      items_total_at_booking: Number(b.items_total_at_booking || localMatch?.items_total_at_booking || 0),
+      total_at_booking: Number(totalAmount),
+      secure_token: b.secure_token || localMatch?.secure_token || `TK-${b.id}`,
+      queue_number: b.queue_number || b.queueNumber || localMatch?.queue_number || 1,
+      notes: b.notes || localMatch?.notes,
+      items: b.items || localMatch?.items || [],
+      payment_proof: proofObj || localMatch?.payment_proof,
+      rating: b.rating || localMatch?.rating,
+      created_at: b.created_at || localMatch?.created_at || new Date().toISOString(),
+      updated_at: b.updated_at || localMatch?.updated_at || new Date().toISOString(),
+    };
+  };
+
   // Check URL query params if user navigated from booking confirmation (e.g. ?q=BK-9021)
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -106,28 +143,7 @@ export const TrackBookingSection: React.FC = () => {
         .then((res) => res.json())
         .then((json) => {
           if (json.success && Array.isArray(json.data) && json.data.length > 0) {
-            const remoteBookings: Booking[] = json.data.map((b: any) => ({
-              id: b.id || b.bookingId,
-              customer_id: b.customer_id || 'usr-remote',
-              customer_name: b.customer_name || b.customerName || 'عميل الصالون',
-              customer_phone: b.customer_phone || b.customerPhone || '',
-              branch_id: b.branch_id || 'branch-elhdad',
-              barber_id: b.barber_id || null,
-              service_id: b.service_id || 'srv-haircut',
-              booking_type: b.booking_type || 'normal',
-              status: b.status || 'pending_review',
-              starts_at: b.starts_at || b.startsAt || new Date().toISOString(),
-              service_price_at_booking: b.service_price_at_booking || b.total_at_booking || b.totalAmount || 180,
-              booking_fee_at_booking: b.booking_fee_at_booking || b.depositRequired || 50,
-              discount_at_booking: 0,
-              items_total_at_booking: 0,
-              total_at_booking: b.total_at_booking || b.totalAmount || 180,
-              secure_token: b.secure_token || `TK-${b.id}`,
-              queue_number: b.queue_number || b.queueNumber || 1,
-              payment_proof: typeof b.payment_proof === 'string' ? JSON.parse(b.payment_proof) : b.payment_proof,
-              created_at: b.created_at || new Date().toISOString(),
-              updated_at: b.updated_at || new Date().toISOString(),
-            }));
+            const remoteBookings: Booking[] = json.data.map(mapRemoteBooking);
             setMatchedBookings(remoteBookings);
             setSelectedBookingId(remoteBookings[0].id);
             setSearchStatus('found');
@@ -175,28 +191,7 @@ export const TrackBookingSection: React.FC = () => {
       const res = await fetch(`/api/bookings/track?q=${encodeURIComponent(query)}`);
       const json = await res.json();
       if (json.success && Array.isArray(json.data) && json.data.length > 0) {
-        const remoteBookings: Booking[] = json.data.map((b: any) => ({
-          id: b.id || b.bookingId,
-          customer_id: b.customer_id || 'usr-remote',
-          customer_name: b.customer_name || b.customerName || 'عميل الصالون',
-          customer_phone: b.customer_phone || b.customerPhone || '',
-          branch_id: b.branch_id || 'branch-elhdad',
-          barber_id: b.barber_id || null,
-          service_id: b.service_id || 'srv-haircut',
-          booking_type: b.booking_type || 'normal',
-          status: b.status || 'pending_review',
-          starts_at: b.starts_at || b.startsAt || new Date().toISOString(),
-          service_price_at_booking: b.service_price_at_booking || b.total_at_booking || b.totalAmount || 180,
-          booking_fee_at_booking: b.booking_fee_at_booking || b.depositRequired || 50,
-          discount_at_booking: 0,
-          items_total_at_booking: 0,
-          total_at_booking: b.total_at_booking || b.totalAmount || 180,
-          secure_token: b.secure_token || `TK-${b.id}`,
-          queue_number: b.queue_number || b.queueNumber || 1,
-          payment_proof: typeof b.payment_proof === 'string' ? JSON.parse(b.payment_proof) : b.payment_proof,
-          created_at: b.created_at || new Date().toISOString(),
-          updated_at: b.updated_at || new Date().toISOString(),
-        }));
+        const remoteBookings: Booking[] = json.data.map(mapRemoteBooking);
         setMatchedBookings(remoteBookings);
         setSelectedBookingId(remoteBookings[0].id);
         setSearchStatus('found');
