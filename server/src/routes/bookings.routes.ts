@@ -99,10 +99,7 @@ router.get('/', async (req: AuthenticatedRequest, res: Response) => {
     } catch {}
 
     // Merge in-memory liveSyncedBookings (created via WhatsApp)
-    const memBookings = liveSyncedBookings.filter(
-      (b) => !branchId || b.branch_id === branchId || b.branchId === branchId
-    );
-    const merged = [...detailed, ...memBookings.filter((m) => !detailed.some((d) => d && d.id === m.id))];
+    const merged = [...detailed, ...liveSyncedBookings.filter((m) => !detailed.some((d) => d && d.id === m.id))];
 
     return res.json({ success: true, data: merged });
   } catch (error: any) {

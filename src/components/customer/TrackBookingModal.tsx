@@ -115,15 +115,16 @@ export const TrackBookingSection: React.FC = () => {
               barber_id: b.barber_id || null,
               service_id: b.service_id || 'srv-haircut',
               booking_type: b.booking_type || 'normal',
-              status: b.status || 'awaiting_payment',
+              status: b.status || 'pending_review',
               starts_at: b.starts_at || b.startsAt || new Date().toISOString(),
-              service_price_at_booking: b.total_at_booking || b.totalAmount || 80,
+              service_price_at_booking: b.service_price_at_booking || b.total_at_booking || b.totalAmount || 180,
               booking_fee_at_booking: b.booking_fee_at_booking || b.depositRequired || 50,
               discount_at_booking: 0,
               items_total_at_booking: 0,
-              total_at_booking: b.total_at_booking || b.totalAmount || 80,
+              total_at_booking: b.total_at_booking || b.totalAmount || 180,
               secure_token: b.secure_token || `TK-${b.id}`,
               queue_number: b.queue_number || b.queueNumber || 1,
+              payment_proof: typeof b.payment_proof === 'string' ? JSON.parse(b.payment_proof) : b.payment_proof,
               created_at: b.created_at || new Date().toISOString(),
               updated_at: b.updated_at || new Date().toISOString(),
             }));
@@ -183,15 +184,16 @@ export const TrackBookingSection: React.FC = () => {
           barber_id: b.barber_id || null,
           service_id: b.service_id || 'srv-haircut',
           booking_type: b.booking_type || 'normal',
-          status: b.status || 'awaiting_payment',
+          status: b.status || 'pending_review',
           starts_at: b.starts_at || b.startsAt || new Date().toISOString(),
-          service_price_at_booking: b.total_at_booking || b.totalAmount || 80,
+          service_price_at_booking: b.service_price_at_booking || b.total_at_booking || b.totalAmount || 180,
           booking_fee_at_booking: b.booking_fee_at_booking || b.depositRequired || 50,
           discount_at_booking: 0,
           items_total_at_booking: 0,
-          total_at_booking: b.total_at_booking || b.totalAmount || 80,
+          total_at_booking: b.total_at_booking || b.totalAmount || 180,
           secure_token: b.secure_token || `TK-${b.id}`,
           queue_number: b.queue_number || b.queueNumber || 1,
+          payment_proof: typeof b.payment_proof === 'string' ? JSON.parse(b.payment_proof) : b.payment_proof,
           created_at: b.created_at || new Date().toISOString(),
           updated_at: b.updated_at || new Date().toISOString(),
         }));
@@ -211,13 +213,38 @@ export const TrackBookingSection: React.FC = () => {
   };
 
   const selectedBooking = useMemo(
-    () => bookings.find((b) => b.id === selectedBookingId) || null,
-    [bookings, selectedBookingId]
+    () => matchedBookings.find((b) => b.id === selectedBookingId) || bookings.find((b) => b.id === selectedBookingId) || null,
+    [matchedBookings, bookings, selectedBookingId]
   );
 
-  const branch = branches.find((b) => b.id === selectedBooking?.branch_id);
-  const barber = barbers.find((b) => b.id === selectedBooking?.barber_id);
-  const service = services.find((s) => s.id === selectedBooking?.service_id);
+  const branch = branches.find((b) => b.id === selectedBooking?.branch_id) || {
+    id: selectedBooking?.branch_id || 'branch-elhdad',
+    name: 'الحداد - ELHDAD',
+    address: 'سقيل - مركز أوسيم',
+    phone: '01005437633',
+    opening_time: '10:00',
+    closing_time: '23:30',
+    total_chairs: 4,
+    is_active: true,
+  };
+  const barber = barbers.find((b) => b.id === selectedBooking?.barber_id) || {
+    id: selectedBooking?.barber_id || 'barber-lead',
+    full_name: 'كابتن الصالون الرئيسي',
+    specialty: 'خبير قص وتصفيف وتسريحات VIP',
+    is_active: true,
+    rating: 4.9,
+    rating_count: 38,
+    branch_id: 'branch-elhdad',
+  };
+  const service = services.find((s) => s.id === selectedBooking?.service_id) || {
+    id: selectedBooking?.service_id || 'srv-haircut',
+    name: (selectedBooking as any)?.service_name || 'قص وتصفيف الشعر الاحترافي',
+    price: selectedBooking?.service_price_at_booking || 180,
+    duration_minutes: 30,
+    category: 'hair',
+    is_active: true,
+    is_vip_only: false,
+  };
   const queueEntry = queue.find((q) => q.booking_id === selectedBooking?.id);
 
   // Dynamic Live Queue calculation for remaining clients ahead

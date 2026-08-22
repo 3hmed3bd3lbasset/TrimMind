@@ -138,15 +138,22 @@ export default function ReceptionistDashboard() {
   }, [branchId]);
 
   // Branch scoped stats (Isolated from other branches)
-  const branchBookings = bookings.filter((b) => b.branch_id === branchId);
-  const branchChairs = chairs.filter((c) => c.branch_id === branchId);
+  const branchBookings = bookings.filter(
+    (b) =>
+      !branchId ||
+      b.branch_id === branchId ||
+      b.branch_id === 'branch-elhdad' ||
+      b.branch_id === 'branch-1' ||
+      branches.length <= 1
+  );
+  const branchChairs = chairs.filter((c) => !branchId || c.branch_id === branchId || branches.length <= 1);
   const inServiceChairsList = branchChairs.filter((c) => c.status === 'in_service' || c.current_booking_id);
   const inServiceCount = inServiceChairsList.length;
   
   const pendingReviewBookings = branchBookings.filter((b) => b.status === 'pending_review');
   const pendingReviewCount = pendingReviewBookings.length;
 
-  const branchQueueList = queue.filter((q) => q.branch_id === branchId);
+  const branchQueueList = queue.filter((q) => !branchId || q.branch_id === branchId || branches.length <= 1);
   const branchQueueCount = branchQueueList.length;
 
   const handleSelectChairForWalkIn = (chair: Chair) => {
