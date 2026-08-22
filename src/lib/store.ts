@@ -221,11 +221,11 @@ function getInitialCurrentUser(): Profile {
 }
 
 function getInitialBranchId(): string {
-  if (typeof window === 'undefined') return INITIAL_BRANCHES[0].id;
+  if (typeof window === 'undefined') return INITIAL_BRANCHES[0]?.id || '';
   try {
     const branchId = localStorage.getItem('salon_selected_branch_id');
     if (branchId) return branchId;
-    const storeRaw = localStorage.getItem('barber-platform-storage-v3');
+    const storeRaw = localStorage.getItem('barber-platform-storage-v4');
     if (storeRaw) {
       const parsed = JSON.parse(storeRaw);
       if (parsed?.state?.selectedBranchId) return parsed.state.selectedBranchId;
@@ -233,7 +233,7 @@ function getInitialBranchId(): string {
   } catch {
     // ignore
   }
-  return INITIAL_BRANCHES[0].id;
+  return INITIAL_BRANCHES[0]?.id || '';
 }
 
 export const useSalonStore = create<SalonStore>()(
@@ -250,30 +250,7 @@ export const useSalonStore = create<SalonStore>()(
       queue: INITIAL_QUEUE,
       profiles: INITIAL_PROFILES,
       auditLogs: INITIAL_AUDIT_LOGS,
-      notifications: [
-        {
-          id: 'notif-01',
-          title: 'طلب حجز جديد بانتظار المراجعة',
-          message: 'طلب حجز VIP من العميل عمر الخالد مع إيصال إنستاباي بمبلغ 100 ج.م',
-          type: 'pending_review',
-          target_id: 'BK-9021',
-          target_type: 'payment_proof',
-          branch_id: 'branch-01',
-          read: false,
-          created_at: new Date(Date.now() - 3 * 60 * 1000).toISOString(),
-        },
-        {
-          id: 'notif-02',
-          title: 'تأكيد حجز جديد',
-          message: 'تم تأكيد حجز العميل حازم رضوان على كرسي النخبة 02 بنجاح',
-          type: 'booking_confirmed',
-          target_id: 'BK-9022',
-          target_type: 'booking',
-          branch_id: 'branch-01',
-          read: true,
-          created_at: new Date(Date.now() - 20 * 60 * 1000).toISOString(),
-        },
-      ],
+      notifications: [],
       settings: INITIAL_SETTINGS,
       isAiDrawerOpen: false,
       lastCalledCustomer: null,
@@ -1323,7 +1300,7 @@ export const useSalonStore = create<SalonStore>()(
       resetAllData: () => {
         set({
           currentUser: INITIAL_PROFILES[0],
-          selectedBranchId: INITIAL_BRANCHES[0].id,
+          selectedBranchId: INITIAL_BRANCHES[0]?.id || '',
           branches: INITIAL_BRANCHES,
           barbers: INITIAL_BARBERS,
           chairs: INITIAL_CHAIRS,
@@ -1332,13 +1309,14 @@ export const useSalonStore = create<SalonStore>()(
           bookings: INITIAL_BOOKINGS,
           queue: INITIAL_QUEUE,
           auditLogs: INITIAL_AUDIT_LOGS,
+          notifications: [],
           settings: INITIAL_SETTINGS,
           lastCalledCustomer: null,
         });
       },
     }),
     {
-      name: 'barber-platform-storage-v3',
+      name: 'barber-platform-storage-v4',
       storage: createJSONStorage(() => ({
         getItem: async (name: string): Promise<string | null> => {
           try {
