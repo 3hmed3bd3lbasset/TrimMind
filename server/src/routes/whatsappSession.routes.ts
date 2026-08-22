@@ -1,5 +1,5 @@
 import { Router, Request, Response } from 'express';
-import { getWhatsAppState, initWhatsApp, generatePairingCode, sendWhatsAppText } from '../services/whatsapp.service.js';
+import { getWhatsAppState, initWhatsApp, sendWhatsAppText } from '../services/whatsapp.service.js';
 
 const router = Router();
 
@@ -16,19 +16,19 @@ router.get('/status', async (_req: Request, res: Response) => {
   });
 });
 
-// 2. Request 8-Digit Pairing Code for phone number
-router.post('/pair', async (req: Request, res: Response) => {
+// 2. Restart socket for fresh QR code
+router.post('/refresh-qr', async (_req: Request, res: Response) => {
   try {
-    const { phone = '01005437633' } = req.body;
-    const code = await generatePairingCode(phone);
-    res.json({
-      success: true,
-      message: 'تم إنشاء كود الربط بنجاح.',
-      data: {
-        phone,
-        pairingCode: code,
-      },
-    });
+    await initWhatsApp();
+    // Wait for new QR
+    for (let i = 0; i < 10; i++) {
+      const state = getWhatsAppState();
+      if (state.qrCodeDataUrl || state.status === 'connected') {
+        return res.json({ success: true, data: state });
+      }
+      await new Promise((r) => setTimeout(r, 300));
+    }
+    res.json({ success: true, data: getWhatsAppState() });
   } catch (err: any) {
     res.status(500).json({ success: false, error: err.message });
   }
@@ -48,7 +48,7 @@ router.post('/send', async (req: Request, res: Response) => {
   }
 });
 
-// 4. Interactive, Dual-Mode Connection Portal (Live QR + Pairing Code)
+// 4. Interactive Live QR Scanner Portal with Countdown & Refresh Button
 router.get('/qr', async (_req: Request, res: Response) => {
   const state = getWhatsAppState();
   if (state.status === 'disconnected') {
@@ -67,7 +67,7 @@ router.get('/qr', async (_req: Request, res: Response) => {
         * { box-sizing: border-box; margin: 0; padding: 0; }
         body {
           font-family: 'Cairo', sans-serif;
-          background: #0d1412;
+          background: #090e0d;
           color: #e6ede8;
           display: flex;
           align-items: center;
@@ -76,42 +76,55 @@ router.get('/qr', async (_req: Request, res: Response) => {
           padding: 20px;
         }
         .card {
-          background: #14221e;
-          border: 1px solid #233b34;
+          background: #111a17;
+          border: 1px solid #1e332d;
           border-radius: 28px;
-          padding: 36px;
-          max-width: 480px;
+          padding: 32px;
+          max-width: 440px;
           width: 100%;
           text-align: center;
-          box-shadow: 0 20px 40px rgba(0,0,0,0.5);
+          box-shadow: 0 24px 48px rgba(0,0,0,0.6);
         }
         .badge {
           display: inline-block;
           padding: 6px 16px;
           border-radius: 999px;
-          background: #1c332b;
-          color: #5eead4;
+          background: #192c25;
+          color: #34d399;
           font-size: 0.85rem;
           font-weight: 700;
           margin-bottom: 16px;
-          border: 1px solid #2d5246;
+          border: 1px solid #28473c;
         }
-        h1 { font-size: 1.35rem; font-weight: 800; margin-bottom: 8px; color: #ffffff; }
-        p { font-size: 0.95rem; color: #9bb3aa; margin-bottom: 20px; line-height: 1.6; }
+        h1 { font-size: 1.35rem; font-weight: 800; margin-bottom: 6px; color: #ffffff; }
+        p { font-size: 0.92rem; color: #9bb3aa; margin-bottom: 16px; line-height: 1.5; }
         .qr-wrapper {
           background: #ffffff;
-          padding: 16px;
+          padding: 14px;
           border-radius: 20px;
           display: inline-flex;
           align-items: center;
           justify-content: center;
-          margin-bottom: 16px;
-          box-shadow: 0 8px 24px rgba(0,0,0,0.3);
-          min-height: 230px;
-          min-width: 230px;
+          margin-bottom: 12px;
+          box-shadow: 0 10px 30px rgba(0,0,0,0.4);
+          position: relative;
         }
-        .qr-img { width: 210px; height: 210px; display: block; }
-        .btn-code {
+        .qr-img { width: 220px; height: 220px; display: block; border-radius: 8px; }
+        .timer-bar-bg {
+          width: 100%;
+          height: 6px;
+          background: #1c2b26;
+          border-radius: 999px;
+          overflow: hidden;
+          margin: 10px 0 18px 0;
+        }
+        .timer-bar {
+          height: 100%;
+          background: linear-gradient(90deg, #10b981, #34d399);
+          width: 100%;
+          transition: width 1s linear;
+        }
+        .btn-refresh {
           display: inline-flex;
           align-items: center;
           justify-content: center;
@@ -119,116 +132,87 @@ router.get('/qr', async (_req: Request, res: Response) => {
           background: #10b981;
           color: #06281e;
           font-family: inherit;
-          font-size: 1rem;
+          font-size: 0.95rem;
           font-weight: 800;
-          padding: 14px 28px;
+          padding: 10px 24px;
           border-radius: 999px;
           border: none;
           cursor: pointer;
-          width: 100%;
-          margin: 14px 0;
-          box-shadow: 0 6px 0 #059669;
+          margin-bottom: 16px;
           transition: all 0.15s;
         }
-        .btn-code:hover { background: #34d399; }
-        .btn-code:active { transform: translateY(3px); box-shadow: none; }
-        .pairing-box {
-          background: #0d1714;
-          border: 2px dashed #10b981;
-          border-radius: 18px;
-          padding: 20px;
-          margin: 16px 0;
-        }
-        .pairing-code {
-          font-size: 2.2rem;
-          font-weight: 900;
-          letter-spacing: 8px;
-          color: #34d399;
-          font-family: monospace;
-          margin: 10px 0;
-        }
+        .btn-refresh:hover { background: #34d399; }
         .steps {
           text-align: right;
-          background: #0d1714;
+          background: #0a110f;
           padding: 16px 20px;
           border-radius: 16px;
           font-size: 0.88rem;
           color: #a7c2b8;
-          margin-top: 18px;
-          border: 1px solid #1c332b;
+          border: 1px solid #192b25;
         }
         .steps ol { padding-right: 20px; }
         .steps li { margin-bottom: 8px; }
         .spinner {
           display: inline-block;
-          width: 36px;
-          height: 36px;
-          border: 4px solid #1c332b;
+          width: 40px;
+          height: 40px;
+          border: 4px solid #1c2b26;
           border-top-color: #34d399;
           border-radius: 50%;
           animation: spin 0.8s linear infinite;
         }
         @keyframes spin { to { transform: rotate(360deg); } }
         .success-box {
-          background: #112d22;
+          background: #0f2b20;
           border: 1px solid #22c55e;
           color: #86efac;
-          padding: 24px;
-          border-radius: 20px;
+          padding: 28px;
+          border-radius: 22px;
           margin: 10px 0;
         }
       </style>
     </head>
     <body>
       <div class="card">
-        <div class="badge">💈 صالون TrimMind - ربط رقم واتساب</div>
+        <div class="badge">💈 صالون TrimMind - مساعد الحجز الذكي</div>
         <div id="content">
-          <div style="padding: 30px 0;">
+          <div style="padding: 40px 0;">
             <div class="spinner"></div>
-            <p style="margin-top: 16px; color: #5eead4;">جاري تجهيز الاتصال برقم 01005437633...</p>
+            <p style="margin-top: 16px; color: #5eead4;">جاري تجهيز رمز الربط لـ 01005437633...</p>
           </div>
         </div>
       </div>
 
       <script>
-        let isGettingCode = false;
+        let currentQr = '';
+        let timerSeconds = 20;
+        let timerInterval = null;
 
-        async function requestCode() {
-          if (isGettingCode) return;
-          isGettingCode = true;
-          const btn = document.getElementById('btnCode');
-          if (btn) {
-            btn.innerHTML = '⏳ جاري طلب الكود من واتساب...';
-            btn.disabled = true;
-          }
-          try {
-            const res = await fetch('/api/whatsapp-session/pair', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ phone: '01005437633' })
-            });
-            const json = await res.json();
-            if (json.data && json.data.pairingCode) {
-              renderPairingCode(json.data.pairingCode);
+        function startTimer() {
+          timerSeconds = 20;
+          if (timerInterval) clearInterval(timerInterval);
+          timerInterval = setInterval(() => {
+            timerSeconds--;
+            const bar = document.getElementById('timerBar');
+            const txt = document.getElementById('timerText');
+            if (bar) bar.style.width = (timerSeconds / 20 * 100) + '%';
+            if (txt) txt.innerText = 'صلاحية الرمز: ' + timerSeconds + ' ثانية';
+            if (timerSeconds <= 0) {
+              clearInterval(timerInterval);
+              checkStatus();
             }
-          } catch (e) {
-            alert('حدث خطأ أثناء طلب الكود، جرب مرة أخرى.');
-          } finally {
-            isGettingCode = false;
-          }
+          }, 1000);
         }
 
-        function renderPairingCode(code) {
-          const codeContainer = document.getElementById('codeContainer');
-          if (codeContainer) {
-            codeContainer.innerHTML = \`
-              <div class="pairing-box">
-                <span style="font-size:0.9rem; color:#85a89d; font-weight:700;">كود الربط الخاص برقمك:</span>
-                <div class="pairing-code">\${code}</div>
-                <p style="font-size:0.85rem; color:#6ee7b7; margin-bottom:0;">افتح واتساب ⬅️ الأجهزة المرتبطة ⬅️ ربط باستخدام رقم الهاتف ⬅️ واكتب الكود أعلاه.</p>
-              </div>
-            \`;
+        async function manualRefresh() {
+          const btn = document.getElementById('btnRefresh');
+          if (btn) {
+            btn.innerText = '⏳ جاري تحديث الرمز...';
+            btn.disabled = true;
           }
+          await fetch('/api/whatsapp-session/refresh-qr', { method: 'POST' });
+          await checkStatus();
         }
 
         async function checkStatus() {
@@ -239,36 +223,42 @@ router.get('/qr', async (_req: Request, res: Response) => {
             const content = document.getElementById('content');
 
             if (data.status === 'connected') {
+              if (timerInterval) clearInterval(timerInterval);
               content.innerHTML = \`
                 <div class="success-box">
                   <h2 style="font-size: 1.5rem; margin-bottom: 8px; color:#4ade80;">✅ تم ربط الواتساب بنجاح!</h2>
-                  <p style="color:#bbf7d0; margin-bottom:0;">الرقم <strong>01005437633</strong> متصل بالسيرفر الآن، ومساعد الذكاء الاصطناعي يستقبل الرسائل ويرد عليها تلقائياً 👑💈</p>
+                  <p style="color:#bbf7d0; margin-bottom:0;">الرقم <strong>01005437633</strong> متصل بالسيرفر ومحفوظ في قاعدة البيانات، ومساعد الذكاء الاصطناعي يستقبل الرسائل ويرد عليها تلقائياً 👑💈</p>
                 </div>
               \`;
               return;
             }
 
             if (data.qrCodeDataUrl) {
-              const existingCode = document.getElementById('codeContainer')?.innerHTML || '';
-              content.innerHTML = \`
-                <h1>اختر طريقة الربط المناسبة</h1>
-                <p>لرقم الواتساب: <strong style="color:#5eead4;">01005437633</strong></p>
-                
-                <button id="btnCode" class="btn-code" onclick="requestCode()">
-                  📲 اضغط هنا لإظهار كود الربط (بدون كاميرا)
-                </button>
-                <div id="codeContainer">\${existingCode}</div>
+              if (data.qrCodeDataUrl !== currentQr) {
+                currentQr = data.qrCodeDataUrl;
+                startTimer();
+              }
 
-                <div style="margin: 16px 0; color:#5eead4; font-size:0.85rem; font-weight:700;">─── أو امسح الـ QR Code ───</div>
+              content.innerHTML = \`
+                <h1>امسح رمز QR لربط الرقم</h1>
+                <p>لربط رقم الصالون: <strong style="color:#5eead4;">01005437633</strong></p>
+                
                 <div class="qr-wrapper">
                   <img class="qr-img" src="\${data.qrCodeDataUrl}" alt="QR Code" />
                 </div>
 
+                <div class="timer-bar-bg"><div id="timerBar" class="timer-bar"></div></div>
+                <div id="timerText" style="font-size:0.8rem; color:#85a89d; margin-bottom:12px;">صلاحية الرمز: \${timerSeconds} ثانية</div>
+
+                <button id="btnRefresh" class="btn-refresh" onclick="manualRefresh()">
+                  🔄 توليد رمز QR جديد طازج
+                </button>
+
                 <div class="steps">
                   <ol>
-                    <li>افتح تطبيق <strong>WhatsApp</strong> على هاتفك.</li>
+                    <li>افتح تطبيق <strong>WhatsApp</strong> على هاتفك (01005437633).</li>
                     <li>اضغط على <strong>الثلاث نقاط ⚙️</strong> ثم <strong>الأجهزة المرتبطة (Linked Devices)</strong>.</li>
-                    <li>اختر <strong>ربط باستخدام رقم الهاتف</strong> (واكتب الكود) أو <strong>ربط جهاز</strong> (وامسح الرمز).</li>
+                    <li>اضغط على <strong>ربط جهاز (Link a Device)</strong> ووجّه الكاميرا نحو الرمز أعلاه.</li>
                   </ol>
                 </div>
               \`;
@@ -279,7 +269,7 @@ router.get('/qr', async (_req: Request, res: Response) => {
         }
 
         checkStatus();
-        setInterval(checkStatus, 2500);
+        setInterval(checkStatus, 3000);
       </script>
     </body>
     </html>
