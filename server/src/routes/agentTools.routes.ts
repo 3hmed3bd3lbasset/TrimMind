@@ -479,16 +479,28 @@ router.post('/bookings/create-pending', async (req: Request, res: Response) => {
     const finalBranchId = branchId || liveSyncedState.branches[0]?.id || 'branch-elhdad';
     const bookingId = `BK-${Math.floor(1000 + Math.random() * 9000)}`;
 
+    const matchedService = liveSyncedState.services.find(
+      (s) => s.id === serviceId || s.name.toLowerCase().includes((serviceId || '').toLowerCase())
+    ) || { id: 'srv-haircut', name: 'قص شعر كلاسيكي', price: 180 };
+
+    const resolvedServiceName = matchedService.name;
+    const resolvedPrice = Number(matchedService.price || 180);
+    const resolvedBookingType = (serviceId?.toLowerCase().includes('vip') || matchedService.name.toLowerCase().includes('vip') || bookingType === 'vip') ? 'vip' : 'normal';
+
+    const bookingDate = (startsAt || new Date().toISOString()).split('T')[0];
+    const existingDayBookings = liveSyncedBookings.filter((b) => (b.starts_at || b.startsAt || '').startsWith(bookingDate));
+    const nextQueueNum = existingDayBookings.length + 1;
+
     try {
       const payload = {
         customerName: finalCustomerName,
         customerPhone: cleanPhone,
         branchId: finalBranchId,
         barberId: barberId || null,
-        serviceId: serviceId || 'srv-haircut',
+        serviceId: matchedService.id,
         additionalServiceIds,
-        bookingType,
-        startsAt: startsAt || new Date().toISOString(),
+        bookingType: resolvedBookingType,
+        startsAt: startsAt || `${bookingDate} 16:00:00`,
         notes: notes || 'تم الحجز عبر مساعد واتساب الذكي',
       };
 
@@ -501,19 +513,21 @@ router.post('/bookings/create-pending', async (req: Request, res: Response) => {
         customer_phone: cleanPhone,
         customerPhone: cleanPhone,
         service_id: payload.serviceId,
-        service_name: newBooking.service_name || 'خدمة الصالون',
-        serviceName: newBooking.service_name || 'خدمة الصالون',
+        service_name: resolvedServiceName,
+        serviceName: resolvedServiceName,
+        booking_type: resolvedBookingType,
+        bookingType: resolvedBookingType,
         branch_id: finalBranchId,
         branch_name: 'الحداد - ELHDAD',
         status: newBooking.status,
-        queue_number: newBooking.queue_number,
-        queueNumber: newBooking.queue_number,
+        queue_number: newBooking.queue_number || nextQueueNum,
+        queueNumber: newBooking.queue_number || nextQueueNum,
         starts_at: newBooking.starts_at,
         startsAt: newBooking.starts_at,
-        booking_fee_at_booking: newBooking.booking_fee_at_booking || 50,
-        depositRequired: newBooking.booking_fee_at_booking || 50,
-        total_at_booking: newBooking.total_at_booking || 80,
-        totalAmount: newBooking.total_at_booking || 80,
+        booking_fee_at_booking: 50,
+        depositRequired: 50,
+        total_at_booking: resolvedPrice,
+        totalAmount: resolvedPrice,
         secure_token: newBooking.secure_token || `TK-${newBooking.id}`,
         created_at: new Date().toISOString(),
         trackingUrl: `https://trimmind.up.railway.app/track?q=${newBooking.id}`,
@@ -539,20 +553,24 @@ router.post('/bookings/create-pending', async (req: Request, res: Response) => {
         customerName: finalCustomerName,
         customer_phone: cleanPhone,
         customerPhone: cleanPhone,
-        service_id: serviceId || 'srv-haircut',
-        service_name: serviceId === 'srv-beard' ? 'تحديد وتشذيب اللحية الملكي' : 'قص وتصفيف الشعر',
-        serviceName: serviceId === 'srv-beard' ? 'تحديد وتشذيب اللحية الملكي' : 'قص وتصفيف الشعر',
+        service_id: matchedService.id,
+        service_name: resolvedServiceName,
+        serviceName: resolvedServiceName,
+        booking_type: resolvedBookingType,
+        bookingType: resolvedBookingType,
+        barber_id: barberId || 'barber-lead',
+        barber_name: 'كابتن الصالون الرئيسي',
         branch_id: finalBranchId,
         branch_name: 'الحداد - ELHDAD',
         status: 'awaiting_payment',
-        queue_number: Math.floor(1 + Math.random() * 5),
-        queueNumber: Math.floor(1 + Math.random() * 5),
-        starts_at: startsAt || new Date().toISOString(),
-        startsAt: startsAt || new Date().toISOString(),
+        queue_number: nextQueueNum,
+        queueNumber: nextQueueNum,
+        starts_at: startsAt || `${bookingDate} 16:00:00`,
+        startsAt: startsAt || `${bookingDate} 16:00:00`,
         depositRequired: 50,
         booking_fee_at_booking: 50,
-        totalAmount: serviceId === 'srv-beard' ? 50 : 80,
-        total_at_booking: serviceId === 'srv-beard' ? 50 : 80,
+        totalAmount: resolvedPrice,
+        total_at_booking: resolvedPrice,
         secure_token: `TK-${bookingId}`,
         created_at: new Date().toISOString(),
         trackingUrl: `https://trimmind.up.railway.app/track?q=${bookingId}`,

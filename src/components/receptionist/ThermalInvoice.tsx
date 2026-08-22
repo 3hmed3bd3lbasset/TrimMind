@@ -19,9 +19,15 @@ export const ThermalInvoice: React.FC<ThermalInvoiceProps> = ({ booking, isOpen,
   const barber = barbers.find((b) => b.id === booking.barber_id);
   const service = services.find((s) => s.id === booking.service_id);
 
-  const depositPaid =
-    booking.payment_proof?.status === 'approved' ? booking.booking_fee_at_booking : 0;
-  const remaining = Math.max(0, booking.total_at_booking - depositPaid);
+  const effectiveServicePrice = service?.price || booking.service_price_at_booking || 180;
+  const additionalTotal = (booking.additional_service_ids || []).reduce((sum, addId) => {
+    const s = services.find((srv) => srv.id === addId);
+    return sum + (s?.price || 0);
+  }, 0);
+  const itemsTotal = (booking.items || []).reduce((sum, item) => sum + (item.price_at_booking * item.quantity), 0);
+  const calculatedTotal = Math.max(booking.total_at_booking, effectiveServicePrice + additionalTotal + itemsTotal - (booking.discount_at_booking || 0));
+  const depositPaid = booking.booking_fee_at_booking || 50;
+  const remaining = Math.max(0, calculatedTotal - depositPaid);
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
@@ -110,7 +116,7 @@ export const ThermalInvoice: React.FC<ThermalInvoiceProps> = ({ booking, isOpen,
           <div className="space-y-1 text-[11px] font-bold">
             <div className="flex justify-between text-neutral-700">
               <span>الإجمالي:</span>
-              <span>{formatCurrency(booking.total_at_booking)}</span>
+              <span>{formatCurrency(calculatedTotal)}</span>
             </div>
             {depositPaid > 0 && (
               <div className="flex justify-between text-emerald-800">

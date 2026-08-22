@@ -601,12 +601,27 @@ export const useSalonStore = create<SalonStore>()(
         let chairIdToUpdate: string | undefined;
         let targetBooking: Booking | undefined;
 
+        const found = bookings.find((b) => b.id === bookingId);
+        if (found) {
+          targetBooking = found;
+          chairIdToUpdate = found.chair_id;
+          if (!chairIdToUpdate && toStatus === 'in_service') {
+            const availableChair =
+              chairs.find((c) => c.barber_id === found.barber_id && c.status !== 'in_service') ||
+              chairs.find((c) => c.branch_id === found.branch_id && c.status === 'available') ||
+              chairs.find((c) => c.status === 'available') ||
+              chairs[0];
+            if (availableChair) {
+              chairIdToUpdate = availableChair.id;
+            }
+          }
+        }
+
         const updatedBookings = bookings.map((b) => {
           if (b.id === bookingId) {
-            targetBooking = b;
-            chairIdToUpdate = b.chair_id;
             return {
               ...b,
+              chair_id: chairIdToUpdate || b.chair_id,
               status: toStatus,
               completed_at: toStatus === 'completed' ? new Date().toISOString() : b.completed_at,
               updated_at: new Date().toISOString(),

@@ -40,9 +40,17 @@ export const PaymentProofModal: React.FC<PaymentProofModalProps> = ({
 
   if (!isOpen || !booking) return null;
 
-  const proof = booking.payment_proof;
+  const rawProof = booking.payment_proof;
+  let proof: any = null;
+  try {
+    proof = typeof rawProof === 'string' ? JSON.parse(rawProof) : rawProof;
+  } catch {
+    proof = rawProof;
+  }
+
   const isImageExpired = isReceiptImageExpired(proof);
   const remainingMinutes = getRemainingReceiptImageMinutes(proof);
+  const imageSrc = proof?.image_url || proof?.image_path || proof?.imageUrl || proof?.url;
 
   const handleApprove = () => {
     reviewPaymentProof(booking.id, 'approved');
@@ -124,9 +132,9 @@ export const PaymentProofModal: React.FC<PaymentProofModalProps> = ({
                     مرت أكثر من ساعتين على اعتماد الحساب وتأكيد الموعد، وتم حذف ملف الصورة لتوفير مساحة التخزين.
                   </p>
                 </div>
-              ) : proof?.image_path ? (
+              ) : imageSrc ? (
                 <img
-                  src={proof.image_path}
+                  src={imageSrc}
                   alt="Receipt"
                   className="w-full h-full object-contain p-2 hover:scale-105 transition-transform duration-300"
                 />
