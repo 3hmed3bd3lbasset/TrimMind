@@ -3,6 +3,7 @@ import makeWASocket, {
   fetchLatestBaileysVersion,
   useMultiFileAuthState,
   proto,
+  downloadMediaMessage,
 } from '@whiskeysockets/baileys';
 import pino from 'pino';
 import QRCode from 'qrcode';
@@ -236,6 +237,26 @@ export async function initWhatsApp(): Promise<WhatsAppState> {
             continue;
           }
 
+          let base64ImageUrl: string | null = null;
+          if (isImage) {
+            try {
+              const buffer = await downloadMediaMessage(
+                msg,
+                'buffer',
+                {},
+                {
+                  logger: pino({ level: 'silent' }),
+                  reuploadRequest: sock.updateMediaMessage,
+                }
+              );
+              if (buffer) {
+                base64ImageUrl = `data:image/jpeg;base64,${(buffer as Buffer).toString('base64')}`;
+              }
+            } catch (err: any) {
+              console.log('Error downloading WhatsApp image buffer:', err.message);
+            }
+          }
+
           const textKey = (text || 'img_attachment').trim().toLowerCase();
           if (textKey && processedContentKeys.has(textKey)) {
             const lastTime = processedContentKeys.get(textKey)!;
@@ -258,10 +279,10 @@ export async function initWhatsApp(): Promise<WhatsAppState> {
             }
           }
 
-          console.log(`📩 Incoming WhatsApp from ${remoteJid}: ${text}`);
+          console.log(`📩 Incoming WhatsApp from ${remoteJid}: ${text || '[Image Receipt]'}`);
 
           // Forward to n8n Webhook
-          forwardToN8nWebhook(msg);
+          forwardToN8nWebhook(msg, base64ImageUrl);
         }
       }
     });
@@ -304,12 +325,16 @@ export async function sendWhatsAppText(to: string, text: string): Promise<boolea
 }
 
 // Helper to forward incoming message to n8n Webhook
-function forwardToN8nWebhook(msg: proto.IWebMessageInfo) {
+function forwardToN8nWebhook(msg: proto.IWebMessageInfo, imageUrl?: string | null) {
   try {
     const payload = JSON.stringify({
       event: 'messages.upsert',
       instance: 'trimmind_salon',
-      data: msg,
+      imageUrl: imageUrl || null,
+      data: {
+        ...msg,
+        imageUrl: imageUrl || null,
+      },
     });
 
     const url = new URL(N8N_WEBHOOK_URL);
