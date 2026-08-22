@@ -230,10 +230,16 @@ export async function initWhatsApp(): Promise<WhatsAppState> {
             msg.message.imageMessage?.caption ||
             '';
 
+          const isImage = Boolean(msg.message.imageMessage);
+          if (!text.trim() && !isImage) {
+            // Drop empty status/receipt updates from WhatsApp!
+            continue;
+          }
+
           const textKey = (text || 'img_attachment').trim().toLowerCase();
           if (textKey && processedContentKeys.has(textKey)) {
             const lastTime = processedContentKeys.get(textKey)!;
-            if (now - lastTime < 6000) {
+            if (now - lastTime < 8000) {
               console.log(`⚠️ Ignored duplicate WhatsApp text (${remoteJid}): ${text}`);
               continue;
             }
