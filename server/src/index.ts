@@ -117,6 +117,8 @@ app.use(errorHandler);
 initSocketIO(server, CLIENT_URL);
 initCleanupCron();
 
+import { initReminderService } from './services/reminder.service.js';
+
 // Start Server
 async function startServer() {
   await testDbConnection();
@@ -130,6 +132,7 @@ async function startServer() {
     console.log(`📱 Initializing WhatsApp Integration Engine...`);
     console.log('====================================================');
     initWhatsApp();
+    initReminderService();
   });
 }
 

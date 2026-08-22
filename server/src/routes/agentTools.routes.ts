@@ -148,6 +148,11 @@ router.post('/branches/list', async (_req: Request, res: Response) => {
         openingTime: b.opening_time || b.openingTime || '10:00',
         closingTime: b.closing_time || b.closingTime || '23:30',
         totalChairs: b.total_chairs || b.totalChairs || 4,
+        paymentAccounts: {
+          vodafoneCash: b.vodafone_cash || liveSyncedState.settings?.vodafone_cash_number || b.phone || '01005437633',
+          instapay: b.instapay_username || liveSyncedState.settings?.instapay_username || b.phone || '01005437633',
+          depositRequired: liveSyncedState.settings?.booking_fee_normal || 50,
+        },
       })),
     });
   } catch (err: any) {
@@ -677,6 +682,82 @@ router.post('/bookings/cancel', async (req: Request, res: Response) => {
       data: {
         bookingId: booking.id,
         status: 'cancelled',
+      },
+    });
+  } catch (err: any) {
+    return res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// ---------------------------------------------------------------------------
+// 8.5. Confirm Arrival / Arriving Soon (Interactive WhatsApp Action)
+// ---------------------------------------------------------------------------
+router.post('/bookings/confirm-arrival', async (req: Request, res: Response) => {
+  try {
+    const { phone, bookingId } = req.body;
+    const cleanPhone = normalizePhone(phone);
+
+    let targetBooking: any = null;
+    if (bookingId) {
+      try {
+        targetBooking = await getBookingById(bookingId.trim().toUpperCase());
+      } catch {}
+    } else if (cleanPhone) {
+      try {
+        const rows = await query<any[]>(
+          `SELECT id FROM bookings 
+           WHERE REPLACE(REPLACE(customer_phone, ' ', ''), '+', '') LIKE ? 
+             AND status IN ('confirmed', 'awaiting_payment', 'pending_review')
+           ORDER BY created_at DESC LIMIT 1`,
+          [`%${cleanPhone.slice(-9)}%`]
+        );
+        if (rows && rows.length > 0) {
+          targetBooking = await getBookingById(rows[0].id);
+        }
+      } catch {}
+
+      if (!targetBooking) {
+        targetBooking = liveSyncedBookings.find(
+          (b) => b.customer_phone?.includes(cleanPhone.slice(-9)) || b.customerPhone?.includes(cleanPhone.slice(-9))
+        );
+      }
+    }
+
+    if (!targetBooking) {
+      return res.json({
+        success: true,
+        message: 'يا ألف مرحب بيك يا بطل! 👑 تم إبلاغ موظف الاستقبال بوجودك لتجهيز الكرسي لك فوراً! 💈✨',
+        data: { status: 'customer_arrived' },
+      });
+    }
+
+    // Update in MySQL
+    try {
+      await query(
+        `UPDATE bookings SET status = 'customer_arrived', updated_at = NOW() WHERE id = ?`,
+        [targetBooking.id]
+      );
+    } catch {}
+
+    // Update in liveSyncedBookings
+    targetBooking.status = 'customer_arrived';
+
+    broadcastToBranch(targetBooking.branch_id || 'branch-elhdad', 'CUSTOMER_ARRIVED', {
+      bookingId: targetBooking.id,
+      customerName: targetBooking.customer_name || targetBooking.customerName,
+    });
+    broadcastGlobal('CUSTOMER_ARRIVED', {
+      bookingId: targetBooking.id,
+      customerName: targetBooking.customer_name || targetBooking.customerName,
+    });
+
+    const clientName = targetBooking.customer_name || targetBooking.customerName || 'غالي';
+    return res.json({
+      success: true,
+      message: `يا ألف مرحب بيك يا ${clientName}! 👑 تم تسجيل وصولك في شاشة الاستقبال، والكرسي بيجهزلك حالاً! 💈✨`,
+      data: {
+        bookingId: targetBooking.id,
+        status: 'customer_arrived',
       },
     });
   } catch (err: any) {

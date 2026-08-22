@@ -182,6 +182,15 @@ router.patch(
       broadcastToBranch(booking.branch_id, 'SYNC_STATE', updated);
       broadcastGlobal('SYNC_STATE', { bookingId: req.params.id, status });
 
+      // Automatic WhatsApp Notification on Confirmation / Payment Approval
+      if (status === 'confirmed' && booking.customer_phone) {
+        import('../services/whatsapp.service.js').then(({ sendWhatsAppText }) => {
+          const clientName = booking.customer_name || 'عزيزنا العميل';
+          const msg = `ألف مبروك يا ${clientName}! 🎉\nتم تأكيد حجزك رقم #${booking.id} بنجاح لدى الصالون.\n\n✂️ الخدمة: ${booking.service_name || 'خدمة الصالون'}\n💈 الكابتن: ${booking.barber_name || 'كابتن الصالون الرئيسي'}\n\n📍 دورك وموقعك في الطابور المباشر:\nhttps://trimmind.up.railway.app/track?q=${booking.id}\n\nأول ما يقرب دورك هنبعتلك تذكير بالوصول فوراً! 👑`;
+          sendWhatsAppText(booking.customer_phone, msg).catch(() => {});
+        }).catch(() => {});
+      }
+
       return res.json({ success: true, message: 'تم تحديث حالة الحجز بنجاح', data: updated });
     } catch (error: any) {
       return res.status(500).json({ success: false, error: error.message });
