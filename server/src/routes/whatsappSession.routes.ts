@@ -1,5 +1,5 @@
 import { Router, Request, Response } from 'express';
-import { getWhatsAppState, initWhatsApp, sendWhatsAppText } from '../services/whatsapp.service.js';
+import { getWhatsAppState, initWhatsApp, resetWhatsAppSession, sendWhatsAppText } from '../services/whatsapp.service.js';
 import QRCode from 'qrcode';
 
 const router = Router();
@@ -17,7 +17,17 @@ router.get('/status', async (_req: Request, res: Response) => {
   });
 });
 
-// 2. Direct Static PNG Image (Never changes or blinks in the browser)
+// 2. Clean Reset Session
+router.post('/reset', async (_req: Request, res: Response) => {
+  try {
+    const state = await resetWhatsAppSession();
+    res.json({ success: true, message: 'تم إعادة تهيئة جلسة واتساب بنجاح.', data: state });
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// 3. Direct Static PNG Image
 router.get('/qr.png', async (_req: Request, res: Response) => {
   let state = getWhatsAppState();
   if (!state.qrCodeRaw && state.status === 'disconnected') {
@@ -38,7 +48,7 @@ router.get('/qr.png', async (_req: Request, res: Response) => {
   res.status(503).send('QR is being generated, please refresh in 2 seconds.');
 });
 
-// 3. Static, Non-Refreshing Web Page with Permanent QR Code
+// 4. Static Web Page
 router.get('/qr', async (_req: Request, res: Response) => {
   let state = getWhatsAppState();
   if (state.status === 'disconnected') {
@@ -99,6 +109,19 @@ router.get('/qr', async (_req: Request, res: Response) => {
           box-shadow: 0 10px 30px rgba(0,0,0,0.4);
         }
         .qr-img { width: 250px; height: 250px; display: block; border-radius: 8px; }
+        .btn-reset {
+          background: #20352e;
+          color: #a7c2b8;
+          border: 1px solid #2e4d43;
+          padding: 8px 18px;
+          border-radius: 999px;
+          font-size: 0.82rem;
+          font-family: inherit;
+          cursor: pointer;
+          margin-bottom: 16px;
+          transition: all 0.2s;
+        }
+        .btn-reset:hover { background: #2b473e; color: #fff; }
         .steps {
           text-align: right;
           background: #0a110f;
@@ -128,14 +151,17 @@ router.get('/qr', async (_req: Request, res: Response) => {
           <p>لربط رقم الواتساب: <strong style="color:#5eead4;">01005437633</strong></p>
           
           <div class="qr-wrapper">
-            <!-- Static Image that NEVER changes or reloads in DOM -->
             <img id="qrImg" class="qr-img" src="/api/whatsapp-session/qr.png?t=${Date.now()}" alt="WhatsApp QR Code" />
+          </div>
+
+          <div>
+            <button class="btn-reset" onclick="resetSession()">🧹 تنظيف وتوليد رمز QR جديد تماماً</button>
           </div>
 
           <div class="steps">
             <ol>
               <li>افتح تطبيق <strong>WhatsApp</strong> على هاتفك (01005437633).</li>
-              <li>اضغط على <strong>الثلاث نقاط ⚙️</strong> ثم <strong>الأجهزة المرتبطة (Linked Devices)</strong>.</li>
+              <li>اذهب إلى <strong>الإعدادات ⚙️</strong> ثم <strong>الأجهزة المرتبطة (Linked Devices)</strong>.</li>
               <li>اضغط على <strong>ربط جهاز (Link a Device)</strong> ووجّه الكاميرا نحو الرمز.</li>
             </ol>
           </div>
@@ -143,7 +169,12 @@ router.get('/qr', async (_req: Request, res: Response) => {
       </div>
 
       <script>
-        // Only check if connected in background, NEVER touch or refresh the QR image
+        async function resetSession() {
+          if (!confirm('هل تريد إعادة توليد رمز QR نظيف وجديد؟')) return;
+          await fetch('/api/whatsapp-session/reset', { method: 'POST' });
+          setTimeout(() => location.reload(), 1500);
+        }
+
         async function pollConnection() {
           try {
             const res = await fetch('/api/whatsapp-session/status');
@@ -165,7 +196,7 @@ router.get('/qr', async (_req: Request, res: Response) => {
   `);
 });
 
-// 4. Send text message endpoint
+// 5. Send text message endpoint
 router.post('/send', async (req: Request, res: Response) => {
   try {
     const { to, text } = req.body;

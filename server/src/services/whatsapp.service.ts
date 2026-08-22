@@ -122,38 +122,22 @@ export function getWhatsAppState(): WhatsAppState {
   return { ...state };
 }
 
-export async function generatePairingCode(phoneNumber: string = '01005437633'): Promise<string> {
-  let cleanPhone = phoneNumber.replace(/\D+/g, '');
-  if (cleanPhone.startsWith('01')) {
-    cleanPhone = '20' + cleanPhone.substring(1);
-  }
-  state.phoneNumber = cleanPhone;
-
-  if (!sock || state.status === 'disconnected') {
-    await initWhatsApp();
-  }
-
-  for (let i = 0; i < 15; i++) {
-    if (sock && !sock.authState?.creds?.registered) {
-      break;
-    }
-    await new Promise((r) => setTimeout(r, 400));
-  }
-
-  if (sock && !sock.authState?.creds?.registered) {
+export async function resetWhatsAppSession(): Promise<WhatsAppState> {
+  if (sock) {
     try {
-      const code = await sock.requestPairingCode(cleanPhone);
-      state.pairingCode = code;
-      state.status = 'qr_ready';
-      console.log(`📲 Generated fresh pairing code for ${cleanPhone}: ${code}`);
-      return code;
-    } catch (err: any) {
-      console.error('Pairing code generation error:', err.message);
-    }
+      sock.end(undefined);
+    } catch {}
+    sock = null;
   }
-
-  if (state.pairingCode) return state.pairingCode;
-  throw new Error('جاري تجهيز الاتصال، يرجى المحاولة بعد قليل.');
+  try {
+    await query(`DROP TABLE IF EXISTS whatsapp_auth`);
+  } catch {}
+  state.status = 'disconnected';
+  state.qrCodeDataUrl = null;
+  state.qrCodeRaw = null;
+  state.pairingCode = null;
+  isInitializing = false;
+  return initWhatsApp();
 }
 
 export async function initWhatsApp(): Promise<WhatsAppState> {
