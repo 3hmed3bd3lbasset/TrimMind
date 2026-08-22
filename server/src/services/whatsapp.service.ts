@@ -230,15 +230,15 @@ export async function initWhatsApp(): Promise<WhatsAppState> {
             msg.message.imageMessage?.caption ||
             '';
 
-          const contentKey = `${remoteJid}_${text.trim().toLowerCase()}`;
-          if (text && processedContentKeys.has(contentKey)) {
-            const lastTime = processedContentKeys.get(contentKey)!;
-            if (now - lastTime < 15000) {
-              console.log(`⚠️ Ignored duplicate content from ${remoteJid}: ${text}`);
+          const textKey = (text || 'img_attachment').trim().toLowerCase();
+          if (textKey && processedContentKeys.has(textKey)) {
+            const lastTime = processedContentKeys.get(textKey)!;
+            if (now - lastTime < 6000) {
+              console.log(`⚠️ Ignored duplicate WhatsApp text (${remoteJid}): ${text}`);
               continue;
             }
           }
-          if (text) processedContentKeys.set(contentKey, now);
+          if (textKey) processedContentKeys.set(textKey, now);
 
           // Prune cache
           if (processedMessageIds.size > 2000) {
