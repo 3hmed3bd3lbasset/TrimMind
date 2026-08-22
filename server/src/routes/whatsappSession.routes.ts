@@ -3,27 +3,30 @@ import { getWhatsAppState, initWhatsApp, sendWhatsAppText } from '../services/wh
 
 const router = Router();
 
-// 1. Get WhatsApp connection status and active pairing code / QR
+// 1. Get WhatsApp status and ensure it's initializing if disconnected
 router.get('/status', async (_req: Request, res: Response) => {
-  const state = getWhatsAppState();
+  let state = getWhatsAppState();
+  if (state.status === 'disconnected') {
+    initWhatsApp('01005437633');
+    state = getWhatsAppState();
+  }
   res.json({
     success: true,
     data: state,
   });
 });
 
-// 2. Request WhatsApp Pairing Code for a specific phone number
+// 2. Request Pairing Code for phone number
 router.post('/pair', async (req: Request, res: Response) => {
   try {
     const { phone = '01005437633' } = req.body;
     await initWhatsApp(phone);
 
-    // Give Baileys a moment to request the code
     setTimeout(() => {
       const state = getWhatsAppState();
       res.json({
         success: true,
-        message: 'تم طلب كود الربط لواتساب بنجاح.',
+        message: 'تم طلب كود الربط بنجاح.',
         data: {
           phone,
           pairingCode: state.pairingCode,
@@ -31,7 +34,7 @@ router.post('/pair', async (req: Request, res: Response) => {
           qrCodeDataUrl: state.qrCodeDataUrl,
         },
       });
-    }, 3500);
+    }, 2000);
   } catch (err: any) {
     res.status(500).json({ success: false, error: err.message });
   }
@@ -51,77 +54,175 @@ router.post('/send', async (req: Request, res: Response) => {
   }
 });
 
-// 4. View QR Code HTML page
+// 4. Interactive, Auto-Refreshing WhatsApp Connection Portal (QR + Pairing Code)
 router.get('/qr', async (_req: Request, res: Response) => {
   const state = getWhatsAppState();
-  if (state.status === 'connected') {
-    return res.send(`
-      <!DOCTYPE html>
-      <html dir="rtl">
-      <head><meta charset="utf-8"><title>WhatsApp Connected</title>
-      <style>body{font-family:sans-serif;background:#0e1614;color:#e8ede9;display:flex;align-items:center;justify-content:center;height:100vh;margin:0;}</style>
-      </head>
-      <body>
-        <div style="text-align:center;background:#182622;padding:40px;border-radius:24px;border:1px solid #2e4a42;">
-          <h1 style="color:#4ade80;">✅ واتساب متصل وجاهز للعمل!</h1>
-          <p>رقم الهاتف: ${state.phoneNumber || '01005437633'}</p>
-          <p>المساعد الذكي يعمل الآن ويرد على الرسائل تلقائياً.</p>
-        </div>
-      </body>
-      </html>
-    `);
-  }
-
-  if (state.pairingCode) {
-    return res.send(`
-      <!DOCTYPE html>
-      <html dir="rtl">
-      <head><meta charset="utf-8"><title>WhatsApp Pairing Code</title>
-      <style>body{font-family:sans-serif;background:#0e1614;color:#e8ede9;display:flex;align-items:center;justify-content:center;height:100vh;margin:0;}</style>
-      </head>
-      <body>
-        <div style="text-align:center;background:#182622;padding:40px;border-radius:24px;border:1px solid #2e4a42;">
-          <h2 style="color:#d4af37;">📲 كود ربط واتساب للرقم ${state.phoneNumber || '01005437633'}</h2>
-          <div style="font-size:36px;font-weight:bold;letter-spacing:6px;background:#0e1614;padding:15px;border-radius:12px;margin:20px 0;color:#6ee7b7;">
-            ${state.pairingCode}
-          </div>
-          <p>افتح واتساب من هاتفك -> الأجهزة المرتبطة -> ربط باستخدام رقم الهاتف -> واكتب هذا الكود.</p>
-        </div>
-      </body>
-      </html>
-    `);
-  }
-
-  if (state.qrCodeDataUrl) {
-    return res.send(`
-      <!DOCTYPE html>
-      <html dir="rtl">
-      <head><meta charset="utf-8"><title>WhatsApp QR Code</title>
-      <style>body{font-family:sans-serif;background:#0e1614;color:#e8ede9;display:flex;align-items:center;justify-content:center;height:100vh;margin:0;}</style>
-      </head>
-      <body>
-        <div style="text-align:center;background:#182622;padding:40px;border-radius:24px;border:1px solid #2e4a42;">
-          <h2>📷 امسح الـ QR Code من تطبيق واتساب</h2>
-          <img src="${state.qrCodeDataUrl}" style="width:280px;height:280px;border-radius:16px;margin:20px 0;" />
-          <p>افتح واتساب -> الأجهزة المرتبطة -> ربط جهاز -> ووجه الكاميرا نحو الرمز.</p>
-        </div>
-      </body>
-      </html>
-    `);
+  if (state.status === 'disconnected') {
+    initWhatsApp('01005437633');
   }
 
   res.send(`
     <!DOCTYPE html>
-    <html dir="rtl">
-    <head><meta charset="utf-8"><title>WhatsApp Connecting</title>
-    <meta http-equiv="refresh" content="3">
-    <style>body{font-family:sans-serif;background:#0e1614;color:#e8ede9;display:flex;align-items:center;justify-content:center;height:100vh;margin:0;}</style>
+    <html dir="rtl" lang="ar">
+    <head>
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      <title>ربط واتساب الصالون الذكي</title>
+      <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800&display=swap" rel="stylesheet">
+      <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+          font-family: 'Cairo', sans-serif;
+          background: #0d1412;
+          color: #e6ede8;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          min-height: 100vh;
+          padding: 20px;
+        }
+        .card {
+          background: #14221e;
+          border: 1px solid #233b34;
+          border-radius: 28px;
+          padding: 36px;
+          max-width: 460px;
+          width: 100%;
+          text-align: center;
+          box-shadow: 0 20px 40px rgba(0,0,0,0.5);
+        }
+        .badge {
+          display: inline-block;
+          padding: 6px 16px;
+          border-radius: 999px;
+          background: #1c332b;
+          color: #5eead4;
+          font-size: 0.85rem;
+          font-weight: 700;
+          margin-bottom: 16px;
+          border: 1px solid #2d5246;
+        }
+        h1 { font-size: 1.4rem; font-weight: 800; margin-bottom: 8px; color: #ffffff; }
+        p { font-size: 0.95rem; color: #9bb3aa; margin-bottom: 24px; line-height: 1.6; }
+        .qr-wrapper {
+          background: #ffffff;
+          padding: 16px;
+          border-radius: 20px;
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          margin-bottom: 20px;
+          box-shadow: 0 8px 24px rgba(0,0,0,0.3);
+          min-height: 240px;
+          min-width: 240px;
+        }
+        .qr-img { width: 220px; height: 220px; display: block; }
+        .pairing-box {
+          background: #0d1714;
+          border: 1px dashed #3a6356;
+          border-radius: 16px;
+          padding: 16px;
+          margin: 16px 0;
+        }
+        .pairing-code {
+          font-size: 2rem;
+          font-weight: 800;
+          letter-spacing: 6px;
+          color: #34d399;
+          font-family: monospace;
+          margin: 8px 0;
+        }
+        .steps {
+          text-align: right;
+          background: #0d1714;
+          padding: 16px 20px;
+          border-radius: 16px;
+          font-size: 0.88rem;
+          color: #a7c2b8;
+          margin-top: 20px;
+          border: 1px solid #1c332b;
+        }
+        .steps ol { padding-right: 20px; }
+        .steps li { margin-bottom: 8px; }
+        .spinner {
+          display: inline-block;
+          width: 36px;
+          height: 36px;
+          border: 4px solid #1c332b;
+          border-top-color: #34d399;
+          border-radius: 50%;
+          animation: spin 0.8s linear infinite;
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
+        .success-box {
+          background: #112d22;
+          border: 1px solid #22c55e;
+          color: #86efac;
+          padding: 24px;
+          border-radius: 20px;
+          margin: 10px 0;
+        }
+      </style>
     </head>
     <body>
-      <div style="text-align:center;background:#182622;padding:40px;border-radius:24px;">
-        <h2>⏳ جاري إنشاء كود الربط...</h2>
-        <p>سيتم تحديث الصفحة تلقائياً خلال ثوانٍ.</p>
+      <div class="card">
+        <div class="badge">💈 صالون TrimMind - مساعد الحجز الذكي</div>
+        <div id="content">
+          <div style="padding: 40px 0;">
+            <div class="spinner"></div>
+            <p style="margin-top: 20px; color: #5eead4;">جاري تجهيز رمز الربط لـ 01005437633...</p>
+          </div>
+        </div>
       </div>
+
+      <script>
+        async function checkStatus() {
+          try {
+            const res = await fetch('/api/whatsapp-session/status');
+            const json = await res.json();
+            const data = json.data || {};
+            const content = document.getElementById('content');
+
+            if (data.status === 'connected') {
+              content.innerHTML = \`
+                <div class="success-box">
+                  <h2 style="font-size: 1.5rem; margin-bottom: 8px; color:#4ade80;">✅ تم ربط الواتساب بنجاح!</h2>
+                  <p style="color:#bbf7d0; margin-bottom:0;">الرقم <strong>\${data.phoneNumber || '01005437633'}</strong> متصل بالسيرفر الآن، ومساعد الذكاء الاصطناعي يستقبل الرسائل ويرد عليها تلقائياً 👑💈</p>
+                </div>
+              \`;
+              return;
+            }
+
+            if (data.qrCodeDataUrl) {
+              content.innerHTML = \`
+                <h1>امسح رمز QR لربط الرقم</h1>
+                <p>امسح الرمز من خلال تطبيق واتساب على هاتفك للرقم <strong>01005437633</strong></p>
+                <div class="qr-wrapper">
+                  <img class="qr-img" src="\${data.qrCodeDataUrl}" alt="QR Code" />
+                </div>
+                \${data.pairingCode ? \`
+                  <div class="pairing-box">
+                    <span style="font-size:0.8rem; color:#85a89d;">أو استخدم كود الربط:</span>
+                    <div class="pairing-code">\${data.pairingCode}</div>
+                  </div>
+                \` : ''}
+                <div class="steps">
+                  <ol>
+                    <li>افتح تطبيق <strong>WhatsApp</strong> على هاتفك.</li>
+                    <li>اضغط على <strong>الثلاث نقاط ⚙️</strong> ثم <strong>الأجهزة المرتبطة (Linked Devices)</strong>.</li>
+                    <li>اضغط على <strong>ربط جهاز (Link a Device)</strong> ووجّه الكاميرا نحو الرمز.</li>
+                  </ol>
+                </div>
+              \`;
+            }
+          } catch (e) {
+            console.error(e);
+          }
+        }
+
+        checkStatus();
+        setInterval(checkStatus, 2000);
+      </script>
     </body>
     </html>
   `);
