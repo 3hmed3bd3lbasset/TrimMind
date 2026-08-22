@@ -180,8 +180,9 @@ export async function initWhatsApp(): Promise<WhatsAppState> {
       }
     });
 
-    // De-duplication cache for message IDs (TTL 10 minutes)
+    // De-duplication cache for message IDs and content (TTL 10 minutes)
     const processedMessageIds = new Map<string, number>();
+    const processedContentKeys = new Map<string, number>();
 
     // Handle Incoming Messages & Forward to n8n Webhook
     sock.ev.on('messages.upsert', async (m: any) => {
@@ -191,30 +192,44 @@ export async function initWhatsApp(): Promise<WhatsAppState> {
 
       for (const msg of m.messages) {
         if (!msg.key.fromMe && msg.message) {
+          const remoteJid = msg.key.remoteJid || '';
           const msgId = msg.key.id;
+
           if (msgId) {
             if (processedMessageIds.has(msgId)) {
               console.log(`⚠️ Ignored duplicate message ID: ${msgId}`);
               continue;
             }
             processedMessageIds.set(msgId, now);
-
-            // Prune cache if it gets too large
-            if (processedMessageIds.size > 2000) {
-              for (const [id, time] of processedMessageIds.entries()) {
-                if (now - time > 10 * 60 * 1000) {
-                  processedMessageIds.delete(id);
-                }
-              }
-            }
           }
 
-          const remoteJid = msg.key.remoteJid;
           const text =
             msg.message.conversation ||
             msg.message.extendedTextMessage?.text ||
             msg.message.imageMessage?.caption ||
             '';
+
+          const contentKey = `${remoteJid}_${text.trim().toLowerCase()}`;
+          if (text && processedContentKeys.has(contentKey)) {
+            const lastTime = processedContentKeys.get(contentKey)!;
+            if (now - lastTime < 15000) {
+              console.log(`⚠️ Ignored duplicate content from ${remoteJid}: ${text}`);
+              continue;
+            }
+          }
+          if (text) processedContentKeys.set(contentKey, now);
+
+          // Prune cache
+          if (processedMessageIds.size > 2000) {
+            for (const [id, time] of processedMessageIds.entries()) {
+              if (now - time > 10 * 60 * 1000) processedMessageIds.delete(id);
+            }
+          }
+          if (processedContentKeys.size > 2000) {
+            for (const [k, time] of processedContentKeys.entries()) {
+              if (now - time > 10 * 60 * 1000) processedContentKeys.delete(k);
+            }
+          }
 
           console.log(`📩 Incoming WhatsApp from ${remoteJid}: ${text}`);
 
