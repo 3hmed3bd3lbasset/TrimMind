@@ -10,17 +10,21 @@ Set the following variables in your Railway Project or `.env` file:
 
 ```env
 # Salon Backend Agent API Secret (Used to authenticate n8n requests)
-AGENT_API_SECRET=your_super_secret_agent_key_2026
+AGENT_API_SECRET=trim-mind-agent-secret-key-2026
 
 # Google Gemini API Key
 GEMINI_API_KEY=AIzaSy...
 
+# Live Salon Backend URL (Railway)
+BACKEND_API_URL=https://trimmind.up.railway.app
+
+# Live n8n Service URL (Railway)
+N8N_URL=https://n8n-server-production-bdce.up.railway.app
+N8N_WEBHOOK_URL=https://n8n-server-production-bdce.up.railway.app/webhook/whatsapp-webhook
+
 # Evolution API Configuration
 EVOLUTION_API_URL=https://evolution.yourdomain.com
 EVOLUTION_API_KEY=your_evolution_api_global_key
-
-# n8n Webhook Target URL
-N8N_WEBHOOK_URL=https://n8n.yourdomain.com/webhook/whatsapp-webhook
 ```
 
 ---
