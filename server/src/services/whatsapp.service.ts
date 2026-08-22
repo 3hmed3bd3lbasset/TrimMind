@@ -10,15 +10,19 @@ import https from 'https';
 import fs from 'fs';
 import path from 'path';
 
-const UPLOAD_DIR = process.env.UPLOAD_DIR || (fs.existsSync('/app/server/uploads') ? '/app/server/uploads' : 'uploads');
+const UPLOAD_DIR =
+  process.env.UPLOAD_DIR ||
+  (process.platform === 'linux' ? '/app/server/uploads' : path.resolve(process.cwd(), 'server', 'uploads'));
 const AUTH_DIR = process.env.WHATSAPP_AUTH_DIR || path.resolve(UPLOAD_DIR, 'whatsapp_auth');
 const N8N_WEBHOOK_URL =
   process.env.N8N_WEBHOOK_URL || 'https://n8n-server-production-bdce.up.railway.app/webhook/whatsapp-webhook';
 
 // Ensure auth dir exists
-if (!fs.existsSync(AUTH_DIR)) {
-  fs.mkdirSync(AUTH_DIR, { recursive: true });
-}
+try {
+  if (!fs.existsSync(AUTH_DIR)) {
+    fs.mkdirSync(AUTH_DIR, { recursive: true });
+  }
+} catch (e) {}
 
 interface WhatsAppState {
   status: 'disconnected' | 'connecting' | 'connected' | 'qr_ready';
