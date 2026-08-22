@@ -143,6 +143,31 @@ export async function ensureInitialDbData() {
       }
       console.log('✅ Auto-seeded cafeteria products into MySQL DB');
     }
+
+    // 6. Check & Seed Profiles (Super Admin / Manager & Receptionist)
+    await query(`
+      INSERT INTO profiles (id, full_name, phone, email, password_hash, role, is_super_admin, is_active)
+      VALUES ('usr-manager-super', 'أحمد عبدالباسط (المدير العام)', '01285694670', 'admin@salon.com', 'Admin@123456', 'manager', 1, 1)
+      ON DUPLICATE KEY UPDATE 
+        full_name = VALUES(full_name),
+        phone = VALUES(phone),
+        password_hash = VALUES(password_hash),
+        role = 'manager',
+        is_super_admin = 1,
+        is_active = 1;
+    `);
+
+    await query(`
+      INSERT INTO profiles (id, full_name, phone, email, password_hash, role, branch_id, is_super_admin, is_active)
+      VALUES ('usr-receptionist-main', 'موظف الاستقبال', '01005437633', 'reception@salon.com', 'Admin@123456', 'receptionist', 'branch-elhdad', 0, 1)
+      ON DUPLICATE KEY UPDATE 
+        full_name = VALUES(full_name),
+        phone = VALUES(phone),
+        password_hash = VALUES(password_hash),
+        role = 'receptionist',
+        is_active = 1;
+    `);
+    console.log('✅ Auto-seeded manager & staff accounts in MySQL DB');
   } catch (err: any) {
     console.warn('Initial DB seeding notice:', err?.message);
   }
