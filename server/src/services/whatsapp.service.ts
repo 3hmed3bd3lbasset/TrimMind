@@ -180,12 +180,35 @@ export async function initWhatsApp(): Promise<WhatsAppState> {
       }
     });
 
+    // De-duplication cache for message IDs (TTL 10 minutes)
+    const processedMessageIds = new Map<string, number>();
+
     // Handle Incoming Messages & Forward to n8n Webhook
     sock.ev.on('messages.upsert', async (m: any) => {
       if (m.type !== 'notify') return;
 
+      const now = Date.now();
+
       for (const msg of m.messages) {
         if (!msg.key.fromMe && msg.message) {
+          const msgId = msg.key.id;
+          if (msgId) {
+            if (processedMessageIds.has(msgId)) {
+              console.log(`⚠️ Ignored duplicate message ID: ${msgId}`);
+              continue;
+            }
+            processedMessageIds.set(msgId, now);
+
+            // Prune cache if it gets too large
+            if (processedMessageIds.size > 2000) {
+              for (const [id, time] of processedMessageIds.entries()) {
+                if (now - time > 10 * 60 * 1000) {
+                  processedMessageIds.delete(id);
+                }
+              }
+            }
+          }
+
           const remoteJid = msg.key.remoteJid;
           const text =
             msg.message.conversation ||
