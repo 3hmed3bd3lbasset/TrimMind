@@ -32,6 +32,8 @@ import uploadRoutes from './routes/upload.routes.js';
 import auditRoutes from './routes/audit.routes.js';
 import aiRoutes from './routes/ai.routes.js';
 import agentToolsRoutes from './routes/agentTools.routes.js';
+import whatsappSessionRoutes from './routes/whatsappSession.routes.js';
+import { initWhatsApp } from './services/whatsapp.service.js';
 
 dotenv.config();
 
@@ -76,6 +78,7 @@ app.use('/api/audit-logs', auditRoutes);
 app.use('/api/ai', aiRoutes);
 app.use('/api/agent-tools', agentToolsRoutes);
 app.use('/api/whatsapp', agentToolsRoutes);
+app.use('/api/whatsapp-session', whatsappSessionRoutes);
 
 // Health check endpoint
 app.get('/api/health', (_req, res) => {
@@ -124,7 +127,9 @@ async function startServer() {
     console.log(`📡 URL: http://localhost:${PORT}`);
     console.log(`🔒 Security: Helmet, CORS, RateLimiting, Bcrypt, JWT Active`);
     console.log(`⚡ Realtime: WebSockets Socket.io Ready`);
+    console.log(`📱 Initializing WhatsApp Integration Engine for 01005437633...`);
     console.log('====================================================');
+    initWhatsApp('01005437633');
   });
 }
 
