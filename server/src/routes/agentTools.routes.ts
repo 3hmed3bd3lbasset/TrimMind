@@ -96,6 +96,29 @@ router.post('/customer/lookup', async (req: Request, res: Response) => {
 });
 
 // ---------------------------------------------------------------------------
+// 0. Branches List (Live Branches, Address, Working Hours, Phone)
+// ---------------------------------------------------------------------------
+router.post('/branches/list', async (_req: Request, res: Response) => {
+  try {
+    const branches = await query<any[]>('SELECT * FROM branches WHERE is_active = 1 ORDER BY name ASC');
+    return res.json({
+      success: true,
+      data: branches.map((b) => ({
+        id: b.id,
+        name: b.name,
+        address: b.address,
+        phone: b.phone,
+        openingTime: b.opening_time || '10:00',
+        closingTime: b.closing_time || '23:00',
+        totalChairs: b.total_chairs || 4,
+      })),
+    });
+  } catch (err: any) {
+    return res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// ---------------------------------------------------------------------------
 // 2. Services List
 // ---------------------------------------------------------------------------
 router.post('/services/list', async (req: Request, res: Response) => {
