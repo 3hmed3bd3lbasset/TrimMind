@@ -487,7 +487,12 @@ router.post('/bookings/create-pending', async (req: Request, res: Response) => {
     const resolvedPrice = Number(matchedService.price || 180);
     const resolvedBookingType = (serviceId?.toLowerCase().includes('vip') || matchedService.name.toLowerCase().includes('vip') || bookingType === 'vip') ? 'vip' : 'normal';
 
-    const bookingDate = (startsAt || new Date().toISOString()).split('T')[0];
+    let finalStartsAt = startsAt || `${new Date().toISOString().split('T')[0]} 16:00:00`;
+    const currentYear = new Date().getFullYear().toString();
+    if (finalStartsAt.startsWith('2025') || finalStartsAt.startsWith('2024') || finalStartsAt.startsWith('2023')) {
+      finalStartsAt = finalStartsAt.replace(/^\d{4}/, currentYear);
+    }
+    const bookingDate = finalStartsAt.split('T')[0].split(' ')[0];
     const existingDayBookings = liveSyncedBookings.filter((b) => (b.starts_at || b.startsAt || '').startsWith(bookingDate));
     const nextQueueNum = existingDayBookings.length + 1;
 
@@ -500,7 +505,7 @@ router.post('/bookings/create-pending', async (req: Request, res: Response) => {
         serviceId: matchedService.id,
         additionalServiceIds,
         bookingType: resolvedBookingType,
-        startsAt: startsAt || `${bookingDate} 16:00:00`,
+        startsAt: finalStartsAt,
         notes: notes || 'تم الحجز عبر مساعد واتساب الذكي',
       };
 
@@ -565,8 +570,8 @@ router.post('/bookings/create-pending', async (req: Request, res: Response) => {
         status: 'awaiting_payment',
         queue_number: nextQueueNum,
         queueNumber: nextQueueNum,
-        starts_at: startsAt || `${bookingDate} 16:00:00`,
-        startsAt: startsAt || `${bookingDate} 16:00:00`,
+        starts_at: finalStartsAt,
+        startsAt: finalStartsAt,
         depositRequired: 50,
         booking_fee_at_booking: 50,
         totalAmount: resolvedPrice,

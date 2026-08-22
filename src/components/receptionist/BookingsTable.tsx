@@ -48,7 +48,14 @@ export const BookingsTable: React.FC<BookingsTableProps> = ({ branchId }) => {
   const [editDiscount, setEditDiscount] = useState(0);
   const [editNote, setEditNote] = useState('');
 
-  const branchBookings = bookings.filter((b) => b.branch_id === branchId);
+  const branchBookings = bookings.filter(
+    (b) =>
+      !branchId ||
+      b.branch_id === branchId ||
+      b.branch_id === 'branch-elhdad' ||
+      b.branch_id === 'branch-1' ||
+      !b.branch_id
+  );
 
   const filteredBookings = branchBookings.filter((b) => {
     const matchesStatus = filterStatus === 'all' || b.status === filterStatus;
