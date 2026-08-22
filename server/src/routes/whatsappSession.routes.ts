@@ -39,7 +39,7 @@ router.post('/pair', async (req: Request, res: Response) => {
 });
 
 // 3. Static Web Page with BOTH Pairing Code and QR Code together + Manual Refresh Button
-router.get('/qr', async (_req: Request, res: Response) => {
+router.get(['/qr', '/page'], async (_req: Request, res: Response) => {
   let state = getWhatsAppState();
   if (state.status === 'disconnected') {
     initWhatsApp();
