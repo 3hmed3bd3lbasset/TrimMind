@@ -95,6 +95,38 @@ router.post('/customer/lookup', async (req: Request, res: Response) => {
   }
 });
 
+let liveSyncedState: {
+  branches: any[];
+  services: any[];
+  barbers: any[];
+  settings: any;
+} = {
+  branches: [
+    {
+      id: 'branch-elhdad',
+      name: 'الحداد - ELHDAD',
+      address: 'سقيل - مركز اوسيم',
+      phone: '01005437633',
+      openingTime: '10:00',
+      closingTime: '23:30',
+      totalChairs: 4,
+    },
+  ],
+  services: [],
+  barbers: [],
+  settings: null,
+};
+
+// Sync live state from web frontend directly
+router.post('/sync-store', (req: Request, res: Response) => {
+  const { branches, services, barbers, settings } = req.body;
+  if (Array.isArray(branches) && branches.length > 0) liveSyncedState.branches = branches;
+  if (Array.isArray(services) && services.length > 0) liveSyncedState.services = services;
+  if (Array.isArray(barbers) && barbers.length > 0) liveSyncedState.barbers = barbers;
+  if (settings) liveSyncedState.settings = settings;
+  return res.json({ success: true, message: 'تمت المزامنة الحية بنجاح' });
+});
+
 // ---------------------------------------------------------------------------
 // 0. Branches List (Live Branches, Address, Working Hours, Phone)
 // ---------------------------------------------------------------------------
@@ -102,17 +134,7 @@ router.post('/branches/list', async (_req: Request, res: Response) => {
   try {
     let branches = await query<any[]>('SELECT * FROM branches WHERE is_active = 1 ORDER BY name ASC');
     if (!branches || branches.length === 0) {
-      branches = [
-        {
-          id: 'branch-elhdad',
-          name: 'الحداد - ELHDAD',
-          address: 'سقيل - مركز اوسيم',
-          phone: '01005437633',
-          opening_time: '10:00',
-          closing_time: '23:30',
-          total_chairs: 4,
-        },
-      ];
+      branches = liveSyncedState.branches;
     }
     return res.json({
       success: true,
@@ -121,9 +143,9 @@ router.post('/branches/list', async (_req: Request, res: Response) => {
         name: b.name,
         address: b.address,
         phone: b.phone,
-        openingTime: b.opening_time || '10:00',
-        closingTime: b.closing_time || '23:30',
-        totalChairs: b.total_chairs || 4,
+        openingTime: b.opening_time || b.openingTime || '10:00',
+        closingTime: b.closing_time || b.closingTime || '23:30',
+        totalChairs: b.total_chairs || b.totalChairs || 4,
       })),
     });
   } catch (err: any) {
@@ -147,6 +169,13 @@ router.post('/services/list', async (req: Request, res: Response) => {
 
     sql += ' ORDER BY price ASC';
     let services = await query<any[]>(sql, params);
+
+    if ((!services || services.length === 0) && liveSyncedState.services.length > 0) {
+      services = liveSyncedState.services;
+      if (category) {
+        services = services.filter((s: any) => s.category === category);
+      }
+    }
 
     if (!services || services.length === 0) {
       services = [
@@ -196,9 +225,9 @@ router.post('/services/list', async (req: Request, res: Response) => {
         name: s.name,
         description: s.description,
         price: Number(s.price),
-        durationMinutes: s.duration_minutes,
+        durationMinutes: s.duration_minutes || s.durationMinutes || 30,
         category: s.category,
-        isVipOnly: Boolean(s.is_vip_only),
+        isVipOnly: Boolean(s.is_vip_only || s.isVipOnly),
       })),
     });
   } catch (err: any) {
@@ -227,6 +256,13 @@ router.post('/barbers/list', async (req: Request, res: Response) => {
 
     let barbers = await query<any[]>(sql, params);
 
+    if ((!barbers || barbers.length === 0) && liveSyncedState.barbers.length > 0) {
+      barbers = liveSyncedState.barbers;
+      if (branchId) {
+        barbers = barbers.filter((b: any) => b.branch_id === branchId || b.branchId === branchId);
+      }
+    }
+
     if (!barbers || barbers.length === 0) {
       barbers = [
         {
@@ -254,12 +290,12 @@ router.post('/barbers/list', async (req: Request, res: Response) => {
       success: true,
       data: barbers.map((b) => ({
         id: b.id,
-        name: b.full_name,
+        name: b.full_name || b.name,
         specialty: b.specialty || 'مصفف محترف',
         rating: Number(b.rating || 4.9),
-        ratingCount: b.rating_count || 0,
-        branchId: b.branch_id,
-        branchName: b.branch_name || 'الحداد - ELHDAD',
+        ratingCount: b.rating_count || b.ratingCount || 0,
+        branchId: b.branch_id || b.branchId,
+        branchName: b.branch_name || b.branchName || 'الحداد - ELHDAD',
       })),
     });
   } catch (err: any) {

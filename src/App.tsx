@@ -62,13 +62,43 @@ function AppLayout() {
   const isDisplayScreen =
     location.pathname === '/display' || location.pathname === '/queue-display';
 
-  // Cross-tab real-time live synchronization
+  // Cross-tab real-time live synchronization + Auto-sync store to backend for WhatsApp bot
   useEffect(() => {
-    const unsubscribe = initRealtimeSync(() => {
-      // Instantly rehydrate state from storage on any change in other tabs/screens
-      useSalonStore.persist?.rehydrate();
+    const syncToBackend = () => {
+      try {
+        const { branches, services, barbers, settings } = useSalonStore.getState();
+        if (branches.length > 0 || services.length > 0 || barbers.length > 0) {
+          fetch('/api/agent-tools/sync-store', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ branches, services, barbers, settings }),
+          }).catch(() => {});
+        }
+      } catch (e) {}
+    };
+
+    // Sync on mount
+    syncToBackend();
+
+    // Sync on store update
+    const unsubStore = useSalonStore.subscribe((state, prevState) => {
+      if (
+        state.branches !== prevState.branches ||
+        state.services !== prevState.services ||
+        state.barbers !== prevState.barbers ||
+        state.settings !== prevState.settings
+      ) {
+        syncToBackend();
+      }
     });
+
+    const unsubscribe = initRealtimeSync(() => {
+      useSalonStore.persist?.rehydrate();
+      syncToBackend();
+    });
+
     return () => {
+      unsubStore();
       unsubscribe();
     };
   }, []);
