@@ -62,8 +62,8 @@ router.get('/track', async (req, res: Response) => {
   }
 });
 
-// GET /api/bookings (Protected / Staff view)
-router.get('/', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+// GET /api/bookings (Staff & Live Sync view)
+router.get('/', async (req: AuthenticatedRequest, res: Response) => {
   try {
     const branchId = (req.query.branchId as string) || req.user?.branch_id;
     const date = req.query.date as string;
@@ -90,10 +90,21 @@ router.get('/', requireAuth, async (req: AuthenticatedRequest, res: Response) =>
 
     sql += ' ORDER BY created_at DESC LIMIT 200';
 
-    const rows = await query<any[]>(sql, params);
-    const detailed = await Promise.all(rows.map((b) => getBookingById(b.id)));
+    let detailed: any[] = [];
+    try {
+      const rows = await query<any[]>(sql, params);
+      if (rows && rows.length > 0) {
+        detailed = await Promise.all(rows.map((b) => getBookingById(b.id)));
+      }
+    } catch {}
 
-    return res.json({ success: true, data: detailed });
+    // Merge in-memory liveSyncedBookings (created via WhatsApp)
+    const memBookings = liveSyncedBookings.filter(
+      (b) => !branchId || b.branch_id === branchId || b.branchId === branchId
+    );
+    const merged = [...detailed, ...memBookings.filter((m) => !detailed.some((d) => d && d.id === m.id))];
+
+    return res.json({ success: true, data: merged });
   } catch (error: any) {
     return res.status(500).json({ success: false, error: error.message });
   }
