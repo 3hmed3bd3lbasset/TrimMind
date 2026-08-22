@@ -148,30 +148,28 @@ export async function generatePairingCode(phoneNumber: string = '01005437633'): 
   state.phoneNumber = cleanPhone;
 
   if (!sock || state.status === 'disconnected') {
-    await initWhatsApp();
+    initWhatsApp();
   }
 
-  for (let i = 0; i < 15; i++) {
+  for (let i = 0; i < 25; i++) {
     if (sock && !sock.authState?.creds?.registered) {
-      break;
+      try {
+        const code = await sock.requestPairingCode(cleanPhone);
+        if (code) {
+          state.pairingCode = code;
+          state.status = 'qr_ready';
+          console.log(`📲 Generated pairing code for ${cleanPhone}: ${code}`);
+          return code;
+        }
+      } catch (err: any) {
+        // Socket connecting, retry in loop
+      }
     }
-    await new Promise((r) => setTimeout(r, 400));
-  }
-
-  if (sock && !sock.authState?.creds?.registered) {
-    try {
-      const code = await sock.requestPairingCode(cleanPhone);
-      state.pairingCode = code;
-      state.status = 'qr_ready';
-      console.log(`📲 Generated pairing code for ${cleanPhone}: ${code}`);
-      return code;
-    } catch (err: any) {
-      console.error('Pairing code generation error:', err.message);
-    }
+    await new Promise((r) => setTimeout(r, 500));
   }
 
   if (state.pairingCode) return state.pairingCode;
-  throw new Error('جاري تجهيز الاتصال، يرجى المحاولة بعد قليل.');
+  throw new Error('جاري تجهيز السيرفر، اضغط على زر التوليد مرة أخرى.');
 }
 
 export async function initWhatsApp(): Promise<WhatsAppState> {

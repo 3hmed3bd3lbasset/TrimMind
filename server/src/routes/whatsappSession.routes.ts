@@ -21,7 +21,6 @@ router.get('/status', async (_req: Request, res: Response) => {
 router.post('/pair', async (req: Request, res: Response) => {
   try {
     const { phone = '01005437633' } = req.body;
-    await resetWhatsAppSession();
     const code = await generatePairingCode(phone);
     const state = getWhatsAppState();
     res.json({
