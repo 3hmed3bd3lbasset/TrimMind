@@ -1,5 +1,6 @@
 import { Router, Request, Response } from 'express';
 import { getWhatsAppState, initWhatsApp, sendWhatsAppText } from '../services/whatsapp.service.js';
+import QRCode from 'qrcode';
 
 const router = Router();
 
@@ -16,41 +17,30 @@ router.get('/status', async (_req: Request, res: Response) => {
   });
 });
 
-// 2. Restart socket for fresh QR code
-router.post('/refresh-qr', async (_req: Request, res: Response) => {
-  try {
+// 2. Direct Static PNG Image (Never changes or blinks in the browser)
+router.get('/qr.png', async (_req: Request, res: Response) => {
+  let state = getWhatsAppState();
+  if (!state.qrCodeRaw && state.status === 'disconnected') {
     await initWhatsApp();
-    // Wait for new QR
     for (let i = 0; i < 10; i++) {
-      const state = getWhatsAppState();
-      if (state.qrCodeDataUrl || state.status === 'connected') {
-        return res.json({ success: true, data: state });
-      }
-      await new Promise((r) => setTimeout(r, 300));
+      state = getWhatsAppState();
+      if (state.qrCodeRaw) break;
+      await new Promise((r) => setTimeout(r, 400));
     }
-    res.json({ success: true, data: getWhatsAppState() });
-  } catch (err: any) {
-    res.status(500).json({ success: false, error: err.message });
   }
+
+  if (state.qrCodeRaw) {
+    res.setHeader('Content-Type', 'image/png');
+    const buffer = await QRCode.toBuffer(state.qrCodeRaw, { width: 320, margin: 2 });
+    return res.send(buffer);
+  }
+
+  res.status(503).send('QR is being generated, please refresh in 2 seconds.');
 });
 
-// 3. Send text message
-router.post('/send', async (req: Request, res: Response) => {
-  try {
-    const { to, text } = req.body;
-    if (!to || !text) {
-      return res.status(400).json({ success: false, error: 'رقم المستلم ونص الرسالة مطلوبان.' });
-    }
-    await sendWhatsAppText(to, text);
-    res.json({ success: true, message: 'تم إرسال الرسالة بنجاح.' });
-  } catch (err: any) {
-    res.status(500).json({ success: false, error: err.message });
-  }
-});
-
-// 4. Interactive Live QR Scanner Portal with Countdown & Refresh Button
+// 3. Static, Non-Refreshing Web Page with Permanent QR Code
 router.get('/qr', async (_req: Request, res: Response) => {
-  const state = getWhatsAppState();
+  let state = getWhatsAppState();
   if (state.status === 'disconnected') {
     initWhatsApp();
   }
@@ -61,7 +51,7 @@ router.get('/qr', async (_req: Request, res: Response) => {
     <head>
       <meta charset="utf-8">
       <meta name="viewport" content="width=device-width, initial-scale=1.0">
-      <title>ربط واتساب الصالون الذكي</title>
+      <title>رمز QR ربط واتساب الصالون</title>
       <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800&display=swap" rel="stylesheet">
       <style>
         * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -96,52 +86,19 @@ router.get('/qr', async (_req: Request, res: Response) => {
           margin-bottom: 16px;
           border: 1px solid #28473c;
         }
-        h1 { font-size: 1.35rem; font-weight: 800; margin-bottom: 6px; color: #ffffff; }
-        p { font-size: 0.92rem; color: #9bb3aa; margin-bottom: 16px; line-height: 1.5; }
+        h1 { font-size: 1.4rem; font-weight: 800; margin-bottom: 8px; color: #ffffff; }
+        p { font-size: 0.92rem; color: #9bb3aa; margin-bottom: 20px; line-height: 1.5; }
         .qr-wrapper {
           background: #ffffff;
-          padding: 14px;
+          padding: 16px;
           border-radius: 20px;
           display: inline-flex;
           align-items: center;
           justify-content: center;
-          margin-bottom: 12px;
+          margin-bottom: 20px;
           box-shadow: 0 10px 30px rgba(0,0,0,0.4);
-          position: relative;
         }
-        .qr-img { width: 220px; height: 220px; display: block; border-radius: 8px; }
-        .timer-bar-bg {
-          width: 100%;
-          height: 6px;
-          background: #1c2b26;
-          border-radius: 999px;
-          overflow: hidden;
-          margin: 10px 0 18px 0;
-        }
-        .timer-bar {
-          height: 100%;
-          background: linear-gradient(90deg, #10b981, #34d399);
-          width: 100%;
-          transition: width 1s linear;
-        }
-        .btn-refresh {
-          display: inline-flex;
-          align-items: center;
-          justify-content: center;
-          gap: 8px;
-          background: #10b981;
-          color: #06281e;
-          font-family: inherit;
-          font-size: 0.95rem;
-          font-weight: 800;
-          padding: 10px 24px;
-          border-radius: 999px;
-          border: none;
-          cursor: pointer;
-          margin-bottom: 16px;
-          transition: all 0.15s;
-        }
-        .btn-refresh:hover { background: #34d399; }
+        .qr-img { width: 250px; height: 250px; display: block; border-radius: 8px; }
         .steps {
           text-align: right;
           background: #0a110f;
@@ -153,16 +110,6 @@ router.get('/qr', async (_req: Request, res: Response) => {
         }
         .steps ol { padding-right: 20px; }
         .steps li { margin-bottom: 8px; }
-        .spinner {
-          display: inline-block;
-          width: 40px;
-          height: 40px;
-          border: 4px solid #1c2b26;
-          border-top-color: #34d399;
-          border-radius: 50%;
-          animation: spin 0.8s linear infinite;
-        }
-        @keyframes spin { to { transform: rotate(360deg); } }
         .success-box {
           background: #0f2b20;
           border: 1px solid #22c55e;
@@ -175,105 +122,61 @@ router.get('/qr', async (_req: Request, res: Response) => {
     </head>
     <body>
       <div class="card">
-        <div class="badge">💈 صالون TrimMind - مساعد الحجز الذكي</div>
-        <div id="content">
-          <div style="padding: 40px 0;">
-            <div class="spinner"></div>
-            <p style="margin-top: 16px; color: #5eead4;">جاري تجهيز رمز الربط لـ 01005437633...</p>
+        <div class="badge">💈 صالون TrimMind - ربط رقم واتساب</div>
+        <div id="mainContainer">
+          <h1>امسح رمز QR لربط الرقم</h1>
+          <p>لربط رقم الواتساب: <strong style="color:#5eead4;">01005437633</strong></p>
+          
+          <div class="qr-wrapper">
+            <!-- Static Image that NEVER changes or reloads in DOM -->
+            <img id="qrImg" class="qr-img" src="/api/whatsapp-session/qr.png?t=${Date.now()}" alt="WhatsApp QR Code" />
+          </div>
+
+          <div class="steps">
+            <ol>
+              <li>افتح تطبيق <strong>WhatsApp</strong> على هاتفك (01005437633).</li>
+              <li>اضغط على <strong>الثلاث نقاط ⚙️</strong> ثم <strong>الأجهزة المرتبطة (Linked Devices)</strong>.</li>
+              <li>اضغط على <strong>ربط جهاز (Link a Device)</strong> ووجّه الكاميرا نحو الرمز.</li>
+            </ol>
           </div>
         </div>
       </div>
 
       <script>
-        let currentQr = '';
-        let timerSeconds = 20;
-        let timerInterval = null;
-
-        function startTimer() {
-          timerSeconds = 20;
-          if (timerInterval) clearInterval(timerInterval);
-          timerInterval = setInterval(() => {
-            timerSeconds--;
-            const bar = document.getElementById('timerBar');
-            const txt = document.getElementById('timerText');
-            if (bar) bar.style.width = (timerSeconds / 20 * 100) + '%';
-            if (txt) txt.innerText = 'صلاحية الرمز: ' + timerSeconds + ' ثانية';
-            if (timerSeconds <= 0) {
-              clearInterval(timerInterval);
-              checkStatus();
-            }
-          }, 1000);
-        }
-
-        async function manualRefresh() {
-          const btn = document.getElementById('btnRefresh');
-          if (btn) {
-            btn.innerText = '⏳ جاري تحديث الرمز...';
-            btn.disabled = true;
-          }
-          await fetch('/api/whatsapp-session/refresh-qr', { method: 'POST' });
-          await checkStatus();
-        }
-
-        async function checkStatus() {
+        // Only check if connected in background, NEVER touch or refresh the QR image
+        async function pollConnection() {
           try {
             const res = await fetch('/api/whatsapp-session/status');
             const json = await res.json();
-            const data = json.data || {};
-            const content = document.getElementById('content');
-
-            if (data.status === 'connected') {
-              if (timerInterval) clearInterval(timerInterval);
-              content.innerHTML = \`
+            if (json.data && json.data.status === 'connected') {
+              document.getElementById('mainContainer').innerHTML = \`
                 <div class="success-box">
                   <h2 style="font-size: 1.5rem; margin-bottom: 8px; color:#4ade80;">✅ تم ربط الواتساب بنجاح!</h2>
                   <p style="color:#bbf7d0; margin-bottom:0;">الرقم <strong>01005437633</strong> متصل بالسيرفر ومحفوظ في قاعدة البيانات، ومساعد الذكاء الاصطناعي يستقبل الرسائل ويرد عليها تلقائياً 👑💈</p>
                 </div>
               \`;
-              return;
             }
-
-            if (data.qrCodeDataUrl) {
-              if (data.qrCodeDataUrl !== currentQr) {
-                currentQr = data.qrCodeDataUrl;
-                startTimer();
-              }
-
-              content.innerHTML = \`
-                <h1>امسح رمز QR لربط الرقم</h1>
-                <p>لربط رقم الصالون: <strong style="color:#5eead4;">01005437633</strong></p>
-                
-                <div class="qr-wrapper">
-                  <img class="qr-img" src="\${data.qrCodeDataUrl}" alt="QR Code" />
-                </div>
-
-                <div class="timer-bar-bg"><div id="timerBar" class="timer-bar"></div></div>
-                <div id="timerText" style="font-size:0.8rem; color:#85a89d; margin-bottom:12px;">صلاحية الرمز: \${timerSeconds} ثانية</div>
-
-                <button id="btnRefresh" class="btn-refresh" onclick="manualRefresh()">
-                  🔄 توليد رمز QR جديد طازج
-                </button>
-
-                <div class="steps">
-                  <ol>
-                    <li>افتح تطبيق <strong>WhatsApp</strong> على هاتفك (01005437633).</li>
-                    <li>اضغط على <strong>الثلاث نقاط ⚙️</strong> ثم <strong>الأجهزة المرتبطة (Linked Devices)</strong>.</li>
-                    <li>اضغط على <strong>ربط جهاز (Link a Device)</strong> ووجّه الكاميرا نحو الرمز أعلاه.</li>
-                  </ol>
-                </div>
-              \`;
-            }
-          } catch (e) {
-            console.error(e);
-          }
+          } catch (e) {}
         }
-
-        checkStatus();
-        setInterval(checkStatus, 3000);
+        setInterval(pollConnection, 3000);
       </script>
     </body>
     </html>
   `);
+});
+
+// 4. Send text message endpoint
+router.post('/send', async (req: Request, res: Response) => {
+  try {
+    const { to, text } = req.body;
+    if (!to || !text) {
+      return res.status(400).json({ success: false, error: 'رقم المستلم ونص الرسالة مطلوبان.' });
+    }
+    await sendWhatsAppText(to, text);
+    res.json({ success: true, message: 'تم إرسال الرسالة بنجاح.' });
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err.message });
+  }
 });
 
 export default router;
