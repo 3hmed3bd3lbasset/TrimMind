@@ -326,6 +326,8 @@ export const useSalonStore = create<SalonStore>()(
           bookings,
           auditLogs,
           queue,
+          barbers,
+          branches,
         } = get();
 
         const service = services.find((s) => s.id === payload.serviceId);
@@ -454,6 +456,9 @@ export const useSalonStore = create<SalonStore>()(
         broadcastEvent('BOOKING_CREATED', newBooking);
         broadcastEvent('NOTIFICATION_CREATED', newNotification);
 
+        const barber = barbers.find((b) => b.id === payload.barberId);
+        const branch = branches.find((b) => b.id === payload.branchId);
+
         // Authoritative Server Backend Dispatch (Calculates final prices, records DB audit, emits WebSockets)
         api.createBooking({
           id: bookingId,
@@ -461,8 +466,13 @@ export const useSalonStore = create<SalonStore>()(
           customerName: payload.customerName,
           customerPhone: payload.customerPhone,
           branchId: payload.branchId,
+          branchName: branch?.name,
           barberId: payload.barberId,
+          barberName: barber?.full_name,
           serviceId: payload.serviceId,
+          serviceName: service?.name,
+          servicePrice: servicePrice,
+          totalAmount: newBooking.total_at_booking,
           additionalServiceIds: payload.additionalServiceIds,
           bookingType: payload.bookingType,
           startsAt: payload.startsAt,

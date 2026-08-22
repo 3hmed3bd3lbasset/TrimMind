@@ -26,8 +26,12 @@ export async function createBooking(payload: any, actor?: any, ipAddress?: strin
   } catch {}
 
   // 2. Fetch service price safely with fallbacks
-  let primaryService = { id: payload.serviceId || 'srv-haircut', name: 'خدمة الصالون', price: 180 };
-  let servicePrice = 180;
+  let primaryService = { 
+    id: payload.serviceId || 'srv-haircut', 
+    name: payload.serviceName || 'خدمة الصالون', 
+    price: payload.servicePrice || 180 
+  };
+  let servicePrice = payload.servicePrice || 180;
   try {
     let services = await query<any[]>('SELECT * FROM services WHERE id = ? LIMIT 1', [payload.serviceId]);
     if (!services || services.length === 0) {
@@ -38,7 +42,7 @@ export async function createBooking(payload: any, actor?: any, ipAddress?: strin
     }
     if (services && services.length > 0) {
       primaryService = services[0];
-      servicePrice = Number(primaryService.price || 180);
+      servicePrice = Number(primaryService.price || payload.servicePrice || 180);
     }
   } catch {}
 
@@ -104,7 +108,7 @@ export async function createBooking(payload: any, actor?: any, ipAddress?: strin
   } catch {}
 
   const initialStatus = payload.paymentProof ? 'pending_review' : 'awaiting_payment';
-  const total = servicePrice + itemsTotal;
+  const total = payload.totalAmount || (servicePrice + itemsTotal);
 
   // Normalize customer phone
   let cleanPhone = (payload.customerPhone || '').replace(/\D+/g, '');
@@ -189,11 +193,16 @@ export async function createBooking(payload: any, actor?: any, ipAddress?: strin
       customer_phone: cleanPhone || payload.customerPhone,
       customerPhone: cleanPhone || payload.customerPhone,
       service_id: primaryService.id,
-      service_name: primaryService.name,
-      serviceName: primaryService.name,
+      service_name: payload.serviceName || primaryService.name,
+      serviceName: payload.serviceName || primaryService.name,
+      barber_id: payload.barberId || null,
+      barber_name: payload.barberName || 'كابتن الصالون',
+      barberName: payload.barberName || 'كابتن الصالون',
+      branch_id: finalBranchId,
+      branch_name: payload.branchName || 'الحداد - ELHDAD',
+      branchName: payload.branchName || 'الحداد - ELHDAD',
       booking_type: payload.bookingType,
       bookingType: payload.bookingType,
-      branch_id: finalBranchId,
       status: initialStatus,
       queue_number: assignedQueueNumber,
       queueNumber: assignedQueueNumber,
@@ -215,7 +224,9 @@ export async function createBooking(payload: any, actor?: any, ipAddress?: strin
       customer_name: payload.customerName,
       customer_phone: cleanPhone || payload.customerPhone,
       service_id: primaryService.id,
-      service_name: primaryService.name,
+      service_name: payload.serviceName || primaryService.name,
+      barber_name: payload.barberName || 'كابتن الصالون',
+      branch_name: payload.branchName || 'الحداد - ELHDAD',
       booking_type: payload.bookingType,
       status: initialStatus,
       queue_number: assignedQueueNumber,
@@ -234,7 +245,13 @@ export async function createBooking(payload: any, actor?: any, ipAddress?: strin
     const destPhone = cleanPhone || payload.customerPhone;
     import('./whatsapp.service.js').then(({ sendWhatsAppText }) => {
       const clientName = payload.customerName || 'عزيزنا العميل';
-      const msg = `أهلاً بك يا ${clientName} في صالون TrimMind (الحداد VIP)! 💈✨\n\nتم استلام طلب حجزك المبدئي وإيصال التحويل بنجاح! 📋\n🎫 رقم الحجز: #${bookingId}\n✂️ الخدمة: ${primaryService?.name || 'خدمة الصالون'}\n📅 الموعد: ${payload.startsAt ? payload.startsAt.replace('T', ' ').substring(0, 16) : 'موعد اليوم'}\n🔢 رقم الدور: رقم #${assignedQueueNumber} في طابور اليوم\n\n⏳ جاري مراجعة واعتماد إيصال التحويل من موظف الاستقبال في غضون 5 إلى 10 دقائق كحد أقصى.\nبمجرد الموافقة سيصلك إشعار فوري هنا على الواتساب بتأكيد الحجز وموقعك المباشر في الطابور! 👑\n\n📍 رابط تتبع حجزك:\nhttps://trimmind.up.railway.app/track?q=${bookingId}`;
+      const srvName = payload.serviceName || primaryService?.name || 'خدمة الصالون';
+      const barbName = payload.barberName || 'كابتن الصالون';
+      const totalAmountVal = payload.totalAmount || total;
+      const depositVal = payload.paymentProof?.amount || bookingFee;
+      const remainingVal = Math.max(0, totalAmountVal - depositVal);
+
+      const msg = `أهلاً بك يا ${clientName} في صالون TrimMind (الحداد VIP)! 💈✨\n\nتم استلام طلب حجزك المبدئي وإيصال التحويل بنجاح! 📋\n🎫 رقم الحجز: #${bookingId}\n✂️ الخدمة: ${srvName}\n💈 الكابتن: ${barbName}\n📅 الموعد: ${payload.startsAt ? payload.startsAt.replace('T', ' ').substring(0, 16) : 'موعد اليوم'}\n🔢 رقم الدور: رقم #${assignedQueueNumber} في طابور اليوم\n\n💵 تفاصيل الفاتورة والحساب:\n• إجمالي الفاتورة: ${totalAmountVal} ج.م\n• العربون المسدد: ${depositVal} ج.م ✓\n• المتبقي للدفع بالصالون: ${remainingVal} ج.م\n\n⏳ جاري مراجعة واعتماد إيصال التحويل من موظف الاستقبال في غضون 5 إلى 10 دقائق كحد أقصى.\nبمجرد الموافقة سيصلك إشعار فوري هنا على الواتساب بتأكيد الحجز وموقعك المباشر في الطابور! 👑\n\n📍 رابط تتبع حجزك:\nhttps://trimmind.up.railway.app/track?q=${bookingId}`;
       sendWhatsAppText(destPhone, msg).catch((err) => {
         console.error('Failed to send WhatsApp message:', err.message);
       });
@@ -247,7 +264,22 @@ export async function createBooking(payload: any, actor?: any, ipAddress?: strin
 }
 
 export async function getBookingById(bookingId: string) {
-  const rows = await query<any[]>('SELECT * FROM bookings WHERE id = ? LIMIT 1', [bookingId]);
+  const rows = await query<any[]>(
+    `SELECT b.*, 
+            COALESCE(s.name, 'خدمة الصالون') as service_name, 
+            COALESCE(s.price, b.service_price_at_booking) as service_price,
+            COALESCE(bar.full_name, 'كابتن الصالون') as barber_name,
+            COALESCE(br.name, 'الحداد - ELHDAD') as branch_name, 
+            br.phone as branch_phone,
+            ch.name as chair_name
+     FROM bookings b
+     LEFT JOIN services s ON b.service_id = s.id
+     LEFT JOIN barbers bar ON b.barber_id = bar.id
+     LEFT JOIN branches br ON b.branch_id = br.id
+     LEFT JOIN chairs ch ON b.chair_id = ch.id
+     WHERE b.id = ? LIMIT 1`,
+    [bookingId]
+  );
   if (!rows || rows.length === 0) return null;
 
   const b = rows[0];
