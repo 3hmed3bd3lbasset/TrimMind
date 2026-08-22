@@ -148,8 +148,7 @@
   border: 1px solid var(--border-soft);
   border-radius: var(--radius-lg);
   box-shadow: var(--shadow-2);
-  transition: transform 0.2s var(--ease-out), border-color 0.2s, box-shadow 0.2s;
-  transform: translateZ(0);
+  transition: border-color 0.2s, box-shadow 0.2s;
 }
 
 .clinic-card:hover {
@@ -157,21 +156,24 @@
   box-shadow: var(--shadow-3);
 }
 
-/* Smooth Hardware-Accelerated Modal Styles (Zero Glitch, Zero Stutter) */
+/* Fullscreen Modal Styles */
 .modal-overlay {
   position: fixed;
-  inset: 0;
-  z-index: 50;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  z-index: 99999;
   display: flex;
   align-items: center;
   justify-content: center;
   padding: 1rem;
-  background-color: rgba(18, 22, 19, 0.62);
+  background-color: rgba(18, 22, 19, 0.65);
   overflow-y: auto;
   overscroll-behavior: contain;
   animation: modalFadeIn 0.18s cubic-bezier(0.16, 1, 0.3, 1) forwards;
-  will-change: opacity;
-  transform: translateZ(0);
 }
 
 .modal-container {
