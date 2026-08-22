@@ -127,9 +127,9 @@ async function startServer() {
     console.log(`📡 URL: http://localhost:${PORT}`);
     console.log(`🔒 Security: Helmet, CORS, RateLimiting, Bcrypt, JWT Active`);
     console.log(`⚡ Realtime: WebSockets Socket.io Ready`);
-    console.log(`📱 Initializing WhatsApp Integration Engine for 01005437633...`);
+    console.log(`📱 Initializing WhatsApp Integration Engine...`);
     console.log('====================================================');
-    initWhatsApp('01005437633');
+    initWhatsApp();
   });
 }
 
