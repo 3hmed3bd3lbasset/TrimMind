@@ -1,0 +1,184 @@
+{
+  "name": "01 - WhatsApp Master Router (Evolution API + n8n)",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "whatsapp-webhook",
+        "options": {}
+      },
+      "name": "Evolution API Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [
+        180,
+        300
+      ],
+      "webhookId": "whatsapp-evolution-webhook"
+    },
+    {
+      "parameters": {
+        "jsCode": "// 1. Normalize Evolution API payload and extract core fields\nconst body = $json.body || $json;\nconst eventType = body.event || 'messages.upsert';\nconst data = body.data || {};\n\n// Extract message metadata\nconst key = data.key || {};\nconst messageId = key.id;\nconst fromMe = key.fromMe;\nconst remoteJid = key.remoteJid || '';\nconst pushName = data.pushName || 'عميل الصالون';\n\n// Skip outbound messages sent by bot\nif (fromMe) {\n  return [];\n}\n\n// Extract phone number from remoteJid (e.g. 201012345678@s.whatsapp.net)\nconst rawPhone = remoteJid.replace('@s.whatsapp.net', '').replace('@c.us', '');\nlet cleanPhone = rawPhone.replace(/\\D+/g, '');\nif (cleanPhone.startsWith('20')) {\n  cleanPhone = '0' + cleanPhone.substring(2);\n}\n\n// Extract text message content or media caption\nconst message = data.message || {};\nconst textMessage = message.conversation || \n                    message.extendedTextMessage?.text || \n                    message.imageMessage?.caption || \n                    message.documentMessage?.caption || '';\n\nconst isImage = Boolean(message.imageMessage);\nconst mediaUrl = isImage ? data.mediaUrl || null : null;\n\nreturn [{\n  json: {\n    messageId,\n    remoteJid,\n    phone: cleanPhone,\n    pushName,\n    text: textMessage,\n    isImage,\n    mediaUrl,\n    rawMessage: message,\n    instance: body.instance || 'default',\n    timestamp: new Date().toISOString()\n  }\n}];"
+      },
+      "name": "Normalize Incoming Message",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        400,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "boolean": [
+            {
+              "value1": "={{ $json.isImage }}",
+              "value2": true
+            }
+          ]
+        }
+      },
+      "name": "Is Payment Proof Image?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [
+        640,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "workflowId": "03_Payment_Proof_Handler"
+      },
+      "name": "Execute Payment Proof Handler",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1,
+      "position": [
+        900,
+        200
+      ]
+    },
+    {
+      "parameters": {
+        "workflowId": "02_AI_Agent_Tools_Orchestrator"
+      },
+      "name": "Execute AI Agent Orchestrator",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1,
+      "position": [
+        900,
+        420
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.EVOLUTION_API_URL || 'https://evolution.yourdomain.com' }}/message/sendText/{{ $json.instance || 'default' }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "={{ $env.EVOLUTION_API_KEY || 'your-evolution-api-key' }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "number",
+              "value": "={{ $json.remoteJid }}"
+            },
+            {
+              "name": "text",
+              "value": "={{ $json.replyText }}"
+            },
+            {
+              "name": "delay",
+              "value": 1200
+            }
+          ]
+        },
+        "options": {}
+      },
+      "name": "Send WhatsApp Reply via Evolution API",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [
+        1180,
+        300
+      ]
+    }
+  ],
+  "connections": {
+    "Evolution API Webhook": {
+      "main": [
+        [
+          {
+            "node": "Normalize Incoming Message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normalize Incoming Message": {
+      "main": [
+        [
+          {
+            "node": "Is Payment Proof Image?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Is Payment Proof Image?": {
+      "main": [
+        [
+          {
+            "node": "Execute Payment Proof Handler",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Execute AI Agent Orchestrator",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Execute Payment Proof Handler": {
+      "main": [
+        [
+          {
+            "node": "Send WhatsApp Reply via Evolution API",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Execute AI Agent Orchestrator": {
+      "main": [
+        [
+          {
+            "node": "Send WhatsApp Reply via Evolution API",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  }
+}

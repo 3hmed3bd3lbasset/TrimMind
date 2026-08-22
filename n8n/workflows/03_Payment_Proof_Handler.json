@@ -1,0 +1,73 @@
+{
+  "name": "03 - Payment Proof Handler (Media Ingestion & Verification)",
+  "nodes": [
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.BACKEND_API_URL || 'https://trimmind.up.railway.app' }}/api/agent-tools/payments/submit-proof",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "x-agent-secret",
+              "value": "={{ $env.AGENT_API_SECRET || 'trim-mind-agent-secret-key-2026' }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "phone",
+              "value": "={{ $json.phone }}"
+            },
+            {
+              "name": "proofImageUrl",
+              "value": "={{ $json.mediaUrl || $json.rawMessage?.imageMessage?.url || 'https://trimmind.up.railway.app/uploads/receipt.jpg' }}"
+            },
+            {
+              "name": "senderPhone",
+              "value": "={{ $json.phone }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "name": "Submit Payment Proof to Backend",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [
+        380,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const res = $json.data || $json;\nconst bookingId = res.bookingId || '';\nconst customerName = res.customerName || 'عزيزنا العميل';\n\nconst replyText = `تمام يا ${customerName} 👌 تسلم إيدك!\n\nتم استلام صورة إثبات التحويل بنجاح، وموظف الاستقبال بيراجعها حالياً لتأكيد الحجز النهائي برقم #${bookingId}.\n\nأول ما تتم مراجعة الإيصال هنبعتلك رسالة التأكيد فوراً برقم دورك في الصالون 💈✨`;\n\nreturn [{\n  json: {\n    ...$json,\n    replyText\n  }\n}];"
+      },
+      "name": "Format Natural Arabic Acknowledgement",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        620,
+        300
+      ]
+    }
+  ],
+  "connections": {
+    "Submit Payment Proof to Backend": {
+      "main": [
+        [
+          {
+            "node": "Format Natural Arabic Acknowledgement",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  }
+}
