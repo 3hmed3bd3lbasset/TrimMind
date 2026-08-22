@@ -100,7 +100,20 @@ router.post('/customer/lookup', async (req: Request, res: Response) => {
 // ---------------------------------------------------------------------------
 router.post('/branches/list', async (_req: Request, res: Response) => {
   try {
-    const branches = await query<any[]>('SELECT * FROM branches WHERE is_active = 1 ORDER BY name ASC');
+    let branches = await query<any[]>('SELECT * FROM branches WHERE is_active = 1 ORDER BY name ASC');
+    if (!branches || branches.length === 0) {
+      branches = [
+        {
+          id: 'branch-elhdad',
+          name: 'الحداد - ELHDAD',
+          address: 'سقيل - مركز اوسيم',
+          phone: '01005437633',
+          opening_time: '10:00',
+          closing_time: '23:30',
+          total_chairs: 4,
+        },
+      ];
+    }
     return res.json({
       success: true,
       data: branches.map((b) => ({
@@ -109,7 +122,7 @@ router.post('/branches/list', async (_req: Request, res: Response) => {
         address: b.address,
         phone: b.phone,
         openingTime: b.opening_time || '10:00',
-        closingTime: b.closing_time || '23:00',
+        closingTime: b.closing_time || '23:30',
         totalChairs: b.total_chairs || 4,
       })),
     });
@@ -133,7 +146,48 @@ router.post('/services/list', async (req: Request, res: Response) => {
     }
 
     sql += ' ORDER BY price ASC';
-    const services = await query<any[]>(sql, params);
+    let services = await query<any[]>(sql, params);
+
+    if (!services || services.length === 0) {
+      services = [
+        {
+          id: 'srv-haircut',
+          name: 'قص وتصفيف الشعر الاحترافي',
+          description: 'قص شعر عصري وتصفيف واستشوار بأحدث الصيحات',
+          price: 80,
+          duration_minutes: 30,
+          category: 'hair',
+          is_vip_only: 0,
+        },
+        {
+          id: 'srv-beard',
+          name: 'تحديد وتشذيب اللحية الملكي',
+          description: 'تحديد دقيق بالموس مع بخار وزيوت عناية خاصة',
+          price: 50,
+          duration_minutes: 20,
+          category: 'beard',
+          is_vip_only: 0,
+        },
+        {
+          id: 'srv-vip-package',
+          name: 'بكج VIP الشامل (شعر + دقن + بشرة)',
+          description: 'حلاقة شعر كاملة + تحديد دقن + ماسك تنظيف بشرة بالبخار واستشوار',
+          price: 180,
+          duration_minutes: 60,
+          category: 'package',
+          is_vip_only: 1,
+        },
+        {
+          id: 'srv-facial',
+          name: 'جلسة تنظيف وتقشير البشرة بالبخار',
+          description: 'جلسة متكاملة لإزالة الرؤوس السوداء وماسك طمي ونضارة',
+          price: 100,
+          duration_minutes: 35,
+          category: 'skincare',
+          is_vip_only: 0,
+        },
+      ];
+    }
 
     return res.json({
       success: true,
@@ -171,7 +225,30 @@ router.post('/barbers/list', async (req: Request, res: Response) => {
       params.push(branchId);
     }
 
-    const barbers = await query<any[]>(sql, params);
+    let barbers = await query<any[]>(sql, params);
+
+    if (!barbers || barbers.length === 0) {
+      barbers = [
+        {
+          id: 'barber-lead',
+          full_name: 'كابتن الصالون الرئيسي',
+          specialty: 'خبير قص وتصفيف وتسريحات VIP',
+          rating: 4.9,
+          rating_count: 38,
+          branch_id: 'branch-elhdad',
+          branch_name: 'الحداد - ELHDAD',
+        },
+        {
+          id: 'barber-beard-specialist',
+          full_name: 'مصفف اللحية والعناية بالبشرة',
+          specialty: 'متخصص اللحية الملكية وماسكات البشرة',
+          rating: 4.9,
+          rating_count: 26,
+          branch_id: 'branch-elhdad',
+          branch_name: 'الحداد - ELHDAD',
+        },
+      ];
+    }
 
     return res.json({
       success: true,
@@ -182,7 +259,7 @@ router.post('/barbers/list', async (req: Request, res: Response) => {
         rating: Number(b.rating || 4.9),
         ratingCount: b.rating_count || 0,
         branchId: b.branch_id,
-        branchName: b.branch_name || 'الصالون الرئيسي',
+        branchName: b.branch_name || 'الحداد - ELHDAD',
       })),
     });
   } catch (err: any) {
