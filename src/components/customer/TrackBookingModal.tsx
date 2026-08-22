@@ -634,8 +634,8 @@ export const TrackBookingSection: React.FC = () => {
 
       {/* Cancellation Warning Modal (Exact Request with Centered Warning Icon) */}
       {isCancelModalOpen && selectedBooking && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-ink/70 backdrop-blur-sm animate-in fade-in duration-200">
-          <div className="clinic-card w-full max-w-md p-6 sm:p-8 shadow-clinic-3 space-y-5 bg-white text-center animate-in zoom-in-95 duration-200">
+        <div className="modal-overlay">
+          <div className="modal-container max-w-md p-6 sm:p-8 space-y-5 text-center">
             {/* Centered Top Warning Icon */}
             <div className="w-16 h-16 rounded-full bg-amber-500/15 text-amber-700 border border-amber-500/30 flex items-center justify-center mx-auto shadow-sm">
               <AlertTriangle className="w-8 h-8 text-amber-600 animate-pulse" />

@@ -83,8 +83,8 @@ export const RatingModal: React.FC<RatingModalProps> = ({ bookingId, isOpen, onC
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-ink/60 backdrop-blur-sm animate-in fade-in duration-200">
-      <div className="clinic-card w-full max-w-lg p-6 sm:p-7 shadow-clinic-3 space-y-6 animate-in zoom-in-95 duration-200 bg-white max-h-[90vh] overflow-y-auto no-scrollbar font-sans text-ink">
+    <div className="modal-overlay">
+      <div className="modal-container max-w-lg p-6 sm:p-7 space-y-6 font-sans text-ink">
         {/* Modal Header */}
         <div className="flex items-center justify-between border-b border-border pb-3">
           <div className="flex items-center gap-2.5">

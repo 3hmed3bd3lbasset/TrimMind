@@ -64,8 +64,8 @@ export const GlobalModalDialog: React.FC = () => {
   const { icon, iconBg, confirmBtnClass } = getIconAndColors(type);
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-ink/65 backdrop-blur-sm animate-in fade-in duration-200 font-sans text-ink">
-      <div className="clinic-card w-full max-w-md p-6 sm:p-7 shadow-clinic-3 space-y-5 bg-white animate-in zoom-in-95 duration-200 text-right">
+    <div className="modal-overlay font-sans text-ink">
+      <div className="modal-container max-w-md p-6 sm:p-7 space-y-5 text-right">
         {/* Header with Custom Icon */}
         <div className="flex items-center justify-between border-b border-border pb-3.5">
           <div className="flex items-center gap-3">

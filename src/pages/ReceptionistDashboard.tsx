@@ -359,8 +359,8 @@ export default function ReceptionistDashboard() {
       {/* 1. MODAL: IN-SERVICE CHAIRS DETAILS (كراسي في الخدمة الآن) */}
       {/* ========================================================================= */}
       {activeKpiModal === 'in_service_chairs' && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-ink/65 backdrop-blur-sm animate-in fade-in duration-200">
-          <div className="clinic-card w-full max-w-2xl p-6 shadow-clinic-3 space-y-5 bg-white animate-in zoom-in-95 duration-200 max-h-[88vh] overflow-y-auto no-scrollbar text-right">
+        <div className="modal-overlay">
+          <div className="modal-container max-w-2xl p-6 space-y-5 text-right">
             <div className="flex items-center justify-between border-b border-border pb-3.5">
               <div className="flex items-center gap-3">
                 <div className="w-10 h-10 rounded-2xl bg-forest/15 text-forest border border-forest/20 flex items-center justify-center font-bold">
@@ -483,8 +483,8 @@ export default function ReceptionistDashboard() {
       {/* 2. MODAL: PENDING RECEIPTS REVIEW (إيصالات بانتظار المراجعة) */}
       {/* ========================================================================= */}
       {activeKpiModal === 'pending_receipts' && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-ink/65 backdrop-blur-sm animate-in fade-in duration-200">
-          <div className="clinic-card w-full max-w-2xl p-6 shadow-clinic-3 space-y-5 bg-white animate-in zoom-in-95 duration-200 max-h-[88vh] overflow-y-auto no-scrollbar text-right">
+        <div className="modal-overlay">
+          <div className="modal-container max-w-2xl p-6 space-y-5 text-right">
             <div className="flex items-center justify-between border-b border-border pb-3.5">
               <div className="flex items-center gap-3">
                 <div className="w-10 h-10 rounded-2xl bg-terra/15 text-terra-deep border border-terra/20 flex items-center justify-center font-bold">
@@ -586,8 +586,8 @@ export default function ReceptionistDashboard() {
       {/* 3. MODAL: BRANCH WAITING QUEUE (طابور الانتظار بالفرع) */}
       {/* ========================================================================= */}
       {activeKpiModal === 'branch_queue' && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-ink/65 backdrop-blur-sm animate-in fade-in duration-200">
-          <div className="clinic-card w-full max-w-2xl p-6 shadow-clinic-3 space-y-5 bg-white animate-in zoom-in-95 duration-200 max-h-[88vh] overflow-y-auto no-scrollbar text-right">
+        <div className="modal-overlay">
+          <div className="modal-container max-w-2xl p-6 space-y-5 text-right">
             <div className="flex items-center justify-between border-b border-border pb-3.5">
               <div className="flex items-center gap-3">
                 <div className="w-10 h-10 rounded-2xl bg-forest/15 text-forest border border-forest/20 flex items-center justify-center font-bold">
@@ -675,8 +675,8 @@ export default function ReceptionistDashboard() {
       {/* 4. MODAL: ALL BRANCH BOOKINGS (إجمالي حجوزات هذا الفرع) */}
       {/* ========================================================================= */}
       {activeKpiModal === 'branch_bookings' && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-ink/65 backdrop-blur-sm animate-in fade-in duration-200">
-          <div className="clinic-card w-full max-w-3xl p-6 shadow-clinic-3 space-y-5 bg-white animate-in zoom-in-95 duration-200 max-h-[88vh] overflow-y-auto no-scrollbar text-right">
+        <div className="modal-overlay">
+          <div className="modal-container max-w-3xl p-6 space-y-5 text-right">
             <div className="flex items-center justify-between border-b border-border pb-3.5">
               <div className="flex items-center gap-3">
                 <div className="w-10 h-10 rounded-2xl bg-ink/10 text-ink border border-border flex items-center justify-center font-bold">

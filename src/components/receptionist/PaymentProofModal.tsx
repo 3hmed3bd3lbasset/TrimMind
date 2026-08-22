@@ -57,8 +57,8 @@ export const PaymentProofModal: React.FC<PaymentProofModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-ink/60 backdrop-blur-sm animate-in fade-in duration-200">
-      <div className="clinic-card w-full max-w-2xl p-6 sm:p-7 shadow-clinic-3 space-y-5 animate-in zoom-in-95 duration-200 bg-white font-sans text-ink">
+    <div className="modal-overlay">
+      <div className="modal-container max-w-2xl p-6 sm:p-7 space-y-5 font-sans text-ink">
         {/* Header */}
         <div className="flex items-center justify-between border-b border-border pb-4">
           <div className="flex items-center gap-3">
