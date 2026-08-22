@@ -1,17 +1,20 @@
 import makeWASocket, {
   DisconnectReason,
-  useMultiFileAuthState,
   fetchLatestBaileysVersion,
   proto,
+  BufferJSON,
+  initAuthCreds,
+  AuthenticationCreds,
+  AuthenticationState,
+  SignalDataTypeMap,
 } from '@whiskeysockets/baileys';
 import pino from 'pino';
-import fs from 'fs';
-import path from 'path';
 import QRCode from 'qrcode';
 import https from 'https';
+import { query } from '../config/database.js';
 
-const AUTH_DIR = process.env.WHATSAPP_AUTH_DIR || path.resolve(process.env.UPLOAD_DIR || 'uploads', 'whatsapp_auth');
-const N8N_WEBHOOK_URL = process.env.N8N_WEBHOOK_URL || 'https://n8n-server-production-bdce.up.railway.app/webhook/whatsapp-webhook';
+const N8N_WEBHOOK_URL =
+  process.env.N8N_WEBHOOK_URL || 'https://n8n-server-production-bdce.up.railway.app/webhook/whatsapp-webhook';
 
 interface WhatsAppState {
   status: 'disconnected' | 'connecting' | 'connected' | 'qr_ready';
@@ -34,9 +37,85 @@ const state: WhatsAppState = {
 let sock: any = null;
 let isInitializing = false;
 
-// Ensure auth dir exists
-if (!fs.existsSync(AUTH_DIR)) {
-  fs.mkdirSync(AUTH_DIR, { recursive: true });
+// 1. Persistent MySQL Auth State Store
+async function useMySQLAuthState(): Promise<{ state: AuthenticationState; saveCreds: () => Promise<void> }> {
+  await query(`
+    CREATE TABLE IF NOT EXISTS whatsapp_auth (
+      id VARCHAR(191) PRIMARY KEY,
+      data LONGTEXT NOT NULL,
+      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+    )
+  `);
+
+  const writeData = async (id: string, value: any) => {
+    try {
+      const jsonStr = JSON.stringify(value, BufferJSON.replacer);
+      await query(`INSERT INTO whatsapp_auth (id, data) VALUES (?, ?) ON DUPLICATE KEY UPDATE data = ?`, [
+        id,
+        jsonStr,
+        jsonStr,
+      ]);
+    } catch (e: any) {
+      console.error(`Error saving auth key ${id}:`, e.message);
+    }
+  };
+
+  const readData = async (id: string) => {
+    try {
+      const rows = await query<any[]>(`SELECT data FROM whatsapp_auth WHERE id = ? LIMIT 1`, [id]);
+      if (rows && rows.length > 0 && rows[0].data) {
+        return JSON.parse(rows[0].data, BufferJSON.reviver);
+      }
+      return null;
+    } catch {
+      return null;
+    }
+  };
+
+  const removeData = async (id: string) => {
+    try {
+      await query(`DELETE FROM whatsapp_auth WHERE id = ?`, [id]);
+    } catch {}
+  };
+
+  const creds: AuthenticationCreds = (await readData('creds')) || initAuthCreds();
+
+  return {
+    state: {
+      creds,
+      keys: {
+        get: async (type, ids) => {
+          const data: { [key: string]: any } = {};
+          await Promise.all(
+            ids.map(async (id) => {
+              let value = await readData(`${type}-${id}`);
+              if (type === 'app-state-sync-key' && value) {
+                value = proto.Message.AppStateSyncKeyData.fromObject(value);
+              }
+              data[id] = value;
+            })
+          );
+          return data;
+        },
+        set: async (data) => {
+          const tasks: Promise<void>[] = [];
+          for (const category in data) {
+            for (const id in data[category as keyof SignalDataTypeMap]) {
+              const value = data[category as keyof SignalDataTypeMap]?.[id];
+              const key = `${category}-${id}`;
+              if (value) {
+                tasks.push(writeData(key, value));
+              } else {
+                tasks.push(removeData(key));
+              }
+            }
+          }
+          await Promise.all(tasks);
+        },
+      },
+    },
+    saveCreds: () => writeData('creds', creds),
+  };
 }
 
 export function getWhatsAppState(): WhatsAppState {
@@ -52,7 +131,7 @@ export async function initWhatsApp(requestedPhoneNumber?: string): Promise<Whats
   state.status = 'connecting';
 
   try {
-    const { state: authState, saveCreds } = await useMultiFileAuthState(AUTH_DIR);
+    const { state: authState, saveCreds } = await useMySQLAuthState();
     const { version } = await fetchLatestBaileysVersion();
 
     sock = makeWASocket({
@@ -65,7 +144,7 @@ export async function initWhatsApp(requestedPhoneNumber?: string): Promise<Whats
 
     sock.ev.on('creds.update', saveCreds);
 
-    // If a phone number is requested and not registered yet, generate a Pairing Code
+    // If requested phone number is provided and not registered yet, request pairing code
     if (requestedPhoneNumber && !sock.authState.creds.registered) {
       let cleanPhone = requestedPhoneNumber.replace(/\D+/g, '');
       if (cleanPhone.startsWith('01')) {
@@ -79,10 +158,7 @@ export async function initWhatsApp(requestedPhoneNumber?: string): Promise<Whats
             const code = await sock.requestPairingCode(cleanPhone);
             state.pairingCode = code;
             state.status = 'qr_ready';
-            console.log(`\n========================================`);
-            console.log(`📲 WHATSAPP PAIRING CODE FOR ${cleanPhone}:`);
-            console.log(`👉   ${code}   👈`);
-            console.log(`========================================\n`);
+            console.log(`📲 WHATSAPP PAIRING CODE: ${code}`);
           }
         } catch (err: any) {
           console.error('Error requesting pairing code:', err.message);
@@ -108,7 +184,7 @@ export async function initWhatsApp(requestedPhoneNumber?: string): Promise<Whats
         isInitializing = false;
 
         if (shouldReconnect) {
-          setTimeout(() => initWhatsApp(state.phoneNumber || undefined), 5000);
+          setTimeout(() => initWhatsApp(state.phoneNumber || undefined), 4000);
         }
       } else if (connection === 'open') {
         state.status = 'connected';
@@ -116,7 +192,7 @@ export async function initWhatsApp(requestedPhoneNumber?: string): Promise<Whats
         state.pairingCode = null;
         state.lastConnectedAt = new Date().toISOString();
         isInitializing = false;
-        console.log('🎉 WhatsApp Connected Successfully!');
+        console.log('🎉 WhatsApp Connected Successfully (Persistent MySQL Session)!');
       }
     });
 
