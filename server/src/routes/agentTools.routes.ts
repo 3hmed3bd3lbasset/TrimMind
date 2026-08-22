@@ -509,6 +509,13 @@ router.post('/bookings/create-pending', async (req: Request, res: Response) => {
         notes: notes || 'تم الحجز عبر مساعد واتساب الذكي',
       };
 
+      let branchRow = (await query<any[]>('SELECT * FROM branches WHERE id = ?', [finalBranchId]))?.[0];
+      if (!branchRow) {
+        branchRow = (await query<any[]>('SELECT * FROM branches LIMIT 1'))?.[0];
+      }
+      const instapayHandle = branchRow?.instapay_username || liveSyncedState.settings?.instapay_username || branchRow?.phone || '01285694670';
+      const vodafoneCashNumber = branchRow?.vodafone_cash_number || liveSyncedState.settings?.vodafone_cash_number || branchRow?.phone || '01285694689';
+
       const newBooking = await createBooking(payload, { role: 'whatsapp_agent' }, req.ip);
       const bookingData = {
         id: newBooking.id,
@@ -523,7 +530,7 @@ router.post('/bookings/create-pending', async (req: Request, res: Response) => {
         booking_type: resolvedBookingType,
         bookingType: resolvedBookingType,
         branch_id: finalBranchId,
-        branch_name: 'الحداد - ELHDAD',
+        branch_name: branchRow?.name || 'الحداد - ELHDAD',
         status: newBooking.status,
         queue_number: newBooking.queue_number || nextQueueNum,
         queueNumber: newBooking.queue_number || nextQueueNum,
@@ -537,8 +544,9 @@ router.post('/bookings/create-pending', async (req: Request, res: Response) => {
         created_at: new Date().toISOString(),
         trackingUrl: `https://trimmind.up.railway.app/track?q=${newBooking.id}`,
         paymentInstructions: {
-          instapay: '01005437633',
-          vodafoneCash: '01005437633',
+          instapay: instapayHandle,
+          vodafoneCash: vodafoneCashNumber,
+          depositRequired: 50,
         },
       };
 
@@ -551,6 +559,13 @@ router.post('/bookings/create-pending', async (req: Request, res: Response) => {
       });
     } catch (dbErr) {
       // Graceful fallback response if MySQL row insertion has constraint or table state
+      let branchRow = (await query<any[]>('SELECT * FROM branches WHERE id = ?', [finalBranchId]))?.[0];
+      if (!branchRow) {
+        branchRow = (await query<any[]>('SELECT * FROM branches LIMIT 1'))?.[0];
+      }
+      const instapayHandle = branchRow?.instapay_username || liveSyncedState.settings?.instapay_username || branchRow?.phone || '01285694670';
+      const vodafoneCashNumber = branchRow?.vodafone_cash_number || liveSyncedState.settings?.vodafone_cash_number || branchRow?.phone || '01285694689';
+
       const fallbackBooking = {
         id: bookingId,
         bookingId: bookingId,
@@ -566,7 +581,7 @@ router.post('/bookings/create-pending', async (req: Request, res: Response) => {
         barber_id: barberId || 'barber-lead',
         barber_name: 'كابتن الصالون الرئيسي',
         branch_id: finalBranchId,
-        branch_name: 'الحداد - ELHDAD',
+        branch_name: branchRow?.name || 'الحداد - ELHDAD',
         status: 'awaiting_payment',
         queue_number: nextQueueNum,
         queueNumber: nextQueueNum,
@@ -580,8 +595,9 @@ router.post('/bookings/create-pending', async (req: Request, res: Response) => {
         created_at: new Date().toISOString(),
         trackingUrl: `https://trimmind.up.railway.app/track?q=${bookingId}`,
         paymentInstructions: {
-          instapay: '01005437633',
-          vodafoneCash: '01005437633',
+          instapay: instapayHandle,
+          vodafoneCash: vodafoneCashNumber,
+          depositRequired: 50,
         },
       };
 

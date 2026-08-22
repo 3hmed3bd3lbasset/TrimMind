@@ -40,9 +40,16 @@ export const AnalyticsCharts: React.FC = () => {
   const scopedChairs = chairs.filter((c) => !c.branch_id || allowedBranchIds.includes(c.branch_id));
 
   // Dynamic real metrics calculations from live bookings
-  const totalRevenue = scopedBookings.reduce((sum, b) => sum + (b.total_at_booking || 0), 0);
+  const totalRevenue = scopedBookings.reduce((sum, b) => {
+    if (b.status === 'completed') return sum + (b.total_at_booking || 180);
+    if (b.status === 'confirmed' || b.status === 'in_service' || b.payment_proof?.status === 'approved') {
+      return sum + (b.booking_fee_at_booking || 50);
+    }
+    return sum;
+  }, 0);
   const completedBookings = scopedBookings.filter((b) => b.status === 'completed').length;
-  const vipBookings = scopedBookings.filter((b) => b.booking_type === 'vip').length;
+  const confirmedBookingsCount = scopedBookings.filter((b) => b.status === 'confirmed' || b.status === 'in_service').length;
+  const vipBookings = scopedBookings.filter((b) => b.booking_type === 'vip' || (b.service_id && b.service_id.toLowerCase().includes('vip'))).length;
   const activeBarbersCount = scopedBarbers.filter((b) => b.is_active).length;
 
   // Real Dynamic Revenue by Day for past 7 days
@@ -53,8 +60,14 @@ export const AnalyticsCharts: React.FC = () => {
     d.setDate(now.getDate() - (6 - i));
     const dateStr = d.toISOString().slice(0, 10);
     const dayName = daysOfWeekArabic[d.getDay()];
-    const dayBookings = scopedBookings.filter((b) => b.starts_at?.startsWith(dateStr) || b.created_at?.startsWith(dateStr));
-    const dayRev = dayBookings.reduce((sum, b) => sum + (b.total_at_booking || 0), 0);
+    const dayBookings = scopedBookings.filter((b) => (b.starts_at?.startsWith(dateStr) || b.created_at?.startsWith(dateStr)) && b.status !== 'cancelled');
+    const dayRev = dayBookings.reduce((sum, b) => {
+      if (b.status === 'completed') return sum + (b.total_at_booking || 180);
+      if (b.status === 'confirmed' || b.status === 'in_service' || b.payment_proof?.status === 'approved') {
+        return sum + (b.booking_fee_at_booking || 50);
+      }
+      return sum;
+    }, 0);
     return {
       day: dayName,
       revenue: dayRev,
