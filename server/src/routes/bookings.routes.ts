@@ -10,7 +10,7 @@ import {
   rateBookingSchema,
 } from '../validators/booking.schema.js';
 import { bookingLimiter } from '../middleware/rateLimiter.js';
-import { requireAuth, AuthenticatedRequest } from '../middleware/auth.js';
+import { requireAuth, optionalAuth, AuthenticatedRequest } from '../middleware/auth.js';
 import { broadcastToBranch, broadcastGlobal } from '../socket/realtime.js';
 
 import { liveSyncedBookings } from './agentTools.routes.js';

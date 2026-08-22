@@ -82,6 +82,42 @@ export async function requireAuth(req: AuthenticatedRequest, res: Response, next
   }
 }
 
+export async function optionalAuth(req: AuthenticatedRequest, res: Response, next: NextFunction) {
+  try {
+    let token: string | undefined;
+    const authHeader = req.headers.authorization;
+    if (authHeader && authHeader.startsWith('Bearer ')) {
+      token = authHeader.split(' ')[1];
+    } else if (req.cookies && req.cookies.auth_token) {
+      token = req.cookies.auth_token;
+    }
+
+    if (token) {
+      const decoded = jwt.verify(token, JWT_SECRET) as any;
+      if (decoded && decoded.id) {
+        const users = await query<any[]>('SELECT * FROM profiles WHERE id = ? AND is_active = 1 LIMIT 1', [
+          decoded.id,
+        ]);
+        if (users && users.length > 0) {
+          const u = users[0];
+          req.user = {
+            id: u.id,
+            full_name: u.full_name,
+            phone: u.phone,
+            email: u.email,
+            role: u.role,
+            is_super_admin: Boolean(u.is_super_admin),
+            branch_id: u.branch_id,
+            barber_id: u.barber_id,
+            assigned_branch_ids: typeof u.assigned_branch_ids === 'string' ? JSON.parse(u.assigned_branch_ids || '[]') : u.assigned_branch_ids,
+          };
+        }
+      }
+    }
+  } catch {}
+  next();
+}
+
 // Role-Based Access Control (RBAC) Guard
 export function requireRoles(...roles: Array<'customer' | 'receptionist' | 'manager' | 'barber'>) {
   return (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
