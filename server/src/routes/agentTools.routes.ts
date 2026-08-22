@@ -961,10 +961,10 @@ router.post('/payments/submit-proof', async (req: Request, res: Response) => {
       try {
         const rows = await query<any[]>(
           `SELECT id FROM bookings 
-           WHERE REPLACE(REPLACE(customer_phone, ' ', ''), '+', '') LIKE ? 
+           WHERE (REPLACE(REPLACE(customer_phone, ' ', ''), '+', '') LIKE ? OR customer_phone = ?)
              AND status IN ('awaiting_payment', 'draft', 'pending_review')
            ORDER BY created_at DESC LIMIT 1`,
-          [`%${cleanPhone.slice(-9)}%`]
+          [`%${cleanPhone.slice(-8)}%`, cleanPhone]
         );
         if (rows && rows.length > 0) {
           targetBooking = await getBookingById(rows[0].id);
@@ -973,9 +973,23 @@ router.post('/payments/submit-proof', async (req: Request, res: Response) => {
 
       if (!targetBooking) {
         targetBooking = liveSyncedBookings.find(
-          (b) => b.customer_phone?.includes(cleanPhone.slice(-9)) || b.customerPhone?.includes(cleanPhone.slice(-9))
+          (b) =>
+            (b.customer_phone?.includes(cleanPhone.slice(-8)) || b.customerPhone?.includes(cleanPhone.slice(-8))) &&
+            (b.status === 'awaiting_payment' || b.status === 'pending_review')
         );
       }
+
+      // If user typed a custom phone during chat that differs from WhatsApp sender ID,
+      // fallback to the most recent awaiting_payment booking in memory!
+      if (!targetBooking) {
+        targetBooking = liveSyncedBookings.find(
+          (b) => b.status === 'awaiting_payment' || b.status === 'pending_review'
+        );
+      }
+    } else {
+      targetBooking = liveSyncedBookings.find(
+        (b) => b.status === 'awaiting_payment' || b.status === 'pending_review'
+      );
     }
 
     if (!targetBooking) {

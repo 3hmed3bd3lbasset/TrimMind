@@ -149,9 +149,19 @@ export const BookingsTable: React.FC<BookingsTableProps> = ({ branchId }) => {
                     {format12Hour(b.starts_at)}
                   </span>
                 </div>
-                <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-[10.5px] font-bold border ${statusCfg.bg} ${statusCfg.text} ${statusCfg.border}`}>
-                  {statusCfg.label}
-                </span>
+                {b.status === 'pending_review' || b.payment_proof ? (
+                  <button
+                    onClick={() => setSelectedProofBooking(b)}
+                    className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10.5px] font-bold bg-amber-50 text-amber-900 border border-amber-300 hover:bg-amber-100 shadow-xs cursor-pointer"
+                  >
+                    <Eye className="w-3 h-3 text-amber-700" />
+                    <span>عرض إثبات الدفع 🔍</span>
+                  </button>
+                ) : (
+                  <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-[10.5px] font-bold border ${statusCfg.bg} ${statusCfg.text} ${statusCfg.border}`}>
+                    {statusCfg.label}
+                  </span>
+                )}
               </div>
 
               {/* Customer & Service Info */}
@@ -299,9 +309,20 @@ export const BookingsTable: React.FC<BookingsTableProps> = ({ branchId }) => {
                     </td>
 
                     <td className="py-3.5 px-4">
-                      <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-[10px] font-bold border ${statusCfg.bg} ${statusCfg.text} ${statusCfg.border}`}>
-                        {statusCfg.label}
-                      </span>
+                      {b.status === 'pending_review' || b.payment_proof ? (
+                        <button
+                          onClick={() => setSelectedProofBooking(b)}
+                          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold bg-amber-50 text-amber-900 border border-amber-300 hover:bg-amber-100 hover:border-amber-400 shadow-xs cursor-pointer transition-all"
+                          title="عرض إيصال التحويل للاعتماد أو الرفض"
+                        >
+                          <Eye className="w-3.5 h-3.5 text-amber-700" />
+                          <span>عرض إثبات الدفع 🔍</span>
+                        </button>
+                      ) : (
+                        <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-[10px] font-bold border ${statusCfg.bg} ${statusCfg.text} ${statusCfg.border}`}>
+                          {statusCfg.label}
+                        </span>
+                      )}
                     </td>
 
                     <td className="py-3.5 px-4 text-center">
