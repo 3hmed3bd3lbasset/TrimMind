@@ -1120,11 +1120,15 @@ export const useSalonStore = create<SalonStore>()(
           created_at: new Date().toISOString(),
         };
         set((state) => ({ branches: [...state.branches, newBranch] }));
+        broadcastEvent('SYNC_STATE');
+        api.createBranch(newBranch).catch((e) => console.warn('API createBranch notice:', e?.message));
       },
       updateBranch: (id, updates) => {
         set((state) => ({
           branches: state.branches.map((b) => (b.id === id ? { ...b, ...updates } : b)),
         }));
+        broadcastEvent('SYNC_STATE');
+        api.updateBranch(id, updates).catch((e) => console.warn('API updateBranch notice:', e?.message));
       },
       deleteBranch: (id) => {
         set((state) => ({
@@ -1132,9 +1136,12 @@ export const useSalonStore = create<SalonStore>()(
           barbers: state.barbers.filter((bar) => bar.branch_id !== id),
           chairs: state.chairs.filter((c) => c.branch_id !== id),
         }));
+        broadcastEvent('SYNC_STATE');
+        api.deleteBranch(id).catch((e) => console.warn('API deleteBranch notice:', e?.message));
       },
       clearAllBranches: () => {
         set({ branches: [], barbers: [], chairs: [] });
+        broadcastEvent('SYNC_STATE');
       },
 
       addBarber: (barber) => {
@@ -1163,6 +1170,7 @@ export const useSalonStore = create<SalonStore>()(
           profiles: [...state.profiles.filter((p) => p.barber_id !== barberId), barberProfile],
         }));
         broadcastEvent('SYNC_STATE');
+        api.createBarber(newBarber).catch((e) => console.warn('API createBarber notice:', e?.message));
       },
       updateBarber: (id, updates) => {
         set((state) => ({
@@ -1185,6 +1193,7 @@ export const useSalonStore = create<SalonStore>()(
           }),
         }));
         broadcastEvent('SYNC_STATE');
+        api.updateBarber(id, updates).catch((e) => console.warn('API updateBarber notice:', e?.message));
       },
       deleteBarber: (id) => {
         set((state) => ({
@@ -1193,6 +1202,7 @@ export const useSalonStore = create<SalonStore>()(
           chairs: state.chairs.map((c) => (c.barber_id === id ? { ...c, barber_id: undefined } : c)),
         }));
         broadcastEvent('SYNC_STATE');
+        api.deleteBarber(id).catch((e) => console.warn('API deleteBarber notice:', e?.message));
       },
       clearAllBarbers: () => {
         set((state) => ({
@@ -1210,16 +1220,22 @@ export const useSalonStore = create<SalonStore>()(
           created_at: new Date().toISOString(),
         };
         set((state) => ({ chairs: [...state.chairs, newChair] }));
+        broadcastEvent('SYNC_STATE');
+        api.createChair(newChair).catch((e) => console.warn('API createChair notice:', e?.message));
       },
       updateChair: (id, updates) => {
         set((state) => ({
           chairs: state.chairs.map((c) => (c.id === id ? { ...c, ...updates } : c)),
         }));
+        broadcastEvent('SYNC_STATE');
+        api.updateChair(id, updates).catch((e) => console.warn('API updateChair notice:', e?.message));
       },
       deleteChair: (id) => {
         set((state) => ({
           chairs: state.chairs.filter((c) => c.id !== id),
         }));
+        broadcastEvent('SYNC_STATE');
+        api.deleteChair(id).catch((e) => console.warn('API deleteChair notice:', e?.message));
       },
 
       addService: (service) => {
@@ -1229,16 +1245,22 @@ export const useSalonStore = create<SalonStore>()(
           created_at: new Date().toISOString(),
         };
         set((state) => ({ services: [...state.services, newService] }));
+        broadcastEvent('SYNC_STATE');
+        api.createService(newService).catch((e) => console.warn('API createService notice:', e?.message));
       },
       updateService: (id, updates) => {
         set((state) => ({
           services: state.services.map((s) => (s.id === id ? { ...s, ...updates } : s)),
         }));
+        broadcastEvent('SYNC_STATE');
+        api.updateService(id, updates).catch((e) => console.warn('API updateService notice:', e?.message));
       },
       deleteService: (id) => {
         set((state) => ({
           services: state.services.filter((s) => s.id !== id),
         }));
+        broadcastEvent('SYNC_STATE');
+        api.deleteService(id).catch((e) => console.warn('API deleteService notice:', e?.message));
       },
 
       addProduct: (product) => {
@@ -1247,16 +1269,22 @@ export const useSalonStore = create<SalonStore>()(
           id: generateUUID(),
         };
         set((state) => ({ products: [...state.products, newProduct] }));
+        broadcastEvent('SYNC_STATE');
+        api.createProduct(newProduct).catch((e) => console.warn('API createProduct notice:', e?.message));
       },
       updateProduct: (id, updates) => {
         set((state) => ({
           products: state.products.map((p) => (p.id === id ? { ...p, ...updates } : p)),
         }));
+        broadcastEvent('SYNC_STATE');
+        api.updateProduct(id, updates).catch((e) => console.warn('API updateProduct notice:', e?.message));
       },
       deleteProduct: (id) => {
         set((state) => ({
           products: state.products.filter((p) => p.id !== id),
         }));
+        broadcastEvent('SYNC_STATE');
+        api.deleteProduct(id).catch((e) => console.warn('API deleteProduct notice:', e?.message));
       },
 
       addManager: (manager) => {
@@ -1268,6 +1296,7 @@ export const useSalonStore = create<SalonStore>()(
           updated_at: new Date().toISOString(),
         };
         set((state) => ({ profiles: [...state.profiles, newProfile] }));
+        broadcastEvent('SYNC_STATE');
       },
 
       updateManager: (id, updates) => {
@@ -1280,12 +1309,14 @@ export const useSalonStore = create<SalonStore>()(
               ? { ...state.currentUser, ...updates, updated_at: new Date().toISOString() }
               : state.currentUser,
         }));
+        broadcastEvent('SYNC_STATE');
       },
 
       deleteManager: (id) => {
         set((state) => ({
           profiles: state.profiles.filter((p) => p.id !== id),
         }));
+        broadcastEvent('SYNC_STATE');
       },
 
       addReceptionist: (receptionist) => {
@@ -1322,6 +1353,8 @@ export const useSalonStore = create<SalonStore>()(
 
       updateSettings: (newSettings) => {
         set((state) => ({ settings: { ...state.settings, ...newSettings } }));
+        broadcastEvent('SYNC_STATE');
+        api.updateSettings(newSettings).catch((e) => console.warn('API updateSettings notice:', e?.message));
       },
 
       resetAllData: () => {

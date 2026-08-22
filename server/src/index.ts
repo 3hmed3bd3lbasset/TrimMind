@@ -118,10 +118,12 @@ initSocketIO(server, CLIENT_URL);
 initCleanupCron();
 
 import { initReminderService } from './services/reminder.service.js';
+import { ensureInitialDbData } from './services/cleanup.service.js';
 
 // Start Server
 async function startServer() {
   await testDbConnection();
+  await ensureInitialDbData();
 
   server.listen(PORT, () => {
     console.log('====================================================');
