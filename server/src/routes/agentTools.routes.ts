@@ -376,20 +376,23 @@ router.post('/bookings/create-pending', async (req: Request, res: Response) => {
       notes,
     } = req.body;
 
-    if (!customerName || !customerPhone) {
+    const rawPhone = req.body.customerPhone || req.body.phone || req.body.phoneNumber || '';
+    const finalCustomerName = (req.body.customerName || req.body.name || req.body.clientName || 'عميل الصالون').trim();
+
+    if (!rawPhone) {
       return res.status(400).json({
         success: false,
-        error: 'بيانات الحجز غير مكتملة (الاسم ورقم الهاتف مطلوبين).',
+        error: 'بيانات الحجز غير مكتملة (رقم الهاتف مطلوب).',
       });
     }
 
-    const cleanPhone = normalizePhone(customerPhone);
+    const cleanPhone = normalizePhone(rawPhone);
     const finalBranchId = branchId || liveSyncedState.branches[0]?.id || 'branch-elhdad';
     const bookingId = `BK-${Math.floor(1000 + Math.random() * 9000)}`;
 
     try {
       const payload = {
-        customerName: customerName.trim(),
+        customerName: finalCustomerName,
         customerPhone: cleanPhone,
         branchId: finalBranchId,
         barberId: barberId || null,
