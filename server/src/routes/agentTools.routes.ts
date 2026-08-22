@@ -767,7 +767,7 @@ router.post('/bookings/cancel', async (req: Request, res: Response) => {
            WHERE REPLACE(REPLACE(customer_phone, ' ', ''), '+', '') LIKE ? 
              AND status NOT IN ('cancelled', 'completed', 'rejected')
            ORDER BY created_at DESC LIMIT 1`,
-          [`%${cleanPhone.slice(-9)}%`]
+          [`%${cleanPhone.slice(-8)}%`]
         );
         if (rows && rows.length > 0) {
           booking = await getBookingById(rows[0].id);
@@ -776,8 +776,10 @@ router.post('/bookings/cancel', async (req: Request, res: Response) => {
 
       if (!booking) {
         booking = liveSyncedBookings.find(
-          (b) => (b.customer_phone?.includes(cleanPhone.slice(-9)) || b.customerPhone?.includes(cleanPhone.slice(-9))) &&
-                 b.status !== 'cancelled' && b.status !== 'completed'
+          (b) =>
+            ((b.customer_phone && b.customer_phone.includes(cleanPhone.slice(-8))) ||
+             (b.customerPhone && b.customerPhone.includes(cleanPhone.slice(-8)))) &&
+            b.status !== 'cancelled' && b.status !== 'completed'
         );
       }
     }
