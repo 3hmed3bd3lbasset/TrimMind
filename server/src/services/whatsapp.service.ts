@@ -28,6 +28,11 @@ const AUTH_DIR = process.env.WHATSAPP_AUTH_DIR || defaultAuthDir;
 const N8N_WEBHOOK_URL =
   process.env.N8N_WEBHOOK_URL || 'https://n8n-server-production-bdce.up.railway.app/webhook/whatsapp-webhook';
 
+const GEMINI_API_KEY =
+  process.env.GEMINI_API_KEY_CUSTOMER ||
+  process.env.GEMINI_API_KEY ||
+  '';
+
 // Ensure auth dir exists
 try {
   if (!fs.existsSync(AUTH_DIR)) {
@@ -57,15 +62,24 @@ let sock: any = null;
 let isInitializing = false;
 let isSocketOpen = false;
 
-// Global persistent de-duplication cache across reconnects (TTL 10 minutes)
+// Global persistent de-duplication cache across reconnects
 const processedMessageIds = new Map<string, number>();
 const processedContentKeys = new Map<string, number>();
+
+// In-memory conversation history per phone number for conversational context
+const chatHistories = new Map<string, Array<{ role: string; parts: Array<{ text: string }> }>>();
 
 export function getWhatsAppState(): WhatsAppState {
   const isTrulyConnected = Boolean(isSocketOpen && sock && sock.user && sock.user.id);
   return {
     ...state,
-    status: isTrulyConnected ? 'connected' : state.qrCodeDataUrl || state.pairingCode ? 'qr_ready' : (isInitializing ? 'connecting' : 'disconnected')
+    status: isTrulyConnected
+      ? 'connected'
+      : state.qrCodeDataUrl || state.pairingCode
+      ? 'qr_ready'
+      : isInitializing
+      ? 'connecting'
+      : 'disconnected',
   };
 }
 
@@ -93,7 +107,7 @@ export async function resetWhatsAppSession(): Promise<WhatsAppState> {
 }
 
 export async function getOrGenerateQRCode(forceReset = false): Promise<string> {
-  if (sock && sock.user && sock.user.id) {
+  if (sock && sock.user && sock.user.id && isSocketOpen) {
     state.status = 'connected';
     return '';
   }
@@ -108,7 +122,7 @@ export async function getOrGenerateQRCode(forceReset = false): Promise<string> {
     if (state.qrCodeDataUrl) {
       return state.qrCodeDataUrl;
     }
-    if (sock && sock.user && sock.user.id) {
+    if (sock && sock.user && sock.user.id && isSocketOpen) {
       state.status = 'connected';
       return '';
     }
@@ -127,7 +141,7 @@ export async function generatePairingCode(phoneNumber: string = '01005437633'): 
   state.phoneNumber = cleanPhone;
 
   if (!sock || state.status === 'disconnected') {
-    initWhatsApp();
+    await initWhatsApp();
   }
 
   for (let i = 0; i < 25; i++) {
@@ -224,7 +238,7 @@ export async function initWhatsApp(): Promise<WhatsAppState> {
       }
     });
 
-    // Handle Incoming Messages & Forward to n8n Webhook
+    // Handle Incoming Messages & Dispatch Live AI Replies
     sock.ev.on('messages.upsert', async (m: any) => {
       if (m.type !== 'notify') return;
 
@@ -262,7 +276,6 @@ export async function initWhatsApp(): Promise<WhatsAppState> {
 
           const isImage = Boolean(msg.message.imageMessage);
           if (!text.trim() && !isImage) {
-            // Drop empty status/receipt updates from WhatsApp!
             continue;
           }
 
@@ -287,16 +300,17 @@ export async function initWhatsApp(): Promise<WhatsAppState> {
           }
 
           const textKey = (text || 'img_attachment').trim().toLowerCase();
-          if (textKey && processedContentKeys.has(textKey)) {
-            const lastTime = processedContentKeys.get(textKey)!;
-            if (now - lastTime < 8000) {
+          const dedupKey = `${remoteJid}:${textKey}`;
+          if (textKey && processedContentKeys.has(dedupKey)) {
+            const lastTime = processedContentKeys.get(dedupKey)!;
+            if (now - lastTime < 3000) {
               console.log(`⚠️ Ignored duplicate WhatsApp text (${remoteJid}): ${text}`);
               continue;
             }
           }
-          if (textKey) processedContentKeys.set(textKey, now);
+          if (textKey) processedContentKeys.set(dedupKey, now);
 
-          // Resolve real Egyptian mobile number from candidate JIDs if remoteJid is LID
+          // Resolve clean Egyptian phone number
           let senderPhone = '';
           const candidateJids = [
             (msg.key as any).remoteJidAlt,
@@ -332,8 +346,13 @@ export async function initWhatsApp(): Promise<WhatsAppState> {
 
           console.log(`📩 Incoming WhatsApp from ${senderPhone || remoteJid}: ${text || '[Image Receipt]'}`);
 
-          // Forward to n8n Webhook
-          forwardToN8nWebhook(msg, base64ImageUrl, senderPhone);
+          // 1. Forward asynchronously to n8n
+          forwardToN8nWebhook(msg, base64ImageUrl, senderPhone, text);
+
+          // 2. Direct Intelligent AI Reply Engine
+          handleIncomingWithAI(remoteJid, senderPhone, text, isImage).catch((err) => {
+            console.error('AI Reply error:', err.message);
+          });
         }
       }
     });
@@ -350,10 +369,8 @@ export async function initWhatsApp(): Promise<WhatsAppState> {
 
 // Send Text Message via WhatsApp
 export async function sendWhatsAppText(to: string, text: string): Promise<boolean> {
-  // Wait up to 8 seconds if connecting
   for (let i = 0; i < 16; i++) {
-    if (sock && (state.status === 'connected' || sock.user)) {
-      state.status = 'connected';
+    if (sock && (state.status === 'connected' || isSocketOpen)) {
       break;
     }
     await new Promise((r) => setTimeout(r, 500));
@@ -376,17 +393,30 @@ export async function sendWhatsAppText(to: string, text: string): Promise<boolea
 }
 
 // Helper to forward incoming message to n8n Webhook
-function forwardToN8nWebhook(msg: proto.IWebMessageInfo, imageUrl?: string | null, senderPhone?: string | null) {
+function forwardToN8nWebhook(
+  msg: proto.IWebMessageInfo,
+  imageUrl?: string | null,
+  senderPhone?: string | null,
+  text?: string
+) {
   try {
+    const remoteJid = msg.key?.remoteJid || '';
     const payload = JSON.stringify({
       event: 'messages.upsert',
       instance: 'trimmind_salon',
       senderPhone: senderPhone || null,
+      phone: senderPhone || remoteJid.replace('@s.whatsapp.net', '').replace('@lid', ''),
+      remoteJid: remoteJid,
+      text: text || '',
+      chatInput: text || '',
       imageUrl: imageUrl || null,
       data: {
         ...msg,
         senderPhone: senderPhone || null,
+        phone: senderPhone || remoteJid.replace('@s.whatsapp.net', '').replace('@lid', ''),
+        remoteJid: remoteJid,
         imageUrl: imageUrl || null,
+        text: text || '',
       },
     });
 
@@ -403,7 +433,11 @@ function forwardToN8nWebhook(msg: proto.IWebMessageInfo, imageUrl?: string | nul
         },
       },
       (res) => {
-        // Webhook received
+        let respData = '';
+        res.on('data', (c) => (respData += c));
+        res.on('end', () => {
+          console.log(`📡 n8n Webhook status: ${res.statusCode}`);
+        });
       }
     );
 
@@ -416,4 +450,90 @@ function forwardToN8nWebhook(msg: proto.IWebMessageInfo, imageUrl?: string | nul
   } catch (e: any) {
     console.error('Error forwarding message to n8n:', e.message);
   }
+}
+
+// Direct Native AI Agent Response Logic
+async function handleIncomingWithAI(
+  remoteJid: string,
+  senderPhone: string,
+  userMessage: string,
+  isImage: boolean
+) {
+  if (!userMessage.trim() && !isImage) return;
+
+  const sessionKey = senderPhone || remoteJid;
+  const history = chatHistories.get(sessionKey) || [];
+
+  const systemInstruction = `أنت المساعد الذكي الرسمي لصالون (TrimMind - صالون الحداد VIP).
+أسلوبك: مصري راقي، محترم، ذكي، سريع ومفيد ("يا هلا يا فندم", "منورنا يا باشا", "تحت أمرك يا غالي").
+
+# معلومات صالون TrimMind الحقيقية:
+- الفرع: فرع الحداد VIP (متاح يومياً من 10:00 صباحاً حتى 12:00 منتصف الليل).
+- الكباتن الحلاقين: كابتن أحمد، كابتن محمد، كابتن عمر.
+- أهم الخدمات والأسعار:
+  • حلاقة شعر VIP ملكي: 150 جنيه
+  • تحديد وحلاقة ذقن بالبخار: 80 جنيه
+  • باقة VIP كاملة (شعر + ذقن + حمام كريم + ماسك وجه): 300 جنيه
+  • صبغة شعر / تنظيف بشرة عميق: 120 جنيه
+- رابط الحجز المباشر واختيار الموعد: https://trimmind.up.railway.app
+- رابط تتبع الدور المباشر في الصالون (Live Queue): https://trimmind.up.railway.app/track
+- قائمة الانتظار الذكية (Smart Waitlist): لو المواعيد زحمة، بنسجل العميل في الانتظار وأول ما حد يلغي بنبلغه فوراً بفرصة الحجز.
+- إثباتات الدفع (إنستاباي / فودافون كاش): عند استلام إثبات الدفع، بنبلغه إن الإيصال وصل وجارٍ اعتماده من موظف الاستقبال خلال دقائق وتأكيد الحجز.
+
+# قواعد الرد:
+1. رد دائماً باللهجة المصرية الودودة.
+2. لا تكرر الكلام ولا تطلب أي معلومة قالها العميل.
+3. كن مختصراً وواضحاً وقدم روابط الحجز أو التتبع عند الحاجة.`;
+
+  let promptText = userMessage;
+  if (isImage) {
+    promptText = 'أرسل العميل صورة إيصال تحويل أو صورة استفسار.';
+  }
+
+  history.push({ role: 'user', parts: [{ text: promptText }] });
+  if (history.length > 10) history.splice(0, history.length - 10);
+
+  const candidateModels = ['gemini-flash-latest', 'gemini-2.5-flash-lite', 'gemini-flash-lite-latest'];
+
+  let replyText = '';
+
+  for (const model of candidateModels) {
+    if (replyText) break;
+    try {
+      const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${GEMINI_API_KEY}`;
+      const payload = {
+        contents: history,
+        systemInstruction: {
+          parts: [{ text: systemInstruction }],
+        },
+      };
+
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+
+      if (res.ok) {
+        const data = (await res.json()) as any;
+        replyText = data?.candidates?.[0]?.content?.parts?.[0]?.text || '';
+      }
+    } catch (e: any) {
+      console.error(`Gemini model ${model} error:`, e.message);
+    }
+  }
+
+  if (!replyText) {
+    if (isImage) {
+      replyText = `أهلاً بك يا فندم! 💈 تم استلام صورة الإيصال بنجاح وجارٍ مراجعتها وتأكيد حجزك من الاستقبال فوراً 👑✨`;
+    } else {
+      replyText = `أهلاً بك في صالون TrimMind (الحداد VIP) 💈👑\nنورتنا يا غالي! نقدر نساعدك في حجز موعد، معرفة قائمة الأسعار والخدمات، أو متابعة دورك المباشر في الصالون.\nتحب نساعدك بإيه النهارده؟`;
+    }
+  }
+
+  history.push({ role: 'model', parts: [{ text: replyText }] });
+  chatHistories.set(sessionKey, history);
+
+  // Send WhatsApp Reply
+  await sendWhatsAppText(remoteJid, replyText);
 }
