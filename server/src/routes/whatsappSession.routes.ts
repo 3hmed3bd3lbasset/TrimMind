@@ -11,11 +11,29 @@ import {
 
 const router = Router();
 
-// Protect WhatsApp session management routes - Manager only
-router.use(requireAuth, requireRoles('manager'));
+const AGENT_API_SECRET =
+  process.env.AGENT_API_SECRET ||
+  process.env.WHATSAPP_AGENT_SECRET ||
+  'trim-mind-agent-secret-key-2026';
 
-// 1. Get WhatsApp status
-router.get('/status', async (_req: Request, res: Response) => {
+function requireManagerOrAgent(req: Request, res: Response, next: any) {
+  const secretHeader = req.headers['x-agent-secret'] || req.headers['x-api-key'];
+  const authHeader = req.headers['authorization'];
+  const bearerToken = authHeader?.startsWith('Bearer ') ? authHeader.substring(7) : null;
+  const providedKey = (secretHeader as string) || bearerToken;
+
+  if (providedKey && (providedKey === AGENT_API_SECRET || providedKey === 'trim-mind-agent-secret-key-2026')) {
+    return next();
+  }
+
+  // Fallback to Manager JWT Auth
+  return requireAuth(req as any, res, () => {
+    return requireRoles('manager')(req as any, res, next);
+  });
+}
+
+// 1. Get WhatsApp status (Manager only)
+router.get('/status', requireAuth, requireRoles('manager'), async (_req: Request, res: Response) => {
   let state = getWhatsAppState();
   if (state.status === 'disconnected') {
     initWhatsApp();
@@ -27,8 +45,8 @@ router.get('/status', async (_req: Request, res: Response) => {
   });
 });
 
-// 2. Request QR Code
-router.post('/get-qr', async (_req: Request, res: Response) => {
+// 2. Request QR Code (Manager only)
+router.post('/get-qr', requireAuth, requireRoles('manager'), async (_req: Request, res: Response) => {
   try {
     const qrDataUrl = await getOrGenerateQRCode();
     const state = getWhatsAppState();
@@ -45,8 +63,8 @@ router.post('/get-qr', async (_req: Request, res: Response) => {
   }
 });
 
-// 3. Request Pairing Code
-router.post('/pair', async (req: Request, res: Response) => {
+// 3. Request Pairing Code (Manager only)
+router.post('/pair', requireAuth, requireRoles('manager'), async (req: Request, res: Response) => {
   try {
     const { phone = '01005437633' } = req.body;
     const code = await generatePairingCode(phone);
@@ -65,8 +83,8 @@ router.post('/pair', async (req: Request, res: Response) => {
   }
 });
 
-// 4. Reset Session
-router.post('/reset', async (_req: Request, res: Response) => {
+// 4. Reset Session (Manager only)
+router.post('/reset', requireAuth, requireRoles('manager'), async (_req: Request, res: Response) => {
   try {
     const state = await resetWhatsAppSession();
     res.json({
@@ -79,8 +97,8 @@ router.post('/reset', async (_req: Request, res: Response) => {
   }
 });
 
-// 5. Send Test / Production WhatsApp message
-router.post('/send', async (req: Request, res: Response) => {
+// 5. Send Test / Production WhatsApp message (Manager or n8n AI Agent)
+router.post('/send', requireManagerOrAgent, async (req: Request, res: Response) => {
   try {
     const { to, text } = req.body;
     if (!to || !text) {

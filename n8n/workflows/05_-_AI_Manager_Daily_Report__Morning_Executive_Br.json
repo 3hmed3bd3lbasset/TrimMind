@@ -1,0 +1,184 @@
+{
+  "name": "05 - AI Manager Daily Report (Morning Executive Briefing)",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 9 * * *"
+            }
+          ]
+        }
+      },
+      "name": "Daily Morning Schedule (09:00 AM)",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        200,
+        300
+      ],
+      "id": "schedule-morning-trigger"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://trimmind.up.railway.app/api/agent-tools/manager/daily-report-data",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "x-agent-secret",
+              "value": "trim-mind-agent-secret-key-2026"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "name": "Fetch Daily Summary from TrimMind DB",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [
+        440,
+        300
+      ],
+      "id": "fetch-daily-data"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=لخص بيانات اليوم للمدير العام بشكل موجز، احترافي، وذكي باللغة العربية:\n{{ JSON.stringify($json.data) }}",
+        "options": {
+          "systemMessage": "أنت المستشار الإداري الذكي لصالون الحلاقة الراقي TrimMind.\nمهمتك إعداد التقرير الصباحي اليومي التنفيذي للمدير العام.\n\nاكتب التقرير بأسلوب جذاب، منظم، ومختصر بالرموز التعبيرية (Emojis) كالتالي:\n\nصباح الخير يا فندم 👋👑\nتقرير تشغيل صالون TrimMind لليوم ([التاريخ]):\n\n📅 إجمالي حجوزات اليوم: [العدد]\n⭐ حجوزات VIP الملكية: [العدد]\n👥 المتوقع حضورهم: [العدد]\n\n💈 توزيع الحجوزات على الكباتن:\n• [كابتن 1]: [عدد] حجوزات\n• [كابتن 2]: [عدد] حجوزات\n\n🔥 فترة الذروة المتوقعة: [الفترة]\n💰 إجمالي الإيراد المتوقع: [المبلغ] ج.م\n⏳ حجوزات في انتظار تأكيد العربون: [العدد]\n📋 عملاء في قائمة الانتظار: [العدد]\n\n💡 توصية الذكاء الاصطناعي لليوم:\n[ملاحظة أو نصيحة تشغيلية ذكية ومختصرة لمدير الصالون تركز على أهم ما يحتاج انتباهه اليوم بناءً على البيانات].\n\nنتمنى لكم يوماً حافلاً بالنجاح والتألق! 💈✨"
+        }
+      },
+      "name": "AI Summary Generator",
+      "type": "@n8n/n8n-nodes-langchain.chainLlm",
+      "typeVersion": 1.4,
+      "position": [
+        680,
+        300
+      ],
+      "id": "ai-summary-generator"
+    },
+    {
+      "parameters": {
+        "modelName": "models/gemini-1.5-flash",
+        "options": {
+          "temperature": 0.3
+        }
+      },
+      "name": "Gemini Model",
+      "type": "@n8n/n8n-nodes-langchain.lmChatGoogleGemini",
+      "typeVersion": 1,
+      "position": [
+        680,
+        520
+      ],
+      "id": "gemini-report-model",
+      "credentials": {
+        "googlePalmApi": {
+          "id": "Vehz1Y7tl0gRunMN",
+          "name": "Google Gemini API Key"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://trimmind.up.railway.app/api/whatsapp-session/send",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "x-agent-secret",
+              "value": "trim-mind-agent-secret-key-2026"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "to",
+              "value": "={{ $('Fetch Daily Summary from TrimMind DB').item.json.data.manager.phone || '01285694670' }}"
+            },
+            {
+              "name": "text",
+              "value": "={{ $json.text || $json.output }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "name": "Send Report to Manager via WhatsApp",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [
+        920,
+        300
+      ],
+      "id": "send-report-node"
+    }
+  ],
+  "connections": {
+    "Daily Morning Schedule (09:00 AM)": {
+      "main": [
+        [
+          {
+            "node": "Fetch Daily Summary from TrimMind DB",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch Daily Summary from TrimMind DB": {
+      "main": [
+        [
+          {
+            "node": "AI Summary Generator",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Gemini Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "AI Summary Generator",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI Summary Generator": {
+      "main": [
+        [
+          {
+            "node": "Send Report to Manager via WhatsApp",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "meta": null
+}

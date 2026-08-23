@@ -1,0 +1,190 @@
+{
+  "name": "01 - WhatsApp Master Router (Evolution API + n8n)",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "whatsapp-webhook",
+        "options": {}
+      },
+      "name": "Evolution API Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [
+        180,
+        300
+      ],
+      "webhookId": "whatsapp-evolution-webhook",
+      "id": "225e8622-1f85-4430-95b0-bf0391644dc3"
+    },
+    {
+      "parameters": {
+        "jsCode": "const body = $json.body || $json;\nconst data = body.data || {};\nconst key = data.key || {};\nconst messageId = key.id || data.id || body.id;\nconst fromMe = key.fromMe || body.fromMe;\nconst remoteJid = key.remoteJid || data.remoteJid || body.remoteJid || '';\nconst pushName = data.pushName || body.pushName || 'عميل الصالون';\n\nif (fromMe) {\n  return [];\n}\n\nlet cleanPhone = body.senderPhone || data.senderPhone || '';\nif (!cleanPhone) {\n  const candidate = key.remoteJidAlt || key.participant || data.participant || remoteJid;\n  cleanPhone = candidate.replace('@s.whatsapp.net', '').replace('@c.us', '').replace('@lid', '').replace(/[^0-9]/g, '');\n  if (cleanPhone.startsWith('20') && cleanPhone.length === 12) {\n    cleanPhone = '0' + cleanPhone.substring(2);\n  }\n}\n\n// If cleanPhone is a LID (not starting with 01 or length != 11), clear it so AI asks for phone\nif (!cleanPhone.startsWith('01') || cleanPhone.length !== 11) {\n  cleanPhone = '';\n}\n\nconst message = data.message || body.message || {};\nconst isImage = Boolean(message.imageMessage || body.isImage || body.imageUrl || data.imageUrl);\nconst imageUrl = body.imageUrl || data.imageUrl || data.mediaUrl || body.mediaUrl || null;\n\nconst textMessage = message.conversation || \n                    message.extendedTextMessage?.text || \n                    message.imageMessage?.caption || \n                    message.documentMessage?.caption || \n                    body.text || '';\n\nif (!textMessage.trim() && !isImage) {\n  return [];\n}\n\nconst staticData = $getWorkflowStaticData('global');\nstaticData.seenTextKeys = staticData.seenTextKeys || {};\nstaticData.lastImageTime = staticData.lastImageTime || {};\n\nconst now = Date.now();\nconst textKey = (textMessage || 'img_placeholder').trim().toLowerCase();\n\nif (isImage) {\n  staticData.lastImageTime[cleanPhone || remoteJid] = now;\n} else if (staticData.lastImageTime[cleanPhone || remoteJid] && (now - staticData.lastImageTime[cleanPhone || remoteJid] < 8000)) {\n  return [];\n}\n\nif (textKey && staticData.seenTextKeys[textKey]) {\n  const lastTime = staticData.seenTextKeys[textKey];\n  if (now - lastTime < 6000) {\n    return [];\n  }\n}\nif (textKey) {\n  staticData.seenTextKeys[textKey] = now;\n}\n\nreturn [{\n  json: {\n    messageId: messageId || textKey,\n    remoteJid,\n    phone: cleanPhone || remoteJid.replace('@s.whatsapp.net', '').replace('@lid', ''),\n    realPhone: cleanPhone,\n    pushName,\n    chatInput: textMessage,\n    text: textMessage,\n    input: textMessage,\n    isImage,\n    imageUrl: imageUrl,\n    mediaUrl: imageUrl,\n    rawMessage: message,\n    instance: body.instance || 'default',\n    timestamp: new Date().toISOString()\n  }\n}];"
+      },
+      "name": "Normalize Incoming Message",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        400,
+        300
+      ],
+      "id": "c19c857f-d804-44ee-9595-3d91b8bd5f8f"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "boolean": [
+            {
+              "value1": "={{ $json.isImage }}",
+              "value2": true
+            }
+          ]
+        }
+      },
+      "name": "Is Payment Proof Image?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [
+        640,
+        300
+      ],
+      "id": "cf5e9dda-803b-4196-b29a-3dbc524d3522"
+    },
+    {
+      "parameters": {
+        "workflowId": "C4QTlfrXl6MFBd8O"
+      },
+      "name": "Execute Payment Proof Handler",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1,
+      "position": [
+        900,
+        200
+      ],
+      "id": "8a4ef039-1849-45ad-93cc-0e4acb66b12f"
+    },
+    {
+      "parameters": {
+        "workflowId": "M0VosZpyELwMXaNb"
+      },
+      "name": "Execute AI Agent Orchestrator",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1,
+      "position": [
+        900,
+        420
+      ],
+      "id": "0e555344-0496-4e54-ac29-f5ff57ef1a25"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://trimmind.up.railway.app/api/whatsapp-session/send",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "to",
+              "value": "={{ $('Normalize Incoming Message').item.json.remoteJid || $('Normalize Incoming Message').item.json.phone }}"
+            },
+            {
+              "name": "text",
+              "value": "={{ $json.output || $json.replyText || $json.text }}"
+            }
+          ]
+        },
+        "options": {},
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "x-agent-secret",
+              "value": "trim-mind-agent-secret-key-2026"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        }
+      },
+      "name": "Send WhatsApp Reply via Salon Backend",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [
+        1180,
+        300
+      ],
+      "id": "e3307ed1-6b7f-45a2-9436-672c8f4d03fa"
+    }
+  ],
+  "connections": {
+    "Evolution API Webhook": {
+      "main": [
+        [
+          {
+            "node": "Normalize Incoming Message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normalize Incoming Message": {
+      "main": [
+        [
+          {
+            "node": "Is Payment Proof Image?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Is Payment Proof Image?": {
+      "main": [
+        [
+          {
+            "node": "Execute Payment Proof Handler",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Execute AI Agent Orchestrator",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Execute Payment Proof Handler": {
+      "main": [
+        [
+          {
+            "node": "Send WhatsApp Reply via Salon Backend",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Execute AI Agent Orchestrator": {
+      "main": [
+        [
+          {
+            "node": "Send WhatsApp Reply via Salon Backend",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "meta": null
+}

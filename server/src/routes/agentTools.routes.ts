@@ -1128,4 +1128,124 @@ router.post('/reminders/upcoming', async (req: Request, res: Response) => {
   }
 });
 
+// ---------------------------------------------------------------------------
+// 12. AI Manager Daily Report Data Aggregation (Real MySQL Data)
+// ---------------------------------------------------------------------------
+router.all('/manager/daily-report-data', async (req: Request, res: Response) => {
+  try {
+    const today = new Date().toISOString().split('T')[0];
+    const yesterday = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+
+    // 1. Manager contact info
+    const managerRows = await query<any[]>(
+      "SELECT phone, full_name FROM profiles WHERE role = 'manager' AND is_active = 1 ORDER BY is_super_admin DESC LIMIT 1"
+    );
+    const managerPhone = managerRows?.[0]?.phone || '01285694670';
+    const managerName = managerRows?.[0]?.full_name || 'المدير العام';
+
+    // 2. Today's bookings
+    const todayBookings = await query<any[]>(
+      `SELECT b.*, s.name as service_name, bar.full_name as barber_name, br.name as branch_name
+       FROM bookings b
+       LEFT JOIN services s ON b.service_id = s.id
+       LEFT JOIN barbers bar ON b.barber_id = bar.id
+       LEFT JOIN branches br ON b.branch_id = br.id
+       WHERE b.booking_date = ? OR (b.starts_at LIKE ?)
+       ORDER BY b.starts_at ASC`,
+      [today, `${today}%`]
+    );
+
+    const totalBookings = todayBookings.length;
+    const confirmed = todayBookings.filter((b) => b.status === 'confirmed' || b.status === 'in_service' || b.status === 'completed' || b.status === 'customer_arrived').length;
+    const pendingPayment = todayBookings.filter((b) => b.status === 'pending_review' || b.status === 'awaiting_payment').length;
+    const vipCount = todayBookings.filter((b) => b.booking_type === 'vip').length;
+
+    // Group by Barber
+    const barberStats: Record<string, number> = {};
+    for (const b of todayBookings) {
+      const name = b.barber_name || 'كابتن الصالون الرئيسي';
+      barberStats[name] = (barberStats[name] || 0) + 1;
+    }
+
+    // Time periods / peak hours
+    const periodStats = {
+      morning: 0,
+      afternoon: 0,
+      evening: 0,
+    };
+    for (const b of todayBookings) {
+      const timeStr = (b.starts_at || '').split('T')[1] || '';
+      const hour = parseInt(timeStr.split(':')[0], 10);
+      if (hour >= 10 && hour < 14) periodStats.morning++;
+      else if (hour >= 14 && hour < 18) periodStats.afternoon++;
+      else if (hour >= 18) periodStats.evening++;
+    }
+
+    let peakPeriod = 'متوازنة طوال اليوم';
+    if (periodStats.evening >= periodStats.afternoon && periodStats.evening >= periodStats.morning && periodStats.evening > 0) {
+      peakPeriod = `الفترة المسائية (6:00 م - 11:00 م) بواقع ${periodStats.evening} حجز`;
+    } else if (periodStats.afternoon >= periodStats.morning && periodStats.afternoon > 0) {
+      peakPeriod = `فترة الظهيرة (2:00 م - 6:00 م) بواقع ${periodStats.afternoon} حجز`;
+    } else if (periodStats.morning > 0) {
+      peakPeriod = `الفترة الصباحية (10:00 ص - 2:00 م) بواقع ${periodStats.morning} حجز`;
+    }
+
+    // 3. Active waitlist today
+    const waitlistRows = await query<any[]>(
+      "SELECT COUNT(*) as count FROM waitlist_entries WHERE preferred_date = ? AND status = 'waiting'",
+      [today]
+    );
+    const waitlistCount = waitlistRows?.[0]?.count || 0;
+
+    // 4. Yesterday's summary
+    const yesterdayBookings = await query<any[]>(
+      "SELECT status, cancellation_reason FROM bookings WHERE booking_date = ? OR starts_at LIKE ?",
+      [yesterday, `${yesterday}%`]
+    );
+    const yesterdayCompleted = yesterdayBookings.filter((b) => b.status === 'completed').length;
+    const yesterdayNoShows = yesterdayBookings.filter((b) => b.status === 'cancelled' && (b.cancellation_reason?.includes('no-show') || b.cancellation_reason?.includes('عدم حضور'))).length;
+
+    // 5. Today's estimated financials
+    let totalEstimatedRevenue = 0;
+    let totalDepositsRequired = 0;
+    for (const b of todayBookings) {
+      if (b.status !== 'cancelled' && b.status !== 'rejected') {
+        totalEstimatedRevenue += Number(b.total_at_booking || b.service_price_at_booking || 180);
+        totalDepositsRequired += Number(b.booking_fee_at_booking || 50);
+      }
+    }
+
+    return res.json({
+      success: true,
+      data: {
+        date: today,
+        manager: {
+          name: managerName,
+          phone: managerPhone,
+        },
+        metrics: {
+          totalBookings,
+          confirmedBookings: confirmed,
+          expectedAttendance: confirmed,
+          vipBookings: vipCount,
+          pendingPaymentsCount: pendingPayment,
+          waitlistCount,
+          totalEstimatedRevenue,
+          totalDepositsRequired,
+          peakPeriod,
+          periodBreakdown: periodStats,
+          barberBreakdown: barberStats,
+          yesterday: {
+            date: yesterday,
+            completed: yesterdayCompleted,
+            noShows: yesterdayNoShows,
+          },
+        },
+      },
+    });
+  } catch (err: any) {
+    return res.status(500).json({ success: false, error: err.message });
+  }
+});
+
 export default router;
