@@ -4,6 +4,13 @@ import { query } from '../config/database.js';
 import { createBooking, cancelBooking, getBookingById } from '../services/booking.service.js';
 import { getBranchQueue } from '../services/queue.service.js';
 import { broadcastToBranch, broadcastGlobal } from '../socket/realtime.js';
+import { MySQLWaitlistRepository } from '../adapters/repositories/MySQLWaitlistRepository.js';
+import { MySQLBookingRepository } from '../adapters/repositories/MySQLBookingRepository.js';
+import { MySQLRecallRepository } from '../adapters/repositories/MySQLRecallRepository.js';
+import { SocketRealtimeNotifier } from '../adapters/gateways/SocketRealtimeNotifier.js';
+import { JoinWaitlistUseCase } from '../usecases/waitlist/JoinWaitlistUseCase.js';
+import { ClaimWaitlistOfferUseCase } from '../usecases/waitlist/ClaimWaitlistOfferUseCase.js';
+import { FindRecallCandidatesUseCase } from '../usecases/recall/FindRecallCandidatesUseCase.js';
 
 const router = Router();
 
@@ -1242,6 +1249,208 @@ router.all('/manager/daily-report-data', async (req: Request, res: Response) => 
           },
         },
       },
+    });
+  } catch (err: any) {
+    return res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// ---------------------------------------------------------------------------
+// 13. Smart Waitlist: Join Waitlist
+// ---------------------------------------------------------------------------
+router.post('/waitlist/join', async (req: Request, res: Response) => {
+  try {
+    const { phone, customerName, branchId = 'branch-elhdad', barberId, serviceId = 'srv-haircut', preferredDate, preferredTimeWindow = 'afternoon' } = req.body;
+    const cleanPhone = normalizePhone(phone);
+    if (!cleanPhone || !customerName) {
+      return res.status(400).json({ success: false, error: 'يرجى تزويد الاسم ورقم الهاتف للانضمام لقائمة الانتظار.' });
+    }
+    const targetDate = preferredDate || new Date().toISOString().split('T')[0];
+    const waitlistRepo = new MySQLWaitlistRepository();
+    const realtimeNotifier = new SocketRealtimeNotifier();
+    const useCase = new JoinWaitlistUseCase(waitlistRepo, realtimeNotifier);
+
+    const entry = await useCase.execute({
+      branchId,
+      barberId: barberId || null,
+      customerName,
+      customerPhone: cleanPhone,
+      preferredDate: targetDate,
+      preferredTimeWindow,
+      serviceId,
+    });
+
+    return res.json({
+      success: true,
+      message: 'تمت إضافتك بنجاح إلى قائمة الانتظار الذكية! سنقوم بإبلاغك فور إلغاء أو توفر أي موعد شاغر.',
+      data: {
+        waitlistId: entry.id,
+        customerName: entry.customerName,
+        preferredDate: entry.preferredDate,
+        preferredTimeWindow: entry.preferredTimeWindow,
+        status: entry.status,
+      },
+    });
+  } catch (err: any) {
+    return res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// ---------------------------------------------------------------------------
+// 14. Smart Waitlist: Claim Offered Slot
+// ---------------------------------------------------------------------------
+router.post('/waitlist/claim', async (req: Request, res: Response) => {
+  try {
+    const { token } = req.body;
+    if (!token) {
+      return res.status(400).json({ success: false, error: 'كود العرض (token) مطلوب لتأكيد الحجز.' });
+    }
+    const waitlistRepo = new MySQLWaitlistRepository();
+    const bookingRepo = new MySQLBookingRepository();
+    const realtimeNotifier = new SocketRealtimeNotifier();
+    const useCase = new ClaimWaitlistOfferUseCase(waitlistRepo, bookingRepo, realtimeNotifier);
+
+    const result = await useCase.execute(token);
+    return res.json({
+      success: true,
+      message: 'تم تأكيد حجزك بنجاح عبر قائمة الانتظار الذكية! 💈🎉',
+      data: {
+        bookingId: result.booking.id,
+        customerName: result.booking.customerName,
+        startsAt: result.booking.startsAt,
+        total: result.booking.totalAtBooking,
+        depositRequired: result.booking.bookingFeeAtBooking,
+      },
+    });
+  } catch (err: any) {
+    return res.status(400).json({ success: false, error: err.message });
+  }
+});
+
+// ---------------------------------------------------------------------------
+// 15. Smart Waitlist: Check Customer Waitlist Status
+// ---------------------------------------------------------------------------
+router.post('/waitlist/status', async (req: Request, res: Response) => {
+  try {
+    const cleanPhone = normalizePhone(req.body.phone || '');
+    if (!cleanPhone) {
+      return res.status(400).json({ success: false, error: 'رقم الهاتف مطلوب.' });
+    }
+    const rows = await query<any[]>(
+      `SELECT w.*, s.name as service_name, bar.full_name as barber_name
+       FROM waitlist_entries w
+       LEFT JOIN services s ON w.service_id = s.id
+       LEFT JOIN barbers bar ON w.barber_id = bar.id
+       WHERE REPLACE(REPLACE(w.customer_phone, ' ', ''), '+', '') LIKE ?
+         AND w.status IN ('waiting', 'offered')
+       ORDER BY w.created_at DESC LIMIT 1`,
+      [`%${cleanPhone.slice(-9)}%`]
+    );
+
+    if (!rows || rows.length === 0) {
+      return res.json({
+        success: true,
+        data: { hasActiveEntry: false, message: 'لا توجد طلبات انتظار نشطة مسجلة بهذا الرقم.' },
+      });
+    }
+
+    const r = rows[0];
+    return res.json({
+      success: true,
+      data: {
+        hasActiveEntry: true,
+        entryId: r.id,
+        customerName: r.customer_name,
+        preferredDate: r.preferred_date,
+        preferredTimeWindow: r.preferred_time_window,
+        status: r.status,
+        offerToken: r.offer_token,
+        offerExpiresAt: r.offer_expires_at,
+        isOfferActive: r.status === 'offered' && r.offer_expires_at && new Date(r.offer_expires_at).getTime() > Date.now(),
+      },
+    });
+  } catch (err: any) {
+    return res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// ---------------------------------------------------------------------------
+// 16. No-Show: Check Overdue / No-Show Booking Status
+// ---------------------------------------------------------------------------
+router.post('/no-show/check-status', async (req: Request, res: Response) => {
+  try {
+    const { bookingId, phone } = req.body;
+    const cleanPhone = normalizePhone(phone);
+    let b: any = null;
+    if (bookingId) {
+      b = await getBookingById(bookingId.trim().toUpperCase());
+    } else if (cleanPhone) {
+      const rows = await query<any[]>(
+        `SELECT id FROM bookings WHERE (REPLACE(REPLACE(customer_phone, ' ', ''), '+', '') = ? OR customer_phone LIKE ?) ORDER BY created_at DESC LIMIT 1`,
+        [cleanPhone, `%${cleanPhone.slice(-9)}`]
+      );
+      if (rows && rows.length > 0) b = await getBookingById(rows[0].id);
+    }
+
+    if (!b) {
+      return res.status(404).json({ success: false, error: 'لم يتم العثور على الحجز المطلوب.' });
+    }
+
+    const isNoShow = b.status === 'cancelled' && (b.cancellation_reason?.includes('no-show') || b.cancellation_reason?.includes('عدم حضور'));
+    return res.json({
+      success: true,
+      data: {
+        bookingId: b.id,
+        customerName: b.customer_name,
+        status: b.status,
+        startsAt: b.starts_at,
+        isNoShow,
+        cancellationReason: b.cancellation_reason || null,
+        explanation: isNoShow
+          ? 'تم إلغاء هذا الحجز تلقائياً من النظام لعدم الحضور وتجاوز المهلة المحددة (35 دقيقة).'
+          : `حالة الحجز الحالية هي: ${b.status}`,
+      },
+    });
+  } catch (err: any) {
+    return res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// ---------------------------------------------------------------------------
+// 17. AI Customer Recall: Candidates Query
+// ---------------------------------------------------------------------------
+router.post('/recall/candidates', async (req: Request, res: Response) => {
+  try {
+    const { branchId = 'branch-elhdad', thresholdDays = 21 } = req.body;
+    const recallRepo = new MySQLRecallRepository();
+    const useCase = new FindRecallCandidatesUseCase(recallRepo);
+    const candidates = await useCase.execute(branchId, Number(thresholdDays));
+
+    return res.json({
+      success: true,
+      count: candidates.length,
+      data: candidates,
+    });
+  } catch (err: any) {
+    return res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// ---------------------------------------------------------------------------
+// 18. AI Customer Recall: Log Campaign Send
+// ---------------------------------------------------------------------------
+router.post('/recall/log-send', async (req: Request, res: Response) => {
+  try {
+    const { branchId = 'branch-elhdad', phone, customerName, messageText } = req.body;
+    const cleanPhone = normalizePhone(phone);
+    const recallRepo = new MySQLRecallRepository();
+    const campaignId = await recallRepo.createCampaign(branchId, 21, 'AI Automated Customer Recall via n8n', 'system-ai');
+    await recallRepo.recordSend(campaignId, cleanPhone, customerName || 'عميل الصالون', messageText || '');
+
+    return res.json({
+      success: true,
+      message: 'تم تسجيل رسالة الاستعادة (Recall) بنجاح في قاعدة البيانات.',
+      data: { campaignId, phone: cleanPhone },
     });
   } catch (err: any) {
     return res.status(500).json({ success: false, error: err.message });
