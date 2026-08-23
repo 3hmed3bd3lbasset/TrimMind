@@ -186,25 +186,30 @@ router.patch(
         ).catch(() => {});
       }
 
-      // Record Audit
-      await query(
-        `INSERT INTO audit_logs (id, actor_id, actor_name, actor_role, action, target_table, target_id, metadata, ip_address)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        [
-          uuidv4(),
-          req.user?.id || 'usr-receptionist',
-          req.user?.full_name || 'موظف الاستقبال',
-          req.user?.role || 'receptionist',
-          `STATUS_${status.toUpperCase()}`,
-          'bookings',
-          req.params.id,
-          JSON.stringify({ to_status: status, note }),
-          req.ip,
-        ]
-      ).catch(() => {});
+      // Record Audit safely
+      try {
+        await query(
+          `INSERT INTO audit_logs (id, actor_id, actor_name, actor_role, action, target_table, target_id, metadata, ip_address)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          [
+            uuidv4(),
+            req.user?.id || 'usr-receptionist',
+            req.user?.full_name || 'موظف الاستقبال',
+            req.user?.role || 'receptionist',
+            `STATUS_${status.toUpperCase()}`,
+            'bookings',
+            req.params.id,
+            JSON.stringify({ to_status: status, note }),
+            req.ip || '127.0.0.1',
+          ]
+        );
+      } catch {}
 
-      let updated = await getBookingById(req.params.id);
-      if (!updated) updated = booking;
+      let updated = booking;
+      try {
+        const fresh = await getBookingById(req.params.id);
+        if (fresh) updated = fresh;
+      } catch {}
 
       // Broadcast real-time events
       broadcastToBranch(booking.branch_id || 'branch-elhdad', 'SYNC_STATE', updated);

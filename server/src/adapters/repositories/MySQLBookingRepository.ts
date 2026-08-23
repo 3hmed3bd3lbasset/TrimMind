@@ -224,6 +224,19 @@ export class MySQLBookingRepository implements IBookingRepository {
     const items = await query<any[]>('SELECT * FROM booking_items WHERE booking_id = ?', [bookingId]);
     const proofs = await query<any[]>('SELECT * FROM payment_proofs WHERE booking_id = ? LIMIT 1', [bookingId]);
 
+    let additionalIds: string[] = [];
+    if (b.additional_service_ids) {
+      if (Array.isArray(b.additional_service_ids)) {
+        additionalIds = b.additional_service_ids;
+      } else if (typeof b.additional_service_ids === 'string') {
+        try {
+          additionalIds = JSON.parse(b.additional_service_ids);
+        } catch {
+          additionalIds = [];
+        }
+      }
+    }
+
     return new Booking(
       b.id,
       b.customer_id,
@@ -233,7 +246,7 @@ export class MySQLBookingRepository implements IBookingRepository {
       b.barber_id,
       b.chair_id,
       b.service_id,
-      typeof b.additional_service_ids === 'string' ? JSON.parse(b.additional_service_ids || '[]') : b.additional_service_ids || [],
+      additionalIds,
       b.booking_type,
       b.status,
       b.starts_at,
