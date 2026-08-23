@@ -64,6 +64,39 @@ const processedContentKeys = new Map<string, number>();
 // In-memory conversation history per phone number for conversational context
 const chatHistories = new Map<string, Array<{ role: string; parts: Array<{ text: string }> }>>();
 
+function extractMessageContent(rawMsg: any) {
+  if (!rawMsg) return { text: '', isImage: false };
+
+  let inner = rawMsg;
+  while (
+    inner?.ephemeralMessage?.message ||
+    inner?.viewOnceMessage?.message ||
+    inner?.viewOnceMessageV2?.message ||
+    inner?.documentWithCaptionMessage?.message
+  ) {
+    inner =
+      inner?.ephemeralMessage?.message ||
+      inner?.viewOnceMessage?.message ||
+      inner?.viewOnceMessageV2?.message ||
+      inner?.documentWithCaptionMessage?.message;
+  }
+
+  const text =
+    inner?.conversation ||
+    inner?.extendedTextMessage?.text ||
+    inner?.imageMessage?.caption ||
+    inner?.videoMessage?.caption ||
+    inner?.documentMessage?.caption ||
+    inner?.templateButtonReplyMessage?.selectedId ||
+    inner?.buttonsResponseMessage?.selectedButtonId ||
+    inner?.listResponseMessage?.singleSelectReply?.selectedRowId ||
+    '';
+
+  const isImage = Boolean(inner?.imageMessage);
+
+  return { text: (text || '').trim(), isImage };
+}
+
 export function getWhatsAppState(): WhatsAppState {
   const isTrulyConnected = Boolean(isSocketOpen && sock && sock.user && sock.user.id);
   return {
@@ -255,6 +288,11 @@ export async function initWhatsApp(): Promise<WhatsAppState> {
           continue;
         }
 
+        const { text, isImage } = extractMessageContent(msg.message);
+        if (!text && !isImage) {
+          continue;
+        }
+
         if (msgId) {
           if (processedMessageIds.has(msgId)) {
             console.log(`⚠️ Ignored duplicate message ID (memory cache): ${msgId}`);
@@ -272,17 +310,6 @@ export async function initWhatsApp(): Promise<WhatsAppState> {
             }
           }
           processedMessageIds.set(msgId, now);
-        }
-
-        const text =
-          msg.message.conversation ||
-          msg.message.extendedTextMessage?.text ||
-          msg.message.imageMessage?.caption ||
-          '';
-
-        const isImage = Boolean(msg.message.imageMessage);
-        if (!text.trim() && !isImage) {
-          continue;
         }
 
         let base64ImageUrl: string | null = null;
@@ -309,7 +336,7 @@ export async function initWhatsApp(): Promise<WhatsAppState> {
         const dedupKey = `${remoteJid}:${textKey}`;
         if (textKey && processedContentKeys.has(dedupKey)) {
           const lastTime = processedContentKeys.get(dedupKey)!;
-          if (now - lastTime < 3000) {
+          if (now - lastTime < 2500) {
             console.log(`⚠️ Ignored duplicate WhatsApp text (${remoteJid}): ${text}`);
             continue;
           }
