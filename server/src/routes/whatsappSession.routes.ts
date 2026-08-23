@@ -453,7 +453,8 @@ router.get(['/qr', '/page'], async (_req: Request, res: Response) => {
           document.getElementById('mainContainer').innerHTML = \`
             <div class="success-box">
               <h2 style="font-size: 1.6rem; margin-bottom: 10px; color:#4ade80;">✅ تم ربط الواتساب بنجاح!</h2>
-              <p style="color:#bbf7d0; font-size:1rem; margin-bottom:0;">الرقم <strong>01005437633</strong> متصل بالسيرفر الآن، والمساعد الذكي جاهز للرد على العملاء تلقائياً 👑💈</p>
+              <p style="color:#bbf7d0; font-size:1rem; margin-bottom:20px;">الرقم <strong>01005437633</strong> متصل بالسيرفر الآن، والمساعد الذكي جاهز للرد على العملاء تلقائياً 👑💈</p>
+              <button class="btn-reset" style="background:#991b1b; color:#ffffff; border:none; padding:10px 24px; font-size:0.92rem; border-radius:999px; cursor:pointer;" onclick="resetSession()">🔄 قطع الاتصال وإعادة الربط برقم جديد</button>
             </div>
           \`;
         }

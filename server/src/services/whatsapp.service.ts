@@ -55,20 +55,22 @@ const state: WhatsAppState = {
 
 let sock: any = null;
 let isInitializing = false;
+let isSocketOpen = false;
 
 // Global persistent de-duplication cache across reconnects (TTL 10 minutes)
 const processedMessageIds = new Map<string, number>();
 const processedContentKeys = new Map<string, number>();
 
 export function getWhatsAppState(): WhatsAppState {
-  const isTrulyConnected = Boolean(sock && sock.user && sock.user.id);
+  const isTrulyConnected = Boolean(isSocketOpen && sock && sock.user && sock.user.id);
   return {
     ...state,
-    status: isTrulyConnected ? 'connected' : state.qrCodeDataUrl || state.pairingCode ? 'qr_ready' : 'disconnected'
+    status: isTrulyConnected ? 'connected' : state.qrCodeDataUrl || state.pairingCode ? 'qr_ready' : (isInitializing ? 'connecting' : 'disconnected')
   };
 }
 
 export async function resetWhatsAppSession(): Promise<WhatsAppState> {
+  isSocketOpen = false;
   if (sock) {
     try {
       sock.ws?.close();
@@ -199,6 +201,7 @@ export async function initWhatsApp(): Promise<WhatsAppState> {
       }
 
       if (connection === 'close') {
+        isSocketOpen = false;
         const statusCode = (lastDisconnect?.error as any)?.output?.statusCode;
         const shouldReconnect = statusCode !== DisconnectReason.loggedOut;
         state.status = 'disconnected';
@@ -211,6 +214,7 @@ export async function initWhatsApp(): Promise<WhatsAppState> {
           setTimeout(() => initWhatsApp(), 4000);
         }
       } else if (connection === 'open') {
+        isSocketOpen = true;
         state.status = 'connected';
         state.qrCodeDataUrl = null;
         state.pairingCode = null;
