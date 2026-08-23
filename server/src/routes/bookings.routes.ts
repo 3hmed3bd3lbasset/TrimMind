@@ -214,13 +214,29 @@ router.patch(
 
       // 1. WhatsApp Notification on Confirmation / Acceptance
       if (status === 'confirmed') {
-        const depositFee = booking.booking_fee_at_booking || 50;
+        const depositFee = booking.booking_fee_at_booking || (booking.booking_type === 'vip' ? 100 : 50);
+        let pMethod = 'vodafone_cash';
+        try {
+          if (booking.payment_proof) {
+            const parsed = typeof booking.payment_proof === 'string' ? JSON.parse(booking.payment_proof) : booking.payment_proof;
+            if (parsed?.payment_method === 'instapay') pMethod = 'instapay';
+            else if (parsed?.payment_method === 'cash') pMethod = 'cash';
+          }
+        } catch {}
 
         query(
-          `INSERT INTO financial_records (id, branch_id, type, category, amount, payment_method, reference_id, notes, recorded_by, created_at)
-           VALUES (?, ?, 'income', 'booking_fee', ?, 'online', ?, 'عربون حجز مؤكد عبر واتساب', 'system', NOW())`,
-          [uuidv4(), booking.branch_id || 'branch-elhdad', depositFee, booking.id]
-        ).catch(() => {});
+          `INSERT INTO financial_records (id, booking_id, branch_id, barber_id, amount, type, payment_method, reference_number, notes, recorded_by, created_at)
+           VALUES (?, ?, ?, ?, ?, 'deposit', ?, ?, 'عربون حجز مؤكد عبر واتساب', 'receptionist', NOW())`,
+          [
+            uuidv4(),
+            booking.id,
+            booking.branch_id || 'branch-elhdad',
+            booking.barber_id || null,
+            depositFee,
+            pMethod,
+            booking.id
+          ]
+        ).catch((err) => console.warn('Financial record insert error:', err));
 
         if (customerPhone) {
           try {
@@ -410,12 +426,29 @@ router.patch('/:id/payment-proof', optionalAuth, async (req: AuthenticatedReques
 
     // Add financial deposit if approved
     if (status === 'approved') {
-      const depositFee = booking.booking_fee_at_booking || 50;
+      const depositFee = booking.booking_fee_at_booking || (booking.booking_type === 'vip' ? 100 : 50);
+      let pMethod = 'vodafone_cash';
+      try {
+        if (booking.payment_proof) {
+          const parsed = typeof booking.payment_proof === 'string' ? JSON.parse(booking.payment_proof) : booking.payment_proof;
+          if (parsed?.payment_method === 'instapay') pMethod = 'instapay';
+          else if (parsed?.payment_method === 'cash') pMethod = 'cash';
+        }
+      } catch {}
+
       query(
-        `INSERT INTO financial_records (id, branch_id, type, category, amount, payment_method, reference_id, notes, recorded_by, created_at)
-         VALUES (?, ?, 'income', 'booking_fee', ?, 'online', ?, 'عربون حجز معتمد', 'receptionist', NOW())`,
-        [uuidv4(), booking.branch_id || 'branch-elhdad', depositFee, booking.id]
-      ).catch(() => {});
+        `INSERT INTO financial_records (id, booking_id, branch_id, barber_id, amount, type, payment_method, reference_number, notes, recorded_by, created_at)
+         VALUES (?, ?, ?, ?, ?, 'deposit', ?, ?, 'عربون حجز معتمد', 'receptionist', NOW())`,
+        [
+          uuidv4(),
+          booking.id,
+          booking.branch_id || 'branch-elhdad',
+          booking.barber_id || null,
+          depositFee,
+          pMethod,
+          booking.id
+        ]
+      ).catch((err) => console.warn('Financial record insert error:', err));
 
       if (customerPhone) {
         try {

@@ -12,9 +12,16 @@ interface QueueListProps {
 export const QueueList: React.FC<QueueListProps> = ({ branchId }) => {
   const { queue, transitionBookingStatus, bookings, chairs, barbers, updateChair } = useSalonStore();
 
-  const branchQueue = queue.filter(
-    (q) => !branchId || q.branch_id === branchId || q.branch_id === 'branch-elhdad' || q.branch_id === 'branch-1'
-  );
+  const branchQueue = queue.filter((q) => {
+    if (branchId && q.branch_id !== branchId && q.branch_id !== 'branch-elhdad' && q.branch_id !== 'branch-1') {
+      return false;
+    }
+    const matchedBooking = bookings.find((b) => b.id === q.booking_id || b.id === q.id);
+    if (matchedBooking && matchedBooking.status !== 'confirmed' && matchedBooking.status !== 'customer_arrived' && matchedBooking.status !== 'in_service') {
+      return false;
+    }
+    return true;
+  });
 
   const handleCallNext = async (entry: QueueEntry) => {
     const targetBookingId = entry.booking_id || entry.id;

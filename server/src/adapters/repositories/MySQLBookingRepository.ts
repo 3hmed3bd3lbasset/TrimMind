@@ -26,11 +26,15 @@ export class MySQLBookingRepository implements IBookingRepository {
 
       // 2. Fetch service & calculate prices
       let servicePrice = data.servicePrice || 180;
-      let serviceName = data.serviceName || 'خدمة الصالون';
-      const serviceRows = await queryConn<any[]>(conn, 'SELECT id, name, price FROM services WHERE id = ? LIMIT 1', [data.serviceId]);
-      if (serviceRows && serviceRows.length > 0) {
-        servicePrice = Number(serviceRows[0].price);
-        serviceName = serviceRows[0].name;
+      let serviceName = data.serviceName || 'قص شعر كلاسيكي';
+      if (data.serviceId) {
+        const serviceRows = await queryConn<any[]>(conn, 'SELECT id, name, price FROM services WHERE id = ? LIMIT 1', [data.serviceId]);
+        if (serviceRows && serviceRows.length > 0) {
+          if (!data.serviceName || data.serviceName === 'خدمة الصالون' || data.serviceName === 'خدمة محددة') {
+            servicePrice = Number(serviceRows[0].price);
+            serviceName = serviceRows[0].name;
+          }
+        }
       }
 
       if (data.additionalServiceIds && data.additionalServiceIds.length > 0) {
