@@ -258,12 +258,13 @@ router.patch(
         }
       }
 
-      // 3. WhatsApp Notification on Completed Service
+      // 3. WhatsApp Notification on Completed Service (Thank You & Rating)
       else if (status === 'completed' && customerPhone) {
         import('../services/whatsapp.service.js').then(({ sendWhatsAppText }) => {
           const clientName = booking.customer_name || booking.customerName || 'عزيزنا العميل';
-          const msg = `نعيماً يا ${clientName}! 💈✂️✨\nسعدنا جداً بزيارتك وتشريفك لنا في صالون TrimMind (الحداد VIP) اليوم.\n\nنتمنى تكون الحلاقة وتجربتك معنا نالت إعجابك ورضاك التام 👑\n\n⭐ يسعدنا جداً مشاركتنا تقييمك ورأيك في الخدمة والكابتن عبر الرابط التالي:\nhttps://trimmind.up.railway.app/track?q=${booking.id}\n\nمع تحيات فريق عمل وكباتن صالون الحداد VIP! ننتظر زيارتك القادمة دائماً 💈❤️`;
-          sendWhatsAppText(customerPhone, msg).catch(() => {});
+          const barberName = booking.barber_name || booking.barberName || 'كابتن الصالون';
+          const msg = `نعيماً يا أستاذ *${clientName}*! 💈✂️✨👑\nسعدنا جداً بزيارتك وتشريفك لنا اليوم في صالون TrimMind (الحداد VIP).\n\nنتمنى تكون الحلاقة وتجربتك الفاخرة مع الكابتن *${barberName}* وأداؤه نال كامل إعجابك ورضاك التام! 🌟\n\n⭐ يسعدنا جداً مشاركتنا تقييمك ورأيك في الخدمة وأداء الكابتن عبر الرابط التالي:\nhttps://trimmind.up.railway.app/track?q=${booking.id}\n\nشكراً لاختيارك صالون TrimMind VIP والكابتن ${barberName}! ننتظر زيارتك القادمة دائماً 💈❤️`;
+          sendWhatsAppText(customerPhone, msg).catch((e) => console.error('WA Completed Send Error:', e));
         }).catch(() => {});
       }
 

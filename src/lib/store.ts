@@ -683,8 +683,8 @@ export const useSalonStore = create<SalonStore>()(
         }
 
         let updatedQueue = queue;
-        if (toStatus === 'completed' || toStatus === 'cancelled') {
-          updatedQueue = queue.filter((q) => q.booking_id !== bookingId);
+        if (toStatus === 'in_service' || toStatus === 'completed' || toStatus === 'cancelled') {
+          updatedQueue = queue.filter((q) => q.booking_id !== bookingId && q.id !== bookingId);
         }
 
         const newLog: AuditLog = {

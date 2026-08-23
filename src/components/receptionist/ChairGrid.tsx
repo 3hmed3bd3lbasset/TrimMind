@@ -24,12 +24,30 @@ export const ChairGrid: React.FC<ChairGridProps> = ({ branchId, onSelectChair })
 
   const branchChairs = chairs.filter((c) => c.branch_id === branchId);
 
-  const handleFinishService = (chair: Chair, bookingId?: string) => {
-    if (bookingId) {
-      transitionBookingStatus(bookingId, 'completed', 'تم إنهاء الحلاقة بنجاح من شاشة الكراسي');
+  const handleFinishService = async (chair: Chair, bookingId?: string) => {
+    const { bookings, transitionBookingStatus, updateChair } = useSalonStore.getState();
+    const activeBooking = bookings.find(
+      (b) => b.id === bookingId || b.id === chair.current_booking_id || (b.chair_id === chair.id && b.status === 'in_service')
+    );
+
+    const bId = activeBooking?.id || bookingId || chair.current_booking_id;
+    if (bId) {
+      transitionBookingStatus(bId, 'completed', 'تم إنهاء الحلاقة بنجاح من شاشة الكراسي');
+      try {
+        await fetch(`/api/bookings/${encodeURIComponent(bId)}/status`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            status: 'completed',
+            note: 'تم إنهاء الخدمة بنجاح',
+          }),
+        });
+      } catch (err) {
+        console.warn('Finish service API notice:', err);
+      }
     }
     updateChair(chair.id, { status: 'cleaning', current_booking_id: undefined });
-    toast.success(`تم إنهاء الخدمة على ${chair.name}، وتحويل الكرسي للتنظيف 🧼`);
+    toast.success(`تم إنهاء الخدمة على ${chair.name} وإرسال رسالة الشكر والتقييم للعميل 🧼✨`);
   };
 
   const handleSetReady = (chair: Chair) => {

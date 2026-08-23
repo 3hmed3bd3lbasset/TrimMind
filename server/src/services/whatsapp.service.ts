@@ -753,13 +753,14 @@ async function handleIncomingWithAI(
   // 2. PAYMENT PROOF IMAGE SUBMISSION (Customer sends screenshot)
   // -------------------------------------------------------------------------
   if (isImage) {
-    const custName = session.customerName || pushName || 'عميلنا المميز';
+    const custName = session.customerName || (pushName && pushName.trim().length >= 2 ? pushName.trim() : 'أحمد');
     const bType = session.bookingType || 'normal';
-    const defaultSrv = liveCtx.services[0] || { id: 'srv-1', name: 'خدمة صالون VIP', price: 150 };
+    const defaultSrv = liveCtx.services[0] || { id: 'srv-1', name: 'قص شعر كلاسيكي', price: 180 };
     const sName = session.serviceName || defaultSrv.name;
     const sPrice = session.servicePrice || defaultSrv.price;
-    const randomBarber = liveCtx.barbers[Math.floor(Math.random() * liveCtx.barbers.length)] || { id: 'barber-1', name: 'كابتن الصالون' };
-    const bName = session.barberName || (bType === 'vip' ? (liveCtx.barbers[0]?.name || 'كابتن الصالون') : randomBarber.name);
+    const randomBarber = liveCtx.barbers[Math.floor(Math.random() * liveCtx.barbers.length)] || { id: 'barber-mohamed', name: 'محمد الحداد' };
+    const bName = session.barberName || (bType === 'vip' ? (liveCtx.barbers[0]?.name || 'محمد الحداد') : randomBarber.name);
+    const bId = session.barberId || (bType === 'vip' ? (liveCtx.barbers[0]?.id || 'barber-mohamed') : randomBarber.id);
     const depVal = session.depositAmount || (bType === 'vip' ? deposits.vip : deposits.normal);
 
     try {
@@ -772,6 +773,7 @@ async function handleIncomingWithAI(
         servicePrice: sPrice,
         totalAmount: sPrice,
         bookingFeeAtBooking: depVal,
+        barberId: bId,
         barberName: bName,
         bookingType: bType,
         paymentProof: {
@@ -941,9 +943,13 @@ ${servicesList}`;
   // 8. NAME & PHONE CONFIRMATION -> ISSUE DEPOSIT INVOICE & PROMPT PROOF
   // -------------------------------------------------------------------------
   if (!replyText && (session.step === 'awaiting_name_phone' || (session.serviceName && !session.customerName && (textLower.includes('نفس الرقم') || textLower.includes('رقم الواتس') || textLower.length >= 3)))) {
-    let candidateName = userMessage.replace(/(على نفس الرقم|رقم الواتس|الواتساب|احجزلي|سجل|أيوة|ايوة|تمام|يا ريت|نفس الرقم)/gi, '').trim();
-    if (!candidateName && pushName) candidateName = pushName;
-    if (!candidateName) candidateName = 'عميل صالون VIP';
+    const nameMatch = userMessage.match(/(?:اسمي|معاك|انا|أنا|باسم|الاسم|معك)\s+([^\s,،]+(?:\s+[^\s,،]+)?)/i);
+    let candidateName = nameMatch ? nameMatch[1].trim() : '';
+    if (!candidateName) {
+      candidateName = userMessage.replace(/(على نفس الرقم|رقم الواتس|الواتساب|احجزلي|سجل|أيوة|ايوة|تمام|يا ريت|نفس الرقم|حبيبي|تسلم|شكرا|عايز احجز|احجز)/gi, '').trim();
+    }
+    if ((!candidateName || candidateName.length > 25) && pushName) candidateName = pushName;
+    if (!candidateName || candidateName.length < 2) candidateName = pushName || 'أحمد';
 
     session.customerName = candidateName;
     session.customerPhone = senderPhone || '01005437633';
@@ -951,7 +957,7 @@ ${servicesList}`;
     session.step = 'awaiting_payment_proof';
     bookingSessions.set(sessionKey, session);
 
-    const defaultBarber = liveCtx.barbers[0]?.name || 'كابتن الصالون';
+    const defaultBarber = liveCtx.barbers[0]?.name || 'محمد الحداد';
 
     replyText = `يا هلا بأستاذنا الفاضل *${session.customerName}*! 🌟👑
 تم تثبيت بياناتك ورقم هاتفك (*${session.customerPhone}*) بنجاح.

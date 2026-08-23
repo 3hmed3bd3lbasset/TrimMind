@@ -27,17 +27,23 @@ export const QueueList: React.FC<QueueListProps> = ({ branchId }) => {
 
     const bookingIdToUse = booking?.id || targetBookingId;
 
-    // 1. Play audio chime locally
+    // 1. Remove from queue list immediately so it can NEVER be called or assigned again
+    useSalonStore.setState((state) => ({
+      queue: state.queue.filter((q) => q.id !== entry.id && q.booking_id !== bookingIdToUse),
+    }));
+
+    // 2. Play audio chime locally
     playCallChime();
 
-    // 2. Transition booking status in store & MySQL
-    transitionBookingStatus(bookingIdToUse, 'in_service', 'تم استدعاء العميل وبدء الحلاقة على الكرسي');
-
-    // 3. Assign to available chair or matching barber's chair
+    // 3. Find ONLY the chair belonging to the assigned barber (if specified)
     const matchingChair = chairs.find(
       (c) =>
         (c.branch_id === branchId || !branchId) &&
-        (c.barber_id === booking?.barber_id || c.status === 'available')
+        booking?.barber_id &&
+        c.barber_id === booking.barber_id &&
+        c.status !== 'in_service'
+    ) || chairs.find(
+      (c) => (c.branch_id === branchId || !branchId) && c.status === 'available'
     ) || chairs[0];
 
     if (matchingChair) {
@@ -47,13 +53,17 @@ export const QueueList: React.FC<QueueListProps> = ({ branchId }) => {
       });
     }
 
-    // 4. Send API PATCH status to trigger WhatsApp instant notification & WebSocket broadcast
+    // 4. Transition booking status in store & MySQL
+    transitionBookingStatus(bookingIdToUse, 'in_service', 'تم استدعاء العميل وبدء الحلاقة على الكرسي');
+
+    // 5. Send API PATCH status to trigger WhatsApp instant notification & WebSocket broadcast
     try {
       await fetch(`/api/bookings/${encodeURIComponent(bookingIdToUse)}/status`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           status: 'in_service',
+          chair_id: matchingChair?.id,
           note: 'تم استدعاء العميل وتسكينه على الكرسي',
         }),
       });
@@ -61,7 +71,8 @@ export const QueueList: React.FC<QueueListProps> = ({ branchId }) => {
       console.warn('API call notice:', err);
     }
 
-    toast.success(`تم استدعاء العميل ${entry.customer_name} وتسكينه على الكرسي وإرسال إشعار الواتساب ✂️👑`);
+    const barberDisplay = entry.barber_name || (booking as any)?.barber_name || 'الكابتن المخصص';
+    toast.success(`تم استدعاء ${entry.customer_name} وتسكينه على كرسي كابتن ${barberDisplay} ✂️👑`);
   };
 
   return (
