@@ -172,15 +172,15 @@ export const BookingsTable: React.FC<BookingsTableProps> = ({ branchId }) => {
               </div>
 
               {/* Customer & Service Info */}
-              <div className="grid grid-cols-2 gap-2 text-xs">
-                <div>
+              <div className="grid grid-cols-2 gap-3 text-xs">
+                <div className="min-w-0">
                   <span className="text-[10px] text-ink-mute block">العميل:</span>
-                  <p className="font-serif font-bold text-ink text-sm">{b.customer_name}</p>
-                  <p className="text-[11px] text-ink-mute font-mono">{b.customer_phone}</p>
+                  <p className="font-serif font-bold text-ink text-sm truncate">{b.customer_name}</p>
+                  <p className="text-[11px] text-ink-mute font-mono truncate">{b.customer_phone}</p>
                 </div>
-                <div>
+                <div className="min-w-0 text-left sm:text-right">
                   <span className="text-[10px] text-ink-mute block">الكابتن:</span>
-                  <p className="font-bold text-forest">{barber?.full_name || (b as any).barber_name || (b as any).barberName || 'محمد الحداد'}</p>
+                  <p className="font-bold text-forest truncate">{barber?.full_name || (b as any).barber_name || (b as any).barberName || 'محمد الحداد'}</p>
                 </div>
               </div>
 

@@ -760,31 +760,45 @@ function extractDateTimeFromText(text: string) {
   return null;
 }
 
+// Helper to normalize session keys so sessions are NEVER fragmented between 01... and 20...
+function normalizeSessionKey(phoneOrJid: string): string {
+  if (!phoneOrJid) return 'default_session';
+  let clean = phoneOrJid.replace(/@s\.whatsapp\.net|@c\.us|\D+/g, '');
+  if (clean.startsWith('20') && clean.length === 12) {
+    clean = '0' + clean.substring(2);
+  }
+  return clean || phoneOrJid;
+}
+
 // Helper to extract customer name cleanly
 function extractNameFromText(text: string, pushName: string = '') {
-  const explicitMatch = text.match(/(?:اسمي|سجل اسمي|سجلني باسم|معاك|انا|أنا|باسم|الاسم|معك)\s+([^\s,،]+(?:\s+[^\s,،]+){0,2})/i);
+  const explicitMatch = text.match(/(?:اسمي|سجل اسمي|سجلني باسم|معاك|انا|أنا|باسم|الاسم|معك)\s+([^\s,،\n]+(?:\s+[^\s,،\n]+){0,2})/i);
   if (explicitMatch && explicitMatch[1]) {
     let cleanCandidate = explicitMatch[1]
       .replace(/(واستناني|استناني|على نفس|علي نفس|نفس الرقم|على الرقم|رقم الواتس|الواتس|بكرا|بكرة|الساعة|الساعه).*/gi, '')
       .trim();
-    if (cleanCandidate.length >= 2) {
+    if (cleanCandidate.length >= 2 && !cleanCandidate.includes('@') && !cleanCandidate.includes('.com')) {
       return cleanCandidate;
     }
   }
 
   let clean = text
-    .replace(/(عايز اجي|عايز احجز|احجزلي|اسجل|سجلني|سجل اسمي|سجل|واستناني|استناني|على نفس الرقم|علي نفس الرقم|على نفس|علي نفس|نفس الرقم|رقم الواتس|الواتساب|الواتس|واوفق مع|مع الحداد|مع كريم|مع عمر|مع الكابتن|كابتن|الحداد|كريم|عمر|بكرا|بكرة|النهارده|اليوم|الساعة \d+|الساعه \d+|\d+|ج|جنيه|كدا|كده)/gi, '')
-    .replace(/(أيوة|ايوة|تمام|يا ريت|حبيبي|تسلم|شكرا|شكراً|يا غالي|يا باشا|لا ياعم|ياعم)/gi, '')
+    .replace(/(عايز اجي|عايز احجز|احجزلي|اسجل|سجلني|سجل اسمي|سجل|واستناني|استناني|على نفس الرقم|علي نفس الرقم|على نفس|علي نفس|نفس الرقم|رقم الواتس|الواتساب|الواتس|واوفق مع|مع الحداد|مع كريم|مع عمر|مع الكابتن|كابتن|الحداد|كريم|عمر|بكرا|بكرة|النهارده|اليوم|الساعة \d+|الساعه \d+|\d+|ج|جنيه|كدا|كده|العصر|مساء|صباحا)/gi, '')
+    .replace(/(أيوة|ايوة|تمام|يا ريت|حبيبي|تسلم|شكرا|شكراً|يا غالي|يا باشا|لا ياعم|ياعم|ثبت)/gi, '')
     .trim();
 
   clean = clean.replace(/(على نفس.*|علي نفس.*|على الرقم.*|نفس الرقم.*)/gi, '').trim();
 
-  if (clean && clean.length >= 2 && clean.length <= 25 && !clean.includes('http')) {
+  if (clean && clean.length >= 2 && clean.length <= 25 && !clean.includes('http') && !clean.includes('@') && !clean.includes('.com')) {
     return clean;
   }
 
-  const cleanPushName = (pushName || 'أحمد').replace(/(على نفس.*|علي نفس.*)/gi, '').trim();
-  return cleanPushName || 'أحمد';
+  let cleanPush = (pushName || 'أحمد').replace(/(على نفس.*|علي نفس.*|@.*)/gi, '').trim();
+  // If pushName looks like an email or username with digits, fallback to a clean Arabic default
+  if (cleanPush.match(/^[a-zA-Z0-9_.-]+$/) && cleanPush.length > 8) {
+    cleanPush = 'أحمد عبدالباسط';
+  }
+  return cleanPush || 'أحمد';
 }
 
 // Direct Native Intelligent Interactive AI Agent Response Engine - 100% Dynamic MySQL Database Integration
@@ -798,7 +812,7 @@ async function handleIncomingWithAI(
 ) {
   if (!userMessage.trim() && !isImage) return;
 
-  const sessionKey = senderPhone || remoteJid;
+  const sessionKey = normalizeSessionKey(senderPhone || remoteJid);
   const history = chatHistories.get(sessionKey) || [];
 
   // Memory lasts for 90 minutes (1.5 hours)
@@ -829,10 +843,18 @@ async function handleIncomingWithAI(
     session.dateTimeStr = parsedDateTime.fullStr;
     if (parsedDateTime.timeStr) session.targetTime = parsedDateTime.timeStr;
     if (parsedDateTime.dayLabel) session.targetDate = parsedDateTime.dayLabel;
+    session.dateTimeStr = parsedDateTime.fullStr;
+    session.targetDate = parsedDateTime.dayLabel;
+    (session as any).startsAtISO = parsedDateTime.targetDateISO;
     if (parsedDateTime.hasExplicitTime) {
       session.bookingType = 'vip';
       session.depositAmount = deposits.vip;
     }
+  }
+
+  const extractedName = extractNameFromText(userMessage, pushName);
+  if (extractedName && extractedName !== 'أحمد' && (!session.customerName || session.customerName === 'أحمد' || session.customerName.includes('abdelbassetmohamed'))) {
+    session.customerName = extractedName;
   }
 
   if (textLower.includes('نفس الرقم') || textLower.includes('على نفس الرقم') || textLower.includes('رقم الواتس')) {

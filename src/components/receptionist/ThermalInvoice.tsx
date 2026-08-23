@@ -21,13 +21,13 @@ export const ThermalInvoice: React.FC<ThermalInvoiceProps> = ({ booking, isOpen,
 
   const displayBarberName = barber?.full_name || (booking as any).barber_name || (booking as any).barberName || 'محمد الحداد';
   const displayServiceName = service?.name || (booking as any).service_name || (booking as any).serviceName || 'قص شعر كلاسيكي';
-  const effectiveServicePrice = service?.price || booking.service_price_at_booking || (booking as any).total_at_booking || 180;
+  const effectiveServicePrice = booking.total_at_booking || booking.service_price_at_booking || (booking as any).totalAmount || service?.price || 180;
   const additionalTotal = (booking.additional_service_ids || []).reduce((sum, addId) => {
     const s = services.find((srv) => srv.id === addId);
     return sum + (s?.price || 0);
   }, 0);
   const itemsTotal = (booking.items || []).reduce((sum, item) => sum + (item.price_at_booking * item.quantity), 0);
-  const calculatedTotal = Math.max(booking.total_at_booking || 0, effectiveServicePrice + additionalTotal + itemsTotal - (booking.discount_at_booking || 0));
+  const calculatedTotal = booking.total_at_booking || (effectiveServicePrice + additionalTotal + itemsTotal - (booking.discount_at_booking || 0));
   const depositPaid = booking.booking_fee_at_booking || 50;
   const remaining = Math.max(0, calculatedTotal - depositPaid);
   const salonTitle = settings?.salon_name || 'صالون TrimMind (الحداد VIP)';
