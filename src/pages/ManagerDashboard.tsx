@@ -71,9 +71,9 @@ export default function ManagerDashboard() {
     } catch {}
   }, [activeTab]);
 
-  const isSuperAdmin = currentUser.is_super_admin ?? true;
+  const isSuperAdmin = currentUser?.is_super_admin ?? true;
   const assignedBranches = branches.filter((b) =>
-    currentUser.assigned_branch_ids?.includes(b.id) || currentUser.branch_id === b.id
+    currentUser?.assigned_branch_ids?.includes(b.id) || currentUser?.branch_id === b.id
   );
 
   const SECTIONS = [

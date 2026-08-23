@@ -77,10 +77,10 @@ export default function ReceptionistDashboard() {
   }, [activeTab]);
 
   // Strict branch isolation
-  const isManager = currentUser.role === 'manager';
+  const isManager = currentUser?.role === 'manager';
   
   const receptionistBranchId =
-    currentUser.branch_id || selectedBranchId || branches[0]?.id || '';
+    currentUser?.branch_id || selectedBranchId || branches[0]?.id || '';
 
   const branchId = isManager ? selectedBranchId : receptionistBranchId;
 

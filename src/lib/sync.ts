@@ -23,7 +23,7 @@ const TAB_ID = `tab-${Math.random().toString(36).substring(2, 9)}`;
 let channel: BroadcastChannel | null = null;
 try {
   if (typeof window !== 'undefined' && 'BroadcastChannel' in window) {
-    channel = new BroadcastChannel('clinicmind_realtime_sync');
+    channel = new BroadcastChannel('trimmind_realtime_sync');
   }
 } catch (e) {
   console.warn('BroadcastChannel not supported or restricted, fallback to storage events');
@@ -47,7 +47,7 @@ export const broadcastEvent = (type: SyncEventType, payload?: any) => {
 
   // Fallback / local storage trigger
   try {
-    localStorage.setItem('clinicmind_sync_ping', JSON.stringify(message));
+    localStorage.setItem('trimmind_sync_ping', JSON.stringify(message));
   } catch (e) {}
 };
 
@@ -101,7 +101,7 @@ export const initRealtimeSync = (
 
   // Listen to storage events for browsers where BroadcastChannel might be isolated
   const handleStorage = (e: StorageEvent) => {
-    if (e.key === 'clinicmind_sync_ping' && e.newValue) {
+    if (e.key === 'trimmind_sync_ping' && e.newValue) {
       try {
         const msg = JSON.parse(e.newValue);
         handleMessage(msg);

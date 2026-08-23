@@ -37,10 +37,10 @@ export default function BarberDashboard() {
     updateBookingDetails,
   } = useSalonStore();
 
-  const isManager = currentUser.role === 'manager';
+  const isManager = currentUser?.role === 'manager';
 
   const [selectedBranchId, setSelectedBranchId] = useState<string>(() => {
-    return currentUser.branch_id || branches[0]?.id || '';
+    return currentUser?.branch_id || branches[0]?.id || '';
   });
 
   const branchBarbers = useMemo(() => {
@@ -50,7 +50,7 @@ export default function BarberDashboard() {
   }, [barbers, selectedBranchId]);
 
   const [selectedBarberId, setSelectedBarberId] = useState<string>(() => {
-    return currentUser.barber_id || branchBarbers[0]?.id || barbers[0]?.id || '';
+    return currentUser?.barber_id || branchBarbers[0]?.id || barbers[0]?.id || '';
   });
 
   // Auto sync when branch changes
