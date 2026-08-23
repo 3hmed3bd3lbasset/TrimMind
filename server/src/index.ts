@@ -36,7 +36,7 @@ import whatsappSessionRoutes from './routes/whatsappSession.routes.js';
 import waitlistRoutes from './routes/waitlist.routes.js';
 import recallRoutes from './routes/recall.routes.js';
 import insightsRoutes from './routes/insights.routes.js';
-import { initWhatsApp } from './services/whatsapp.service.js';
+import { initWhatsApp, getWhatsAppState, getDebugLogs } from './services/whatsapp.service.js';
 import { initNoShowProtectionCron } from './services/noshow.service.js';
 
 dotenv.config();
@@ -98,6 +98,14 @@ app.get('/api/health', (_req, res) => {
     timestamp: new Date().toISOString(),
     service: 'Elite Salon Cloud Backend',
     version: '1.0.0',
+  });
+});
+
+app.get('/api/debug-logs', (_req, res) => {
+  res.json({
+    status: 'healthy',
+    whatsapp: getWhatsAppState(),
+    logs: getDebugLogs(),
   });
 });
 
