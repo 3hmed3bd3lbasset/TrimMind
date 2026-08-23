@@ -65,6 +65,10 @@ const uploadsPath = path.resolve(UPLOAD_DIR);
 if (!fs.existsSync(uploadsPath)) {
   fs.mkdirSync(uploadsPath, { recursive: true });
 }
+// Block sensitive auth credentials from public static access
+app.use('/uploads/whatsapp_auth', (_req, res) => {
+  res.status(403).json({ success: false, error: 'Forbidden' });
+});
 app.use('/uploads', express.static(uploadsPath));
 
 // 4. API Routes

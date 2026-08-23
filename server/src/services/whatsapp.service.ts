@@ -15,9 +15,16 @@ import { query } from '../config/database.js';
 const UPLOAD_DIR =
   process.env.UPLOAD_DIR ||
   (process.platform === 'linux' ? '/app/server/uploads' : path.resolve(process.cwd(), 'server', 'uploads'));
-const AUTH_DIR =
-  process.env.WHATSAPP_AUTH_DIR ||
-  path.resolve(process.cwd(), 'server', 'data', 'whatsapp_auth');
+
+const existingUploadsAuth = path.resolve(UPLOAD_DIR, 'whatsapp_auth');
+const existingServerUploadsAuth = path.resolve(process.cwd(), 'server', 'uploads', 'whatsapp_auth');
+const defaultAuthDir = fs.existsSync(existingUploadsAuth)
+  ? existingUploadsAuth
+  : (fs.existsSync(existingServerUploadsAuth)
+      ? existingServerUploadsAuth
+      : path.resolve(UPLOAD_DIR, 'whatsapp_auth'));
+
+const AUTH_DIR = process.env.WHATSAPP_AUTH_DIR || defaultAuthDir;
 const N8N_WEBHOOK_URL =
   process.env.N8N_WEBHOOK_URL || 'https://n8n-server-production-bdce.up.railway.app/webhook/whatsapp-webhook';
 
