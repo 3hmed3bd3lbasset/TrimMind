@@ -238,9 +238,11 @@ export async function initWhatsApp(): Promise<WhatsAppState> {
       generateHighQualityLinkPreview: false,
       connectTimeoutMs: 60000,
       defaultQueryTimeoutMs: 60000,
-      keepAliveIntervalMs: 25000,
-      retryRequestDelayMs: 2000,
-      getMessage: async (_key) => undefined,
+      keepAliveIntervalMs: 10000,
+      retryRequestDelayMs: 1000,
+      markOnlineOnConnect: true,
+      emitOwnEvents: true,
+      shouldIgnoreJid: (jid: string) => Boolean(jid?.includes('broadcast')),
     });
 
     sock.ev.on('creds.update', saveCreds);
