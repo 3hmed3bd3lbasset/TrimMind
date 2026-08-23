@@ -97,6 +97,7 @@ export interface UserBookingSession {
   customerPhone?: string;
   depositAmount?: number;
   bookingId?: string;
+  receiptSubmitted?: boolean;
   lastActiveAt?: number;
 }
 
@@ -924,7 +925,7 @@ ${servicesList}
   }
 
   // -------------------------------------------------------------------------
-  // 7. DYNAMIC SERVICE MATCHING FROM MYSQL
+  // 7. DYNAMIC SERVICE MATCHING FROM MYSQL (WITH AUTO-VIP UPGRADE)
   // -------------------------------------------------------------------------
   if (!replyText) {
     for (const s of liveCtx.services) {
@@ -934,10 +935,24 @@ ${servicesList}
         session.serviceName = s.name;
         session.servicePrice = s.price;
         session.serviceId = s.id;
+
+        // Auto-upgrade to VIP if service is VIP package or is_vip_only or includes 'vip'
+        const isVipService = s.category === 'vip_package' || Boolean(s.is_vip_only) || s.name.toLowerCase().includes('vip') || s.price >= 400;
+        if (isVipService) {
+          session.bookingType = 'vip';
+          session.depositAmount = deposits.vip;
+        } else if (!session.bookingType) {
+          session.bookingType = 'normal';
+          session.depositAmount = deposits.normal;
+        } else {
+          session.depositAmount = session.bookingType === 'vip' ? deposits.vip : deposits.normal;
+        }
+
         session.step = 'awaiting_name_phone';
         bookingSessions.set(sessionKey, session);
 
         replyText = `اختيار رائع يا باشا! *${s.name}* (*${s.price} جنيه*) ✂️👑.
+${isVipService ? '✨ تم اعتماد الحجز كـ *جلسة VIP ملكية* نظراً لاختيارك باقة VIP فاخرة.' : ''}
 
 عشان نسجل الحجز ونصدر الفاتورة فوراً:
 1️⃣ *أتشرف باسم حضرتك الكريم؟*
@@ -966,15 +981,18 @@ ${servicesList}
     bookingSessions.set(sessionKey, session);
 
     const defaultBarber = liveCtx.barbers[0]?.name || 'محمد الحداد';
+    const assignedBarber = session.barberName || (session.bookingType === 'vip' ? defaultBarber : (liveCtx.barbers[Math.floor(Math.random() * liveCtx.barbers.length)]?.name || 'كريم السيد'));
+    session.barberName = assignedBarber;
+    const bTypeLabel = session.bookingType === 'vip' ? 'جلسة VIP ملكية 👑' : 'جلسة عادية 💈';
 
     replyText = `يا هلا بأستاذنا الفاضل *${session.customerName}*! 🌟👑
 تم تثبيت بياناتك ورقم هاتفك (*${session.customerPhone}*) بنجاح.
 
 🧾 *فاتورة الحجز والعربون المطلوب:*
-• *نوع الجلسة:* ${session.bookingType === 'vip' ? 'جلسة VIP ملكية 👑' : 'جلسة عادية 💈'}
-• *الكابتن:* ${session.barberName || defaultBarber} ✂️
-• *الخدمة:* ${session.serviceName || 'خدمة VIP'}
-• *إجمالي الخدمة:* ${session.servicePrice || 150} جنيه
+• *نوع الجلسة:* ${bTypeLabel}
+• *الكابتن:* ${session.barberName} ✂️
+• *الخدمة:* ${session.serviceName || 'قص شعر كلاسيكي'}
+• *إجمالي الخدمة:* ${session.servicePrice || 180} جنيه
 • *العربون المطلوب لتأكيد الحجز:* *${session.depositAmount} جنيه*
 
 ⚠️ *تنبيه مهم:* رسوم الحجز (العربون) غير قابلة للاسترداد لأي سبب لضمان حجز وتجهيز الكرسي والموعد لحضرتك.
@@ -983,7 +1001,7 @@ ${servicesList}
 • *InstaPay:* \`${liveCtx.paymentAccounts.instapay}\`
 • *Vodafone Cash:* \`${liveCtx.paymentAccounts.vodafoneCash}\`
 
-📸 **يرجى تحويل العربون وإرسال صورة إيصال التحويل (اسكرين شوت) هنا على الواتساب فوراً** ليرسل النظام الحجز لموظف الاستقبال لاعتماده نهائياً! ✨`;
+📸 *يرجى تحويل العربون وإرسال صورة إيصال التحويل (اسكرين شوت) هنا على الواتساب فوراً* ليرسل النظام الحجز لموظف الاستقبال لاعتماده نهائياً! ✨`;
   }
 
   // -------------------------------------------------------------------------
@@ -1003,11 +1021,24 @@ ${servicesList}
   }
 
   // -------------------------------------------------------------------------
-  // 10. FALLBACK TO GEMINI FLASH AI (Dynamic Prompt with Live MySQL Data)
+  // 10. FALLBACK TO GEMINI FLASH AI (Dynamic Prompt with Live MySQL Data & Active Booking Memory)
   // -------------------------------------------------------------------------
   if (!replyText) {
     const servicesListStr = liveCtx.services.map((s) => `• ${s.name}: ${s.price} جنيه`).join('\n');
     const barbersListStr = liveCtx.barbers.map((b) => `• ${b.name}`).join('\n');
+
+    let currentBookingContext = '';
+    if (session.receiptSubmitted || session.bookingId) {
+      currentBookingContext = `
+# ⚠️ تنبيه فائق الأهمية عن حالة العميل الحالي:
+- العميل الحالي (${session.customerName || 'المميز'}) **قام بإرسال صورة إيصال التحويل بالفعل** وتم تسجيل حجزه برقم (#${session.bookingId || 'مسجل'}).
+- الكابتن المسجل والمخصص له هو: **${session.barberName || 'كابتن الصالون'}**.
+- نوع الجلسة: **${session.bookingType === 'vip' ? 'جلسة VIP ملكية' : 'جلسة عادية'}**.
+- الخدمة المختارة: **${session.serviceName || 'الخدمة المختارة'}**.
+- الحجز والإيصال حالياً قيد المراجعة والاعتماد لدى موظف الاستقبال.
+- ❌ **ممنوع منعاً باتاً** أن تطلب من العميل إرسال صورة الإيصال أو تحويل العربون مرة أخرى، لأنه أرسله بالفعل!
+- إذا سأل العميل عن الحلاق أو الموعد، طمئنه بالبيانات المسجلة أعلاه وأخبره أن الإيصال قيد الاعتماد من الاستقبال.`;
+    }
 
     const systemInstruction = `أنت المساعد الذكي الرسمي لصالون (${liveCtx.salonName}).
 أسلوبك: مصري راقي، محترم، ذكي، سريع ومفيد ("يا هلا يا فندم", "منورنا يا باشا", "تحت أمرك يا غالي").
@@ -1025,8 +1056,8 @@ ${barbersListStr}
 - رقم واتساب العميل الحالي: ${senderPhone || 'رقم الواتساب الحالي'}.
 - ميزة تحديد الساعة متاحة فقط في الـ VIP (إذا طلب العميل في العادية ساعة، اعرض عليه الترقية لـ VIP).
 - العربون غير قابل للاسترداد.
-- عند استلام صورة الإيصال يتم الحجز مباشرة في السيستم.
 - رابط التتبع: https://trimmind.up.railway.app/track.
+${currentBookingContext}
 
 رد دائماً بالبيانات الحقيقية أعلاه باللهجة المصرية الودودة.`;
 

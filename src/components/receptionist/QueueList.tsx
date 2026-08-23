@@ -10,7 +10,7 @@ interface QueueListProps {
 }
 
 export const QueueList: React.FC<QueueListProps> = ({ branchId }) => {
-  const { queue, transitionBookingStatus, bookings, chairs, updateChair } = useSalonStore();
+  const { queue, transitionBookingStatus, bookings, chairs, barbers, updateChair } = useSalonStore();
 
   const branchQueue = queue.filter(
     (q) => !branchId || q.branch_id === branchId || q.branch_id === 'branch-elhdad' || q.branch_id === 'branch-1'
@@ -94,39 +94,81 @@ export const QueueList: React.FC<QueueListProps> = ({ branchId }) => {
 
       {branchQueue.length > 0 ? (
         <div className="space-y-2.5">
-          {branchQueue.map((entry) => (
-            <div
-              key={entry.id}
-              className="bg-paper-warm/80 p-3 sm:p-3.5 rounded-2xl border border-border flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs shadow-clinic-1"
-            >
-              <div className="flex items-center gap-3">
-                <div className="w-8 h-8 rounded-xl bg-forest text-paper font-mono font-bold flex items-center justify-center text-sm shadow-sm shrink-0">
-                  #{entry.position}
+          {branchQueue.map((entry) => {
+            const targetBookingId = entry.booking_id || entry.id;
+            const booking = bookings.find(
+              (b) =>
+                b.id === targetBookingId ||
+                b.id === entry.id ||
+                (entry.customer_name && b.customer_name === entry.customer_name)
+            );
+
+            const isWhatsApp =
+              entry.customer_name?.includes('واتساب') ||
+              booking?.customer_phone?.startsWith('01') ||
+              booking?.customer_phone?.startsWith('20');
+
+            const cleanName =
+              booking?.customer_name?.replace(/عميل واتساب|\(|\)|\d+/g, '').trim() ||
+              entry.customer_name?.replace(/عميل واتساب|\(|\)|\d+/g, '').trim() ||
+              booking?.customer_name ||
+              entry.customer_name;
+
+            const barberObj = barbers.find((b) => b.id === booking?.barber_id);
+            const displayBarber =
+              barberObj?.full_name ||
+              (booking as any)?.barber_name ||
+              (booking as any)?.barberName ||
+              entry.barber_name ||
+              'محمد الحداد';
+
+            const displayService =
+              (booking as any)?.service_name ||
+              (booking as any)?.serviceName ||
+              entry.service_name ||
+              'قص شعر كلاسيكي';
+
+            return (
+              <div
+                key={entry.id}
+                className="bg-paper-warm/80 p-3 sm:p-3.5 rounded-2xl border border-border flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs shadow-clinic-1"
+              >
+                <div className="flex items-center gap-3">
+                  <div className="w-8 h-8 rounded-xl bg-forest text-paper font-mono font-bold flex items-center justify-center text-sm shadow-sm shrink-0">
+                    #{entry.position}
+                  </div>
+                  <div className="space-y-0.5 min-w-0">
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      {isWhatsApp && (
+                        <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-300 font-mono shrink-0">
+                          عميل واتساب 💬
+                        </span>
+                      )}
+                      <h4 className="font-serif font-bold text-ink text-sm truncate">{cleanName}</h4>
+                    </div>
+                    <p className="text-ink-mute text-[11px] truncate">
+                      {displayService} • كابتن <strong className="text-forest font-bold">{displayBarber}</strong>
+                    </p>
+                  </div>
                 </div>
-                <div>
-                  <h4 className="font-serif font-bold text-ink text-sm">{entry.customer_name}</h4>
-                  <p className="text-ink-mute text-[11px]">
-                    {entry.service_name} • كابتن <strong className="text-forest">{entry.barber_name}</strong>
-                  </p>
+
+                <div className="flex items-center justify-between sm:justify-end gap-3 pt-2 sm:pt-0 border-t sm:border-t-0 border-border/60">
+                  <span className="flex items-center gap-1 text-ink-mute text-[11px]">
+                    <Clock className="w-3.5 h-3.5 text-forest" />
+                    <span>متبقي ~{entry.estimated_wait_minutes} دقيقة</span>
+                  </span>
+
+                  <button
+                    onClick={() => handleCallNext(entry)}
+                    className="px-3.5 py-1.5 rounded-full bg-forest text-paper font-bold flex items-center gap-1 text-xs hover:bg-forest-soft transition-colors shadow-sm cursor-pointer active:scale-95 shrink-0"
+                  >
+                    <UserCheck className="w-3.5 h-3.5" />
+                    <span>استدعاء للكرسي</span>
+                  </button>
                 </div>
               </div>
-
-              <div className="flex items-center justify-between sm:justify-end gap-3 pt-2 sm:pt-0 border-t sm:border-t-0 border-border/60">
-                <span className="flex items-center gap-1 text-ink-mute text-[11px]">
-                  <Clock className="w-3.5 h-3.5 text-forest" />
-                  <span>متبقي ~{entry.estimated_wait_minutes} دقيقة</span>
-                </span>
-
-                <button
-                  onClick={() => handleCallNext(entry)}
-                  className="px-3.5 py-1.5 rounded-full bg-forest text-paper font-bold flex items-center gap-1 text-xs hover:bg-forest-soft transition-colors shadow-sm cursor-pointer active:scale-95"
-                >
-                  <UserCheck className="w-3.5 h-3.5" />
-                  <span>استدعاء للكرسي</span>
-                </button>
-              </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       ) : (
         <div className="py-10 text-center text-ink-mute text-xs space-y-1">

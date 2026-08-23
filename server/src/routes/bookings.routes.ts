@@ -228,16 +228,16 @@ router.patch(
             const totalVal = booking.total_at_booking || booking.totalAmount || 180;
             const depositVal = booking.booking_fee_at_booking || booking.depositRequired || 50;
             const remainingVal = Math.max(0, totalVal - depositVal);
-            const barberName = booking.barber_name || booking.barberName || 'كابتن الصالون';
-            const startsAtFormatted = booking.starts_at ? booking.starts_at.replace('T', ' ').substring(0, 16) : 'موعد فوري';
+            const barberName = booking.barber_name || booking.barberName || 'محمد الحداد';
+            const startsAtFormatted = booking.starts_at ? booking.starts_at.replace('T', ' ').substring(0, 16) : 'اليوم';
 
-            const msg = `🎉 *ألف مبروك يا أستاذ ${clientName}!* 👑💈\nتم قبول واعتماد حجزك رقم \`#${booking.id}\` بنجاح في صالون TrimMind (الحداد VIP)!\n\n📋 *تفاصيل الحجز المؤكد:* \n✂️ *الخدمة:* ${booking.service_name || booking.serviceName || 'خدمة الصالون'}\n💈 *الكابتن:* ${barberName}\n📅 *الميعاد المحدد:* ${startsAtFormatted}\n🔢 *رقم الدور:* رقم #${booking.queue_number || booking.queueNumber || 1} في طابور اليوم\n\n💵 *تفاصيل الفاتورة والحساب:* \n• إجمالي الفاتورة: ${totalVal} ج.م\n• العربون المسدد: ${depositVal} ج.م ✓\n• المتبقي للدفع بالصالون: *${remainingVal} ج.م*\n\n📍 *رابط متابعة دورك لحظة بلحظة:* \nhttps://trimmind.up.railway.app/track?q=${booking.id}\n\nيرجى الحضور في الميعاد المحدد، وأول ما يقرب دورك هنبعتلك تذكير فوري لتجهيز الكرسي لك! نتشرف بزيارتك 💈✨`;
-            sendWhatsAppText(customerPhone, msg).catch((e) => console.error('WA Send Error:', e));
+            const msg = `🎉 *ألف مبروك يا أستاذ ${clientName}!* 👑💈\nتم قبول واعتماد حجزك رقم \`#${booking.id}\` بنجاح في صالون TrimMind (الحداد VIP)!\n\n📋 *تفاصيل الحجز المؤكد:*\n✂️ *الخدمة:* ${booking.service_name || booking.serviceName || 'قص شعر كلاسيكي'}\n💈 *الكابتن:* ${barberName}\n📅 *الميعاد:* ${startsAtFormatted}\n🔢 *رقم الدور:* رقم #${booking.queue_number || booking.queueNumber || 1} في طابور الصالون\n\n💵 *تفاصيل الفاتورة والحساب:*\n• إجمالي الفاتورة: ${totalVal} ج.م\n• العربون المسدد: ${depositVal} ج.م ✓\n• المتبقي للدفع بالصالون: *${remainingVal} ج.م*\n\n📍 *رابط متابعة دورك لحظة بلحظة:*\nhttps://trimmind.up.railway.app/track?q=${booking.id}\n\nيرجى الحضور في الميعاد المحدد، وأول ما يقرب دورك هنبعتلك تذكير فوري لتجهيز الكرسي لك! نتشرف بزيارتك 💈✨`;
+            sendWhatsAppText(customerPhone, msg).catch((e) => console.error('WA Confirmed Send Error:', e));
           }).catch(() => {});
         }
       }
 
-      // 2. WhatsApp Notification on Calling Customer to Chair (استدعاء العميل للكرسي)
+      // 2. WhatsApp Notification on Calling Customer to Chair (استدعاء العميل للكرسي) + Proactive Next in Queue Reminder
       else if (status === 'in_service') {
         const clientName = booking.customer_name || booking.customerName || 'يا باشا';
         const barberName = booking.barber_name || booking.barberName || 'كابتن الصالون';
@@ -256,6 +256,25 @@ router.patch(
             sendWhatsAppText(customerPhone, callMsg).catch((e) => console.error('WA Call Send Error:', e));
           }).catch(() => {});
         }
+
+        // Proactively send "Turn Approaching" Reminder to Next Customer in Queue
+        query<any[]>(
+          `SELECT id, customer_name, customer_phone, barber_name, service_name 
+           FROM bookings 
+           WHERE (branch_id = ? OR branch_id = 'branch-elhdad' OR branch_id = 'branch-1')
+           AND status = 'confirmed' AND id != ?
+           ORDER BY created_at ASC LIMIT 1`,
+          [booking.branch_id || 'branch-elhdad', booking.id]
+        ).then(([nextBooking]) => {
+          if (nextBooking && nextBooking.customer_phone) {
+            import('../services/whatsapp.service.js').then(({ sendWhatsAppText }) => {
+              const nextName = nextBooking.customer_name || 'يا فندم';
+              const nextBarber = nextBooking.barber_name || 'كابتن الصالون';
+              const reminderMsg = `⏳ *تنبيه باقتراب دورك يا أستاذ ${nextName}!* 💈👑\n\nدورك قرب جداً في صالون TrimMind VIP (أنت العميل القادم في الطابور والكابتن *${nextBarber}* هيستقبلك على الكرسي خلال دقائق معدودة).\n\n📍 يرجى التواجد في صالة الانتظار والاستعداد للدخول ✂️✨\nرابط متابعة دورك: https://trimmind.up.railway.app/track?q=${nextBooking.id}`;
+              sendWhatsAppText(nextBooking.customer_phone, reminderMsg).catch(() => {});
+            }).catch(() => {});
+          }
+        }).catch(() => {});
       }
 
       // 3. WhatsApp Notification on Completed Service (Thank You & Rating)

@@ -52,14 +52,38 @@ export const PaymentProofModal: React.FC<PaymentProofModalProps> = ({
   const remainingMinutes = getRemainingReceiptImageMinutes(proof);
   const imageSrc = proof?.image_url || proof?.image_path || proof?.imageUrl || proof?.url;
 
-  const handleApprove = () => {
+  const handleApprove = async () => {
     reviewPaymentProof(booking.id, 'approved');
-    toast.success(`تم قبول إيصال الحجز ${booking.id} وتأكيد الموعد بنجاح! سيتم حذف الصورة تلقائياً بعد ساعتين.`);
+    try {
+      await fetch(`/api/bookings/${encodeURIComponent(booking.id)}/status`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          status: 'confirmed',
+          note: 'تم قبول الإيصال وتأكيد الحجز بنجاح',
+        }),
+      });
+    } catch (err) {
+      console.warn('Review API err:', err);
+    }
+    toast.success(`تم قبول إيصال الحجز ${booking.id} وإرسال رسالة التأكيد للعميل على الواتساب بنجاح 💈👑`);
     onClose();
   };
 
-  const handleReject = () => {
+  const handleReject = async () => {
     reviewPaymentProof(booking.id, 'rejected', rejectionReason);
+    try {
+      await fetch(`/api/bookings/${encodeURIComponent(booking.id)}/status`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          status: 'rejected',
+          note: rejectionReason,
+        }),
+      });
+    } catch (err) {
+      console.warn('Reject API err:', err);
+    }
     toast.error(`تم رفض الإيصال للحجز ${booking.id} مع إخطار العميل بالسبب.`);
     onClose();
   };
