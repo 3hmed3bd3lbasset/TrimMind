@@ -186,32 +186,32 @@ export default function ReceptionistDashboard() {
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6 font-sans text-ink">
       {/* Header */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-border pb-4">
-        <div className="flex items-center gap-3">
-          <div className="w-12 h-12 rounded-2xl bg-forest text-paper flex items-center justify-center font-serif text-xl font-bold shadow-clinic-1 shrink-0">
-            <UserCheck className="w-6 h-6" />
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-border pb-3">
+        <div className="flex items-center gap-2.5">
+          <div className="w-10 h-10 rounded-xl bg-forest text-paper flex items-center justify-center font-serif text-lg font-bold shadow-clinic-1 shrink-0">
+            <UserCheck className="w-5 h-5" />
           </div>
           <div>
             <div className="flex items-center gap-2">
-              <h1 className="font-serif text-xl font-bold text-ink">
+              <h1 className="font-serif text-base sm:text-xl font-bold text-ink">
                 مكتب الاستقبال وإدارة الصالة (Front Desk)
               </h1>
-              <span className="text-[10px] font-bold px-2.5 py-0.5 rounded-full bg-forest text-paper font-mono">
+              <span className="text-[9px] sm:text-[10px] font-bold px-2 py-0.5 rounded-full bg-forest text-paper font-mono">
                 {currentBranch?.name || 'الفرع المختار'}
               </span>
             </div>
-            <p className="text-xs text-ink-mute mt-0.5">
-              الموظف المسؤول: <strong className="text-ink">{currentUser.full_name}</strong>
+            <p className="text-[11px] text-ink-mute">
+              الموظف: <strong className="text-ink">{currentUser.full_name}</strong>
             </p>
           </div>
         </div>
 
         {/* Top Actions */}
-        <div className="flex items-center gap-3 flex-wrap">
+        <div className="flex items-center gap-2 flex-wrap sm:flex-nowrap">
           {/* Branch Switcher (Only Manager can switch; Receptionist is locked to own branch) */}
           {isManager && branches.length > 1 && (
-            <div className="flex items-center gap-1 bg-white px-3 py-1.5 rounded-full border border-border text-xs shadow-xs">
-              <Building2 className="w-4 h-4 text-terra mr-1" />
+            <div className="flex items-center gap-1 bg-white px-2.5 py-1.5 rounded-full border border-border text-xs shadow-xs">
+              <Building2 className="w-3.5 h-3.5 text-terra mr-1" />
               <select
                 value={selectedBranchId}
                 onChange={(e) => setSelectedBranchId(e.target.value)}
@@ -226,8 +226,8 @@ export default function ReceptionistDashboard() {
             </div>
           )}
 
-          <Link to="/display" target="_blank" rel="noopener noreferrer" className="btn-clinic-ghost text-xs font-bold">
-            <Tv className="w-4 h-4 text-terra" />
+          <Link to="/display" target="_blank" rel="noopener noreferrer" className="btn-clinic-ghost text-[11px] sm:text-xs py-1.5 px-3 font-bold flex items-center gap-1">
+            <Tv className="w-3.5 h-3.5 text-terra" />
             <span>شاشة الصالون (TV)</span>
           </Link>
 
@@ -250,31 +250,31 @@ export default function ReceptionistDashboard() {
               setSelectedChairForWalkIn(null);
               setIsWalkInModalOpen(true);
             }}
-            className="btn-clinic-primary text-xs font-bold shadow-clinic-1"
+            className="btn-clinic-primary text-[11px] sm:text-xs py-1.5 px-3.5 font-bold shadow-clinic-1 flex items-center gap-1"
           >
-            <UserPlus className="w-4 h-4" />
-            <span>عميل مباشر (Walk-in)</span>
+            <UserPlus className="w-3.5 h-3.5" />
+            <span>عميل مباشر</span>
           </button>
         </div>
       </div>
 
       {/* KPI Stats Row (Interactive Clickable Cards) */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 text-xs">
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-4 text-xs">
         {/* 1. In-service chairs card */}
         <div
           onClick={() => setActiveKpiModal('in_service_chairs')}
-          className="clinic-card p-4 space-y-1 bg-white hover:bg-paper-warm/60 border border-border hover:border-forest/50 hover:shadow-clinic-2 cursor-pointer transition-all duration-200 group relative"
+          className="clinic-card p-2.5 sm:p-4 space-y-0.5 sm:space-y-1 bg-white hover:bg-paper-warm/60 border border-border hover:border-forest/50 hover:shadow-clinic-2 cursor-pointer transition-all duration-200 group"
           title="اضغط لعرض تفاصيل الكراسي في الخدمة"
         >
           <div className="flex items-center justify-between">
-            <p className="text-ink-mute font-bold text-[11px] group-hover:text-forest transition-colors">
-              كراسي في الخدمة الآن
+            <p className="text-ink-mute font-bold text-[10px] sm:text-[11px] group-hover:text-forest transition-colors truncate">
+              كراسي في الخدمة
             </p>
-            <Eye className="w-3.5 h-3.5 text-ink-mute group-hover:text-forest opacity-0 group-hover:opacity-100 transition-all" />
+            <Eye className="w-3 h-3 text-ink-mute" />
           </div>
-          <p className="font-serif text-2xl font-bold text-forest">{inServiceCount} كراسي</p>
-          <span className="text-[10px] text-ink-mute flex items-center gap-1 mt-1">
-            <span>انقر لعرض التفاصيل</span>
+          <p className="font-serif text-lg sm:text-2xl font-bold text-forest">{inServiceCount} كراسي</p>
+          <span className="text-[9px] sm:text-[10px] text-ink-mute hidden sm:flex items-center gap-1 mt-1">
+            <span>انقر للتفاصيل</span>
             <ChevronLeft className="w-3 h-3 text-forest" />
           </span>
         </div>
@@ -282,7 +282,7 @@ export default function ReceptionistDashboard() {
         {/* 2. Pending receipts review card */}
         <div
           onClick={() => setActiveKpiModal('pending_receipts')}
-          className={`clinic-card p-4 space-y-1 bg-white hover:bg-paper-warm/60 border hover:shadow-clinic-2 cursor-pointer transition-all duration-200 group relative ${
+          className={`clinic-card p-2.5 sm:p-4 space-y-0.5 sm:space-y-1 bg-white hover:bg-paper-warm/60 border hover:shadow-clinic-2 cursor-pointer transition-all duration-200 group ${
             pendingReviewCount > 0
               ? 'border-terra/40 bg-terra/5 ring-1 ring-terra/20'
               : 'border-border hover:border-terra/50'
@@ -290,14 +290,14 @@ export default function ReceptionistDashboard() {
           title="اضغط لعرض ومراجعة إيصالات الحجز"
         >
           <div className="flex items-center justify-between">
-            <p className="text-ink-mute font-bold text-[11px] group-hover:text-terra-deep transition-colors">
-              إيصالات بانتظار المراجعة
+            <p className="text-ink-mute font-bold text-[10px] sm:text-[11px] group-hover:text-terra-deep transition-colors truncate">
+              إيصالات للمراجعة
             </p>
-            <Receipt className="w-3.5 h-3.5 text-terra" />
+            <Receipt className="w-3 h-3 text-terra" />
           </div>
-          <p className="font-serif text-2xl font-bold text-terra-deep">{pendingReviewCount} إيصالات</p>
-          <span className="text-[10px] text-ink-mute flex items-center gap-1 mt-1">
-            <span>انقر للمراجعة والاعتماد</span>
+          <p className="font-serif text-lg sm:text-2xl font-bold text-terra-deep">{pendingReviewCount} إيصالات</p>
+          <span className="text-[9px] sm:text-[10px] text-ink-mute hidden sm:flex items-center gap-1 mt-1">
+            <span>انقر للمراجعة</span>
             <ChevronLeft className="w-3 h-3 text-terra" />
           </span>
         </div>
@@ -305,18 +305,18 @@ export default function ReceptionistDashboard() {
         {/* 3. Branch waiting queue card */}
         <div
           onClick={() => setActiveKpiModal('branch_queue')}
-          className="clinic-card p-4 space-y-1 bg-white hover:bg-paper-warm/60 border border-border hover:border-forest/50 hover:shadow-clinic-2 cursor-pointer transition-all duration-200 group relative"
+          className="clinic-card p-2.5 sm:p-4 space-y-0.5 sm:space-y-1 bg-white hover:bg-paper-warm/60 border border-border hover:border-forest/50 hover:shadow-clinic-2 cursor-pointer transition-all duration-200 group"
           title="اضغط لعرض طابور الانتظار"
         >
           <div className="flex items-center justify-between">
-            <p className="text-ink-mute font-bold text-[11px] group-hover:text-forest transition-colors">
-              طابور الانتظار بالفرع
+            <p className="text-ink-mute font-bold text-[10px] sm:text-[11px] group-hover:text-forest transition-colors truncate">
+              طابور الانتظار
             </p>
-            <Clock className="w-3.5 h-3.5 text-forest" />
+            <Clock className="w-3 h-3 text-forest" />
           </div>
-          <p className="font-serif text-2xl font-bold text-forest">{branchQueueCount} عملاء</p>
-          <span className="text-[10px] text-ink-mute flex items-center gap-1 mt-1">
-            <span>انقر لعرض الطابور</span>
+          <p className="font-serif text-lg sm:text-2xl font-bold text-forest">{branchQueueCount} عملاء</p>
+          <span className="text-[9px] sm:text-[10px] text-ink-mute hidden sm:flex items-center gap-1 mt-1">
+            <span>انقر للطابور</span>
             <ChevronLeft className="w-3 h-3 text-forest" />
           </span>
         </div>
@@ -324,71 +324,71 @@ export default function ReceptionistDashboard() {
         {/* 4. Total branch bookings card */}
         <div
           onClick={() => setActiveKpiModal('branch_bookings')}
-          className="clinic-card p-4 space-y-1 bg-white hover:bg-paper-warm/60 border border-border hover:border-ink/40 hover:shadow-clinic-2 cursor-pointer transition-all duration-200 group relative"
+          className="clinic-card p-2.5 sm:p-4 space-y-0.5 sm:space-y-1 bg-white hover:bg-paper-warm/60 border border-border hover:border-ink/40 hover:shadow-clinic-2 cursor-pointer transition-all duration-200 group"
           title="اضغط لعرض جدول حجوزات الفرع"
         >
           <div className="flex items-center justify-between">
-            <p className="text-ink-mute font-bold text-[11px] group-hover:text-ink transition-colors">
-              إجمالي حجوزات هذا الفرع
+            <p className="text-ink-mute font-bold text-[10px] sm:text-[11px] group-hover:text-ink transition-colors truncate">
+              إجمالي الحجوزات
             </p>
-            <Calendar className="w-3.5 h-3.5 text-ink-soft" />
+            <Calendar className="w-3 h-3 text-ink-soft" />
           </div>
-          <p className="font-serif text-2xl font-bold text-ink">{branchBookings.length} حجز</p>
-          <span className="text-[10px] text-ink-mute flex items-center gap-1 mt-1">
-            <span>انقر لعرض كل الحجوزات</span>
+          <p className="font-serif text-lg sm:text-2xl font-bold text-ink">{branchBookings.length} حجز</p>
+          <span className="text-[9px] sm:text-[10px] text-ink-mute hidden sm:flex items-center gap-1 mt-1">
+            <span>انقر للحجوزات</span>
             <ChevronLeft className="w-3 h-3 text-ink" />
           </span>
         </div>
       </div>
 
       {/* Tabs */}
-      <div className="flex flex-wrap items-center gap-2 border-b border-border pb-2 text-xs">
+      <div className="flex items-center gap-1.5 sm:gap-2 border-b border-border pb-2 text-xs overflow-x-auto no-scrollbar py-1">
         <button
           onClick={() => setActiveTab('chairs')}
-          className={`flex items-center gap-2 px-5 py-2.5 rounded-full font-bold transition-all ${
+          className={`flex items-center gap-1.5 px-3.5 sm:px-5 py-2 rounded-full font-bold transition-all shrink-0 whitespace-nowrap text-[11px] sm:text-xs ${
             activeTab === 'chairs'
               ? 'bg-forest text-paper shadow-clinic-1'
               : 'bg-white/70 border border-border text-ink-soft hover:text-ink hover:bg-paper-warm'
           }`}
         >
-          <Armchair className="w-4 h-4" />
-          <span>مراقب الكراسي وقائمة الانتظار</span>
+          <Armchair className="w-3.5 h-3.5" />
+          <span>مراقب الكراسي والانتظار</span>
         </button>
 
         <button
           onClick={() => setActiveTab('bookings')}
-          className={`flex items-center gap-2 px-5 py-2.5 rounded-full font-bold transition-all ${
+          className={`flex items-center gap-1.5 px-3.5 sm:px-5 py-2 rounded-full font-bold transition-all shrink-0 whitespace-nowrap text-[11px] sm:text-xs ${
             activeTab === 'bookings'
               ? 'bg-forest text-paper shadow-clinic-1'
               : 'bg-white/70 border border-border text-ink-soft hover:text-ink hover:bg-paper-warm'
           }`}
         >
-          <Calendar className="w-4 h-4" />
-          <span>جدول الحجوزات ومراجعة الإيصالات ({branchBookings.length})</span>
+          <Calendar className="w-3.5 h-3.5" />
+          <span>جدول الحجوزات والإيصالات ({branchBookings.length})</span>
         </button>
 
         <button
           onClick={() => setActiveTab('waitlist')}
-          className={`flex items-center gap-2 px-5 py-2.5 rounded-full font-bold transition-all ${
+          className={`flex items-center gap-1.5 px-3.5 sm:px-5 py-2 rounded-full font-bold transition-all shrink-0 whitespace-nowrap text-[11px] sm:text-xs ${
             activeTab === 'waitlist'
               ? 'bg-forest text-paper shadow-clinic-1'
               : 'bg-white/70 border border-border text-ink-soft hover:text-ink hover:bg-paper-warm'
           }`}
         >
-          <Clock className="w-4 h-4 text-amber-600" />
+          <Clock className="w-3.5 h-3.5 text-amber-600" />
           <span>قائمة الانتظار الذكية</span>
         </button>
 
         <button
           onClick={() => setActiveTab('revenues')}
-          className={`flex items-center gap-2 px-5 py-2.5 rounded-full font-bold transition-all ${
+          className={`flex items-center gap-1.5 px-3.5 sm:px-5 py-2 rounded-full font-bold transition-all shrink-0 whitespace-nowrap text-[11px] sm:text-xs ${
             activeTab === 'revenues'
               ? 'bg-forest text-paper shadow-clinic-1'
               : 'bg-white/70 border border-border text-ink-soft hover:text-ink hover:bg-paper-warm'
           }`}
         >
-          <DollarSign className="w-4 h-4 text-terra-soft" />
-          <span>إيرادات ومقبوضات الحجوزات</span>
+          <DollarSign className="w-3.5 h-3.5 text-terra-soft" />
+          <span>إيرادات ومقبوضات</span>
         </button>
       </div>
 

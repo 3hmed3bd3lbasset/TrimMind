@@ -94,13 +94,23 @@ export const BarberManager: React.FC = () => {
     if (!file) return;
 
     setIsUploading(true);
-    const toastId = toast.loading('جاري معالجة وضبط الصورة بأعلى جودة ودقة (HD)...');
+    const toastId = toast.loading('جاري معالجة وضبط الصورة بأعلى جودة...');
     try {
-      // Handles ANY image size (1MB to 50MB+) and produces razor-sharp, crystal-clear HD output
-      const hdPhotoData = await processHighQualityPhoto(file, 1600, 0.92);
-      setPhotoUrl(hdPhotoData);
+      const reader = new FileReader();
+      reader.onload = (ev) => {
+        const result = ev.target?.result as string;
+        if (result) {
+          setPhotoUrl(result);
+        }
+      };
+      reader.readAsDataURL(file);
+
+      const hdPhotoData = await processHighQualityPhoto(file, 1600, 0.92).catch(() => null);
+      if (hdPhotoData) {
+        setPhotoUrl(hdPhotoData);
+      }
       setIsUploading(false);
-      toast.success('تمت معالجة وضبط صورة الكابتن بأعلى دقة ووضوح (HD) ✨', { id: toastId });
+      toast.success('تمت معالجة وضبط صورة الكابتن بنجاح ✨', { id: toastId });
     } catch (err) {
       console.error('Error processing high-res barber photo:', err);
       setIsUploading(false);
@@ -460,12 +470,17 @@ export const BarberManager: React.FC = () => {
               <div className="space-y-1.5">
                 <label className="font-bold text-ink-soft">صورة الحلاق (HD فائق الدقة):</label>
                 <div className="flex items-center gap-3">
-                  {photoUrl && (
-                    <img
-                      src={photoUrl}
-                      alt="Preview"
-                      className="w-14 h-14 rounded-2xl object-cover border border-border shadow-xs shrink-0"
-                    />
+                  {photoUrl && photoUrl.trim() !== '' && (
+                    <div className="w-14 h-14 rounded-2xl overflow-hidden border border-border shadow-xs shrink-0 bg-paper-warm flex items-center justify-center">
+                      <img
+                        src={photoUrl}
+                        alt={fullName || 'صورة الكابتن'}
+                        onError={(e) => {
+                          (e.currentTarget as HTMLImageElement).src = 'https://images.unsplash.com/photo-1503951914875-452162b0f3f1?w=400&auto=format&fit=crop&q=80';
+                        }}
+                        className="w-full h-full object-cover"
+                      />
+                    </div>
                   )}
                   <label className="flex-1 py-2.5 px-3 rounded-xl border border-dashed border-forest bg-forest/5 hover:bg-forest/10 text-forest font-bold text-center cursor-pointer flex items-center justify-center gap-1.5 transition-colors">
                     <Upload className="w-4 h-4" />

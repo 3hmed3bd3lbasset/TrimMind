@@ -295,41 +295,44 @@ export default function Landing() {
         </div>
 
         {/* Grid of ALL Barbers */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+        <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-3 gap-2.5 sm:gap-6">
           {filteredBarbers.map((barber) => {
             const barberBranch = branches.find((b) => b.id === barber.branch_id) || branches[0];
             return (
               <div
                 key={barber.id}
-                className="clinic-card p-6 flex flex-col justify-between space-y-4 hover:-translate-y-1 transition-transform bg-white/95"
+                className="clinic-card p-3 sm:p-6 flex flex-col justify-between space-y-3 sm:space-y-4 hover:-translate-y-1 transition-transform bg-white/95"
               >
-                <div className="flex items-start gap-4">
+                <div className="flex flex-col sm:flex-row items-center sm:items-start text-center sm:text-right gap-2.5 sm:gap-4">
                   {barber.photo_url ? (
                     <img
                       key={`${barber.id}-${barber.photo_url}`}
                       src={barber.photo_url}
                       alt={barber.full_name}
-                      className="w-16 h-16 rounded-2xl object-cover border border-border shadow-clinic-1 shrink-0 bg-paper-warm"
+                      onError={(e) => {
+                        (e.currentTarget as HTMLImageElement).src = 'https://images.unsplash.com/photo-1503951914875-452162b0f3f1?w=400&auto=format&fit=crop&q=80';
+                      }}
+                      className="w-14 h-14 sm:w-16 sm:h-16 rounded-xl sm:rounded-2xl object-cover border border-border shadow-clinic-1 shrink-0 bg-paper-warm"
                     />
                   ) : (
-                    <div className="w-16 h-16 rounded-2xl bg-forest/10 border border-forest/20 text-forest flex items-center justify-center font-serif text-xl font-bold shrink-0 shadow-xs">
+                    <div className="w-14 h-14 sm:w-16 sm:h-16 rounded-xl sm:rounded-2xl bg-forest/10 border border-forest/20 text-forest flex items-center justify-center font-serif text-lg sm:text-xl font-bold shrink-0 shadow-xs">
                       {barber.full_name.trim().charAt(0)}
                     </div>
                   )}
-                  <div className="space-y-1 min-w-0 flex-1">
-                    <h4 className="font-serif font-bold text-base text-ink truncate">{barber.full_name}</h4>
-                    <p className="text-xs text-forest font-semibold truncate">{barber.specialty}</p>
-                    <div className="flex items-center gap-1 text-xs text-terra font-bold">
-                      <Star className="w-3.5 h-3.5 fill-terra" />
+                  <div className="space-y-0.5 sm:space-y-1 min-w-0 flex-1 w-full">
+                    <h4 className="font-serif font-bold text-xs sm:text-base text-ink truncate">{barber.full_name}</h4>
+                    <p className="text-[10px] sm:text-xs text-forest font-semibold truncate">{barber.specialty}</p>
+                    <div className="flex items-center justify-center sm:justify-start gap-1 text-[11px] sm:text-xs text-terra font-bold">
+                      <Star className="w-3 h-3 sm:w-3.5 sm:h-3.5 fill-terra" />
                       <span>{barber.rating || 4.9}</span>
-                      <span className="text-ink-mute font-normal">({barber.rating_count || 0} تقييم)</span>
+                      <span className="text-ink-mute font-normal text-[9px] sm:text-[11px]">({barber.rating_count || 0})</span>
                     </div>
                   </div>
                 </div>
 
                 {/* Branch affiliation and Book Action Button */}
-                <div className="pt-3 border-t border-border-soft flex items-center justify-between gap-2">
-                  <div className="flex items-center gap-1.5 text-[11px] text-forest font-bold bg-forest/10 px-2.5 py-1 rounded-full border border-forest/20 truncate">
+                <div className="pt-2.5 sm:pt-3 border-t border-border-soft flex flex-col sm:flex-row items-center justify-between gap-1.5 sm:gap-2">
+                  <div className="hidden sm:flex items-center gap-1.5 text-[11px] text-forest font-bold bg-forest/10 px-2.5 py-1 rounded-full border border-forest/20 truncate">
                     <Building2 className="w-3 h-3 text-forest shrink-0" />
                     <span className="truncate">{barberBranch?.name || 'فرع الصالون'}</span>
                   </div>
@@ -339,7 +342,7 @@ export default function Landing() {
                     onClick={() => {
                       if (barber.branch_id) setSelectedBranchId(barber.branch_id);
                     }}
-                    className="px-3.5 py-1.5 rounded-full bg-forest text-paper text-xs font-bold hover:bg-forest-soft transition-colors shrink-0 flex items-center gap-1"
+                    className="w-full sm:w-auto text-center px-3 py-1.5 rounded-full bg-forest text-paper text-[10px] sm:text-xs font-bold hover:bg-forest-soft transition-colors shrink-0 flex items-center justify-center gap-1 shadow-xs"
                   >
                     <span>احجز مع الكابتن</span>
                     <ArrowLeft className="w-3 h-3" />
@@ -353,63 +356,63 @@ export default function Landing() {
 
       {/* 4. SALON CAFE & REFRESHMENTS (Conditional: Only appears when products/drinks exist in store) */}
       {activeProducts.length > 0 && (
-        <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 space-y-8">
-          <div className="text-center space-y-3 max-w-2xl mx-auto">
-            <span className="text-xs font-mono font-bold text-terra uppercase tracking-wider flex items-center justify-center gap-1.5">
-              <Coffee className="w-4 h-4" />
+        <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 space-y-6 sm:space-y-8">
+          <div className="text-center space-y-2 sm:space-y-3 max-w-2xl mx-auto">
+            <span className="text-[10px] sm:text-xs font-mono font-bold text-terra uppercase tracking-wider flex items-center justify-center gap-1.5">
+              <Coffee className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
               <span>SALON CAFE & REFRESHMENTS</span>
             </span>
-            <h2 className="font-serif text-3xl sm:text-4xl text-ink">ركن الكافيه والضيافة الفاخرة</h2>
-            <p className="text-ink-soft text-sm">
+            <h2 className="font-serif text-2xl sm:text-4xl text-ink">ركن الكافيه والضيافة الفاخرة</h2>
+            <p className="text-ink-soft text-xs sm:text-sm">
               استمتع بتشكيلة مختارة من المشروبات الساخنة والعصائر الطبيعية المنعشة ومنتجات العناية أثناء زيارتك وجلستك.
             </p>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+          <div className="grid grid-cols-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2.5 sm:gap-6">
             {activeProducts.map((product) => (
               <div
                 key={product.id}
-                className="clinic-card p-6 flex flex-col justify-between space-y-4 hover:-translate-y-1 transition-transform bg-white/95 border border-border"
+                className="clinic-card p-3 sm:p-6 flex flex-col justify-between space-y-3 sm:space-y-4 hover:-translate-y-1 transition-transform bg-white/95 border border-border"
               >
-                <div className="space-y-3">
-                  <div className="flex items-center justify-between">
-                    <div className="w-12 h-12 rounded-2xl bg-paper-warm flex items-center justify-center text-forest border border-border shadow-xs">
+                <div className="space-y-2 sm:space-y-3">
+                  <div className="flex items-center justify-between gap-1">
+                    <div className="w-8 h-8 sm:w-12 sm:h-12 rounded-xl sm:rounded-2xl bg-paper-warm flex items-center justify-center text-forest border border-border shadow-xs shrink-0">
                       {product.category === 'hot_drink' ? (
-                        <Coffee className="w-6 h-6" />
+                        <Coffee className="w-4 h-4 sm:w-6 sm:h-6" />
                       ) : product.category === 'cold_drink' ? (
-                        <Sparkles className="w-6 h-6 text-terra" />
+                        <Sparkles className="w-4 h-4 sm:w-6 sm:h-6 text-terra" />
                       ) : (
-                        <Crown className="w-6 h-6 text-[#b45309]" />
+                        <Crown className="w-4 h-4 sm:w-6 sm:h-6 text-[#b45309]" />
                       )}
                     </div>
-                    <span className="text-[10px] font-bold px-2.5 py-1 rounded-full bg-paper-warm border border-border text-ink-soft">
+                    <span className="text-[9px] sm:text-[10px] font-bold px-2 py-0.5 rounded-full bg-paper-warm border border-border text-ink-soft truncate">
                       {product.category === 'hot_drink'
-                        ? 'مشروبات ساخنة ☕'
+                        ? 'ساخن ☕'
                         : product.category === 'cold_drink'
-                        ? 'عصائر ومشروبات 🥤'
+                        ? 'عصائر 🥤'
                         : product.category === 'care_product'
-                        ? 'عناية وزيوت 💈'
-                        : 'ضيافة خاصة ✨'}
+                        ? 'عناية 💈'
+                        : 'ضيافة ✨'}
                     </span>
                   </div>
 
                   <div>
-                    <h3 className="font-serif font-bold text-lg text-ink">{product.name}</h3>
+                    <h3 className="font-serif font-bold text-xs sm:text-lg text-ink line-clamp-1">{product.name}</h3>
                     {product.description && (
-                      <p className="text-xs text-ink-mute leading-relaxed line-clamp-2 mt-1">
+                      <p className="text-[10px] sm:text-xs text-ink-mute leading-relaxed line-clamp-2 mt-0.5 sm:mt-1">
                         {product.description}
                       </p>
                     )}
                   </div>
                 </div>
 
-                <div className="pt-4 border-t border-border-soft flex items-center justify-between">
-                  <span className="font-serif font-bold text-lg text-forest">
+                <div className="pt-2 sm:pt-4 border-t border-border-soft flex flex-col sm:flex-row items-center justify-between gap-2">
+                  <span className="font-serif font-bold text-xs sm:text-lg text-forest">
                     {formatCurrency(product.price)}
                   </span>
                   <Link
                     to="/book"
-                    className="px-3.5 py-1.5 rounded-full bg-forest text-paper text-xs font-bold hover:bg-forest-soft transition-colors"
+                    className="w-full sm:w-auto text-center px-2.5 sm:px-3.5 py-1 sm:py-1.5 rounded-full bg-forest text-paper text-[10px] sm:text-xs font-bold hover:bg-forest-soft transition-colors shadow-xs"
                   >
                     طلب مع الحجز
                   </Link>

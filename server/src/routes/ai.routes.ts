@@ -59,13 +59,32 @@ router.post('/chat', aiLimiter, optionalAuth, async (req: AuthenticatedRequest, 
       ? liveBarbers.map((b) => `• كابتن ${b.full_name} (${b.specialty || 'حلاق محترف'})`).join('\n')
       : '• كابتن محمد الحداد\n• كابتن كريم السيد\n• كابتن عمر خالد';
 
+    let deposits = { normal: 50, vip: 100 };
+    try {
+      const rows = await query<any[]>('SELECT setting_key, setting_value FROM settings');
+      if (rows && rows.length > 0) {
+        for (const r of rows) {
+          const val = typeof r.setting_value === 'string' ? JSON.parse(r.setting_value) : r.setting_value;
+          if (r.setting_key === 'booking_rules' || r.setting_key === 'general' || r.setting_key === 'salon_settings') {
+            const normVal = val.booking_fee_normal || val.deposit_normal || val.normalDeposit || val.bookingFeeNormal;
+            const vipVal = val.booking_fee_vip || val.deposit_vip || val.vipDeposit || val.bookingFeeVip;
+            if (normVal !== undefined && normVal !== null) deposits.normal = Number(normVal);
+            if (vipVal !== undefined && vipVal !== null) deposits.vip = Number(vipVal);
+          }
+        }
+      }
+    } catch {}
+
     // 2. Compose Authoritative System Instruction
     const serverSystemInstruction = `أنت المساعد الذكي الرسمي لصالون TrimMind VIP.
 أسلوبك: راقي، مهذب، سريع، ومفيد باللهجة المصرية الراقية والفصحى السلسة.
 
-⚠️ قاعدة حاسمة وصارمة للعملة والأسعار:
-- جميع الأسعار بالجنيه المصري (ج.م / جنيه) فقط لا غير!
-- ممنوع منعاً باتاً ذكر عملة الريال أو الدولار أو أي عملة أخرى.
+⚠️ قاعدة حاسمة وصارمة للعملة ومبالغ العربون:
+- جميع الأسعار بالجنيه المصري (ج.م / جنيه) فقط لا غير! وممنوع منعاً باتاً ذكر أي عملة أخرى.
+- سياسة العربون المعتمدة من الإعدادات:
+  • عربون حجز الجلسة العادية: **${deposits.normal} ج.م** فقط.
+  • عربون حجز الجلسة الـ VIP الملكية: **${deposits.vip} ج.م** فقط.
+- التزم بهذه المبالغ بدقة ولا تذكر أي أرقام أخرى للعربون.
 
 📋 كتالوج الخدمات والأسعار الحقيقي المعتمد من قاعدة البيانات:
 ${servicesCatalogStr}

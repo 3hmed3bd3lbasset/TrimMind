@@ -162,7 +162,7 @@ export async function getLiveSalonContext(): Promise<LiveSalonContext> {
   }
 
   // 4. Live Settings from MySQL database
-  let deposits = { normal: 30, vip: 50 };
+  let deposits = { normal: 50, vip: 100 };
   let paymentAccounts = { instapay: '01005437633', vodafoneCash: '01005437633' };
   let salonName = 'صالون TrimMind (الحداد VIP)';
 
@@ -171,11 +171,17 @@ export async function getLiveSalonContext(): Promise<LiveSalonContext> {
     if (rows && rows.length > 0) {
       for (const r of rows) {
         const val = typeof r.setting_value === 'string' ? JSON.parse(r.setting_value) : r.setting_value;
-        if (r.setting_key === 'booking_rules' || r.setting_key === 'general') {
-          if (val.deposit_normal || val.normalDeposit) deposits.normal = Number(val.deposit_normal || val.normalDeposit);
-          if (val.deposit_vip || val.vipDeposit) deposits.vip = Number(val.deposit_vip || val.vipDeposit);
-          if (val.instapay || val.instapay_number) paymentAccounts.instapay = val.instapay || val.instapay_number;
-          if (val.vodafone_cash || val.vodafoneCash) paymentAccounts.vodafoneCash = val.vodafone_cash || val.vodafoneCash;
+        if (r.setting_key === 'booking_rules' || r.setting_key === 'general' || r.setting_key === 'salon_settings') {
+          const normVal = val.booking_fee_normal || val.deposit_normal || val.normalDeposit || val.bookingFeeNormal;
+          const vipVal = val.booking_fee_vip || val.deposit_vip || val.vipDeposit || val.bookingFeeVip;
+          if (normVal !== undefined && normVal !== null) deposits.normal = Number(normVal);
+          if (vipVal !== undefined && vipVal !== null) deposits.vip = Number(vipVal);
+          if (val.instapay_username || val.instapay || val.instapay_number) {
+            paymentAccounts.instapay = val.instapay_username || val.instapay || val.instapay_number;
+          }
+          if (val.vodafone_cash_number || val.vodafone_cash || val.vodafoneCash) {
+            paymentAccounts.vodafoneCash = val.vodafone_cash_number || val.vodafone_cash || val.vodafoneCash;
+          }
           if (val.salon_name || val.salonName) salonName = val.salon_name || val.salonName;
         }
       }
