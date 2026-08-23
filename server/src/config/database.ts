@@ -35,15 +35,17 @@ export const pool = dbUrl
       charset: 'utf8mb4',
     });
 
-// Helper for parameterized queries preventing SQL injection
+// Helper for parameterized queries preventing SQL injection and mysql2 undefined param errors
 export async function query<T = any>(sql: string, params: any[] = []): Promise<T> {
-  const [results] = await pool.execute(sql, params);
+  const sanitizedParams = params.map((p) => (p === undefined ? null : p));
+  const [results] = await pool.execute(sql, sanitizedParams);
   return results as T;
 }
 
 // Helper for queries within a dedicated connection / transaction
 export async function queryConn<T = any>(conn: mysql.PoolConnection, sql: string, params: any[] = []): Promise<T> {
-  const [results] = await conn.execute(sql, params);
+  const sanitizedParams = params.map((p) => (p === undefined ? null : p));
+  const [results] = await conn.execute(sql, sanitizedParams);
   return results as T;
 }
 
