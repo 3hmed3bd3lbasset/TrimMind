@@ -78,6 +78,9 @@ router.post('/customer/lookup', async (req: Request, res: Response) => {
     const customerName = pastBookings[0]?.customer_name || null;
     const preferredBarber = pastBookings[0]?.barber_name || null;
     const preferredBranchId = pastBookings[0]?.branch_id || null;
+    const noShowCount = pastBookings.filter((b) => b.no_show_marked_at || (b.cancellation_reason && b.cancellation_reason.includes('no-show'))).length;
+    const totalVisits = pastBookings.filter((b) => b.status === 'completed').length;
+    const reliabilityScore = pastBookings.length > 0 ? Math.round((totalVisits / Math.max(1, totalVisits + noShowCount)) * 100) : 100;
 
     return res.json({
       success: true,
@@ -85,7 +88,9 @@ router.post('/customer/lookup', async (req: Request, res: Response) => {
         phone: cleanPhone,
         customerName,
         isExistingCustomer,
-        totalVisits: pastBookings.filter((b) => b.status === 'completed').length,
+        totalVisits,
+        noShowCount,
+        reliabilityScore,
         preferredBarber,
         preferredBranchId,
         recentBookings: pastBookings.map((b) => ({
@@ -1251,6 +1256,7 @@ router.all('/manager/daily-report-data', async (req: Request, res: Response) => 
       success: true,
       data: {
         date: today,
+        managerPhone: managerPhone,
         manager: {
           name: managerName,
           phone: managerPhone,

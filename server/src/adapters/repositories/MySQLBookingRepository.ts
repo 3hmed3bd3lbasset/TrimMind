@@ -124,6 +124,18 @@ export class MySQLBookingRepository implements IBookingRepository {
         );
       }
 
+      // 8. Track Recall Campaign Attribution if customer was re-engaged
+      try {
+        await queryConn(
+          conn,
+          `UPDATE recall_sends 
+           SET status = 'rebooked', rebooked_at = NOW(), rebooked_booking_id = ? 
+           WHERE customer_phone = ? AND status = 'sent' AND rebooked_booking_id IS NULL
+           ORDER BY sent_at DESC LIMIT 1`,
+          [bookingId, cleanPhone]
+        );
+      } catch {}
+
       let proofEntity: any = null;
       if (data.paymentProof) {
         proofEntity = {

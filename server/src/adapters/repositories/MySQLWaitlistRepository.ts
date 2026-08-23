@@ -8,13 +8,14 @@ export class MySQLWaitlistRepository implements IWaitlistRepository {
     const id = `WLT-${uuidv4().substring(0, 8)}`;
     const preferredTime = data.preferredTimeWindow || 'afternoon';
     const srvId = data.serviceId || 'srv-haircut';
+    const cleanDate = (data.preferredDate || new Date().toISOString()).split('T')[0];
 
     await query(
       `INSERT INTO waitlist_entries (
         id, branch_id, barber_id, customer_name, customer_phone,
         preferred_date, preferred_time_window, service_id, status, created_at
       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'waiting', NOW())`,
-      [id, data.branchId, data.barberId || null, data.customerName, data.customerPhone, data.preferredDate, preferredTime, srvId]
+      [id, data.branchId || 'branch-elhdad', data.barberId || null, data.customerName, data.customerPhone, cleanDate, preferredTime, srvId]
     );
 
     return (await this.findById(id))!;

@@ -21,6 +21,15 @@ export class MySQLRecallRepository implements IRecallRepository {
          AND b.status = 'completed'
          AND b.customer_phone IS NOT NULL
          AND b.customer_phone != ''
+         AND b.customer_phone NOT IN (
+           SELECT DISTINCT customer_phone FROM bookings 
+           WHERE status IN ('confirmed', 'awaiting_payment', 'pending_review', 'customer_arrived', 'in_service')
+             AND (booking_date >= CURDATE() OR starts_at >= NOW())
+         )
+         AND b.customer_phone NOT IN (
+           SELECT DISTINCT customer_phone FROM recall_sends
+           WHERE sent_at >= DATE_SUB(NOW(), INTERVAL 14 DAY)
+         )
        GROUP BY b.customer_phone
        HAVING days_since_last_visit >= ?
        ORDER BY days_since_last_visit DESC
