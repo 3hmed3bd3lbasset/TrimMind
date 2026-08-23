@@ -105,7 +105,7 @@ const chatHistories = new Map<string, Array<{ role: string; parts: Array<{ text:
 
 // Dynamic Live Salon Context queried directly from MySQL Database
 export interface LiveSalonContext {
-  services: Array<{ id: string; name: string; price: number; category?: string; duration?: number }>;
+  services: Array<{ id: string; name: string; price: number; category?: string; duration?: number; is_vip_only?: boolean | number }>;
   barbers: Array<{ id: string; name: string; is_available?: boolean }>;
   chairs: Array<{ id: string; name: string; type?: string }>;
   deposits: { normal: number; vip: number };
@@ -116,22 +116,22 @@ export interface LiveSalonContext {
 export async function getLiveSalonContext(): Promise<LiveSalonContext> {
   // 1. Live Services from MySQL database
   let services = await query<any[]>(
-    'SELECT id, name, price, category, duration_minutes as duration FROM services WHERE is_active = 1 OR is_active IS NULL ORDER BY price ASC'
+    'SELECT id, name, price, category, is_vip_only, duration_minutes as duration FROM services WHERE is_active = 1 OR is_active IS NULL ORDER BY price ASC'
   ).catch(() => []);
 
   if (!services || services.length === 0) {
     services = [
-      { id: 'srv-haircut-classic', name: 'قص شعر كلاسيكي (Classic Haircut)', price: 180, duration_minutes: 30, category: 'hair' },
-      { id: 'srv-vip-royal', name: 'VIP Royal Cut', price: 480, duration_minutes: 60, category: 'vip_package' },
-      { id: 'srv-vip-gentleman', name: 'VIP Gentleman', price: 650, duration_minutes: 90, category: 'vip_package' },
-      { id: 'srv-vip-full', name: 'VIP Full Experience', price: 750, duration_minutes: 120, category: 'vip_package' },
-      { id: 'srv-vip-executive', name: 'VIP Executive', price: 900, duration_minutes: 130, category: 'vip_package' },
-      { id: 'srv-haircut-beard', name: 'قص شعر + لحية', price: 220, duration_minutes: 40, category: 'hair' },
-      { id: 'srv-beard-trim', name: 'تحديد لحية', price: 100, duration_minutes: 30, category: 'beard' },
-      { id: 'srv-kids', name: 'قص شعر أطفال', price: 120, duration_minutes: 40, category: 'kids' },
-      { id: 'srv-fade', name: 'تدرج Fade', price: 180, duration_minutes: 35, category: 'hair' },
-      { id: 'srv-protein', name: 'بروتين وترطيب شعر', price: 300, duration_minutes: 60, category: 'treatment' },
-      { id: 'srv-facial', name: 'تنظيف بشرة', price: 240, duration_minutes: 45, category: 'treatment' },
+      { id: 'srv-haircut-classic', name: 'قص شعر كلاسيكي (Classic Haircut)', price: 180, duration_minutes: 30, category: 'hair', is_vip_only: 0 },
+      { id: 'srv-vip-royal', name: 'VIP Royal Cut', price: 480, duration_minutes: 60, category: 'vip_package', is_vip_only: 1 },
+      { id: 'srv-vip-gentleman', name: 'VIP Gentleman', price: 650, duration_minutes: 90, category: 'vip_package', is_vip_only: 1 },
+      { id: 'srv-vip-full', name: 'VIP Full Experience', price: 750, duration_minutes: 120, category: 'vip_package', is_vip_only: 1 },
+      { id: 'srv-vip-executive', name: 'VIP Executive', price: 900, duration_minutes: 130, category: 'vip_package', is_vip_only: 1 },
+      { id: 'srv-haircut-beard', name: 'قص شعر + لحية', price: 220, duration_minutes: 40, category: 'hair', is_vip_only: 0 },
+      { id: 'srv-beard-trim', name: 'تحديد لحية', price: 100, duration_minutes: 30, category: 'beard', is_vip_only: 0 },
+      { id: 'srv-kids', name: 'قص شعر أطفال', price: 120, duration_minutes: 40, category: 'kids', is_vip_only: 0 },
+      { id: 'srv-fade', name: 'تدرج Fade', price: 180, duration_minutes: 35, category: 'hair', is_vip_only: 0 },
+      { id: 'srv-protein', name: 'بروتين وترطيب شعر', price: 300, duration_minutes: 60, category: 'treatment', is_vip_only: 0 },
+      { id: 'srv-facial', name: 'تنظيف بشرة', price: 240, duration_minutes: 45, category: 'treatment', is_vip_only: 0 },
     ];
   }
 
@@ -873,13 +873,18 @@ https://trimmind.up.railway.app/track?q=${created.id}
     bookingSessions.set(sessionKey, session);
 
     const barbersList = liveCtx.barbers.map((b) => `• *${b.name.startsWith('كابتن') ? b.name : 'كابتن ' + b.name}* ✂️`).join('\n');
+    const vipServices = liveCtx.services.filter((s) => s.category === 'vip_package' || s.is_vip_only || s.name.toLowerCase().includes('vip'));
+    const vipServicesList = vipServices.map((s) => `• *${s.name}:* ${s.price} جنيه`).join('\n');
 
     replyText = `أحلى وأفخم اختيار يا باشا! 👑 تم اختيار **الجلسة الـ VIP الملكية** (عربون ${deposits.vip} ج).
 
-✂️ تحب تحجز مع مين من كباتن الصالون؟
+✂️ **كباتن الصالون المتاحين للاختيار:**
 ${barbersList}
 
-وقولي يناسبك يوم إيه والساعة كام بالظبط؟ ✨`;
+👑 **باقات وخدمات الـ VIP الملكية المتاحة:**
+${vipServicesList}
+
+قولي تحب تختار كابتن مين، وأنهي باقة، والميعاد والساعة المناسبة لحضرتك؟ ✨`;
   } else if (textLower.includes('عادية') || textLower.includes('عاديه') || textLower.includes('العادي') || textLower.includes('جلسة عادية')) {
     session.bookingType = 'normal';
     session.depositAmount = deposits.normal;
@@ -892,13 +897,16 @@ ${barbersList}
     session.step = 'choosing_service';
     bookingSessions.set(sessionKey, session);
 
-    const servicesList = liveCtx.services.map((s) => `• *${s.name}:* ${s.price} جنيه`).join('\n');
+    const normalServices = liveCtx.services.filter((s) => s.category !== 'vip_package' && !s.is_vip_only && !s.name.toLowerCase().includes('vip'));
+    const servicesList = normalServices.map((s) => `• *${s.name}:* ${s.price} جنيه`).join('\n');
 
     replyText = `تمام يا باشا! تم اختيار **الجلسة العادية** 💈 (عربون ${deposits.normal} ج).
 النظام خصص لك ميعاد مع *${session.barberName}* (${session.dateTimeStr}).
 
-📋 قولي تحب نعملك أنهي خدمة النهارده؟
-${servicesList}`;
+📋 **قائمة خدمات الجلسة العادية:**
+${servicesList}
+
+قولي تحب نعملك أنهي خدمة النهارده؟ ✨`;
   }
 
   // -------------------------------------------------------------------------
