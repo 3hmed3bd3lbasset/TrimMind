@@ -323,7 +323,8 @@ router.patch(
 
       return res.json({ success: true, message: 'تم تحديث حالة الحجز بنجاح', data: updated });
     } catch (error: any) {
-      return res.status(500).json({ success: false, error: error.message });
+      console.error('PATCH /:id/status Error:', error);
+      return res.status(500).json({ success: false, error: String(error?.stack || error?.message || error) });
     }
   }
 );
