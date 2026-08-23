@@ -341,54 +341,54 @@ export default function ReceptionistDashboard() {
         </div>
       </div>
 
-      {/* Tabs */}
-      <div className="flex items-center gap-1.5 sm:gap-2 border-b border-border pb-2 text-xs overflow-x-auto no-scrollbar py-1">
+      {/* Tabs - 100% visible on mobile and desktop */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5 sm:gap-2 border-b border-border pb-3 text-xs">
         <button
           onClick={() => setActiveTab('chairs')}
-          className={`flex items-center gap-1.5 px-3.5 sm:px-5 py-2 rounded-full font-bold transition-all shrink-0 whitespace-nowrap text-[11px] sm:text-xs ${
+          className={`flex items-center justify-center gap-1.5 px-2.5 sm:px-4 py-2 rounded-xl sm:rounded-full font-bold transition-all text-[11px] sm:text-xs cursor-pointer shadow-xs ${
             activeTab === 'chairs'
               ? 'bg-forest text-paper shadow-clinic-1'
-              : 'bg-white/70 border border-border text-ink-soft hover:text-ink hover:bg-paper-warm'
+              : 'bg-white/80 border border-border text-ink-soft hover:text-ink hover:bg-paper-warm'
           }`}
         >
-          <Armchair className="w-3.5 h-3.5" />
-          <span>مراقب الكراسي والانتظار</span>
+          <Armchair className="w-3.5 h-3.5 shrink-0" />
+          <span className="truncate">الكراسي والانتظار</span>
         </button>
 
         <button
           onClick={() => setActiveTab('bookings')}
-          className={`flex items-center gap-1.5 px-3.5 sm:px-5 py-2 rounded-full font-bold transition-all shrink-0 whitespace-nowrap text-[11px] sm:text-xs ${
+          className={`flex items-center justify-center gap-1.5 px-2.5 sm:px-4 py-2 rounded-xl sm:rounded-full font-bold transition-all text-[11px] sm:text-xs cursor-pointer shadow-xs ${
             activeTab === 'bookings'
               ? 'bg-forest text-paper shadow-clinic-1'
-              : 'bg-white/70 border border-border text-ink-soft hover:text-ink hover:bg-paper-warm'
+              : 'bg-white/80 border border-border text-ink-soft hover:text-ink hover:bg-paper-warm'
           }`}
         >
-          <Calendar className="w-3.5 h-3.5" />
-          <span>جدول الحجوزات والإيصالات ({branchBookings.length})</span>
+          <Calendar className="w-3.5 h-3.5 shrink-0" />
+          <span className="truncate">الحجوزات ({branchBookings.length})</span>
         </button>
 
         <button
           onClick={() => setActiveTab('waitlist')}
-          className={`flex items-center gap-1.5 px-3.5 sm:px-5 py-2 rounded-full font-bold transition-all shrink-0 whitespace-nowrap text-[11px] sm:text-xs ${
+          className={`flex items-center justify-center gap-1.5 px-2.5 sm:px-4 py-2 rounded-xl sm:rounded-full font-bold transition-all text-[11px] sm:text-xs cursor-pointer shadow-xs ${
             activeTab === 'waitlist'
               ? 'bg-forest text-paper shadow-clinic-1'
-              : 'bg-white/70 border border-border text-ink-soft hover:text-ink hover:bg-paper-warm'
+              : 'bg-white/80 border border-border text-ink-soft hover:text-ink hover:bg-paper-warm'
           }`}
         >
-          <Clock className="w-3.5 h-3.5 text-amber-600" />
-          <span>قائمة الانتظار الذكية</span>
+          <Clock className="w-3.5 h-3.5 shrink-0 text-amber-600" />
+          <span className="truncate">الانتظار الذكي</span>
         </button>
 
         <button
           onClick={() => setActiveTab('revenues')}
-          className={`flex items-center gap-1.5 px-3.5 sm:px-5 py-2 rounded-full font-bold transition-all shrink-0 whitespace-nowrap text-[11px] sm:text-xs ${
+          className={`flex items-center justify-center gap-1.5 px-2.5 sm:px-4 py-2 rounded-xl sm:rounded-full font-bold transition-all text-[11px] sm:text-xs cursor-pointer shadow-xs ${
             activeTab === 'revenues'
               ? 'bg-forest text-paper shadow-clinic-1'
-              : 'bg-white/70 border border-border text-ink-soft hover:text-ink hover:bg-paper-warm'
+              : 'bg-white/80 border border-border text-ink-soft hover:text-ink hover:bg-paper-warm'
           }`}
         >
-          <DollarSign className="w-3.5 h-3.5 text-terra-soft" />
-          <span>إيرادات ومقبوضات</span>
+          <DollarSign className="w-3.5 h-3.5 shrink-0 text-terra-soft" />
+          <span className="truncate">الإيرادات</span>
         </button>
       </div>
 
