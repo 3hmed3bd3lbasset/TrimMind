@@ -11,6 +11,7 @@ import https from 'https';
 import fs from 'fs';
 import path from 'path';
 import { query } from '../config/database.js';
+import { createBooking } from './booking.service.js';
 
 const UPLOAD_DIR =
   process.env.UPLOAD_DIR ||
@@ -71,7 +72,21 @@ export function getDebugLogs() {
   return debugLogs;
 }
 
-// In-memory conversation history per phone number for conversational context
+// Stateful Conversation & Booking Tracker per session
+interface UserBookingSession {
+  step: 'idle' | 'collecting_info' | 'awaiting_name' | 'awaiting_payment_proof';
+  serviceName?: string;
+  servicePrice?: number;
+  serviceId?: string;
+  barberName?: string;
+  barberId?: string;
+  dateTimeStr?: string;
+  customerName?: string;
+  customerPhone?: string;
+  bookingId?: string;
+}
+
+const bookingSessions = new Map<string, UserBookingSession>();
 const chatHistories = new Map<string, Array<{ role: string; parts: Array<{ text: string }> }>>();
 
 function extractMessageContent(rawMsg: any) {
@@ -249,7 +264,11 @@ export async function initWhatsApp(): Promise<WhatsAppState> {
 
     sock.ev.on('connection.update', async (update: any) => {
       const { connection, lastDisconnect, qr } = update;
-      logDebug('CONNECTION_UPDATE', { connection, statusCode: (lastDisconnect?.error as any)?.output?.statusCode, hasQr: Boolean(qr) });
+      logDebug('CONNECTION_UPDATE', {
+        connection,
+        statusCode: (lastDisconnect?.error as any)?.output?.statusCode,
+        hasQr: Boolean(qr),
+      });
 
       if (qr) {
         state.qrCodeRaw = qr;
@@ -284,7 +303,7 @@ export async function initWhatsApp(): Promise<WhatsAppState> {
     sock.ev.on('messages.upsert', async (m: any) => {
       logDebug('MESSAGES_UPSERT_EVENT', { type: m.type, count: m.messages?.length });
 
-      for (const msg of (m.messages || [])) {
+      for (const msg of m.messages || []) {
         if (!msg || !msg.message) continue;
 
         const remoteJid = msg.key?.remoteJid || '';
@@ -352,14 +371,23 @@ export async function initWhatsApp(): Promise<WhatsAppState> {
           }
         }
 
-        logDebug('PROCESSING_MSG_FOR_AI', { senderPhone, remoteJid, text });
+        if (!senderPhone && remoteJid.startsWith('20')) {
+          let clean = remoteJid.replace(/[^0-9]/g, '');
+          if (clean.startsWith('20') && clean.length === 12) {
+            senderPhone = '0' + clean.substring(2);
+          }
+        }
+
+        const pushName = msg.pushName || '';
+
+        logDebug('PROCESSING_MSG_FOR_AI', { senderPhone, remoteJid, text, pushName });
 
         // 1. Forward asynchronously to n8n
         forwardToN8nWebhook(msg, base64ImageUrl, senderPhone, text);
 
-        // 2. Direct Intelligent AI Reply Engine
+        // 2. Direct Intelligent Interactive AI Reply Engine
         try {
-          await handleIncomingWithAI(remoteJid, senderPhone, text, isImage);
+          await handleIncomingWithAI(remoteJid, senderPhone, text, isImage, pushName);
           logDebug('AI_REPLY_DISPATCHED_OK', { remoteJid, senderPhone, text });
         } catch (err: any) {
           logDebug('AI_REPLY_DISPATCH_FAIL', { error: err.message });
@@ -478,90 +506,209 @@ function forwardToN8nWebhook(
   }
 }
 
-// Direct Native AI Agent Response Logic
+// Direct Native Intelligent Interactive AI Agent Response Engine
 async function handleIncomingWithAI(
   remoteJid: string,
   senderPhone: string,
   userMessage: string,
-  isImage: boolean
+  isImage: boolean,
+  pushName: string = ''
 ) {
   if (!userMessage.trim() && !isImage) return;
 
   const sessionKey = senderPhone || remoteJid;
   const history = chatHistories.get(sessionKey) || [];
-
-  const systemInstruction = `أنت المساعد الذكي الرسمي لصالون (TrimMind - صالون الحداد VIP).
-أسلوبك: مصري راقي، محترم، ذكي، سريع ومفيد ("يا هلا يا فندم", "منورنا يا باشا", "تحت أمرك يا غالي").
-
-# معلومات صالون TrimMind الحقيقية:
-- الفرع: فرع الحداد VIP (متاح يومياً من 10:00 صباحاً حتى 12:00 منتصف الليل).
-- الكباتن الحلاقين: كابتن أحمد، كابتن محمد، كابتن عمر (جميعهم متاحون وجاهزون لخدمتك).
-- أهم الخدمات والأسعار:
-  • حلاقة شعر VIP ملكي: 150 جنيه
-  • تحديد وحلاقة ذقن بالبخار: 80 جنيه
-  • باقة VIP كاملة (شعر + ذقن + حمام كريم + ماسك وجه): 300 جنيه
-  • صبغة شعر / تنظيف بشرة عميق: 120 جنيه
-- رابط الحجز المباشر واختيار الموعد: https://trimmind.up.railway.app
-- رابط تتبع الدور المباشر في الصالون (Live Queue): https://trimmind.up.railway.app/track
-- قائمة الانتظار الذكية (Smart Waitlist): لو المواعيد زحمة، بنسجل العميل في الانتظار وأول ما حد يلغي بنبلغه فوراً بفرصة الحجز.
-- إثباتات الدفع (إنستاباي / فودافون كاش): عند استلام إثبات الدفع، بنبلغه إن الإيصال وصل وجارٍ اعتماده من موظف الاستقبال خلال دقائق وتأكيد الحجز.
-
-# قواعد الرد:
-1. رد دائماً باللهجة المصرية الودودة.
-2. لا تكرر الكلام ولا تطلب أي معلومة قالها العميل.
-3. كن مختصراً وواضحاً وقدم روابط الحجز أو التتبع عند الحاجة.`;
-
-  let promptText = userMessage;
-  if (isImage) {
-    promptText = 'أرسل العميل صورة إيصال تحويل أو صورة استفسار.';
-  }
-
-  history.push({ role: 'user', parts: [{ text: promptText }] });
-  if (history.length > 10) history.splice(0, history.length - 10);
-
-  const candidateModels = ['gemini-flash-latest', 'gemini-2.5-flash-lite', 'gemini-flash-lite-latest'];
+  let session = bookingSessions.get(sessionKey) || { step: 'idle' };
 
   let replyText = '';
 
-  for (const model of candidateModels) {
-    if (replyText) break;
-    try {
-      const apiKey = process.env.GEMINI_API_KEY_CUSTOMER || process.env.GEMINI_API_KEY || '';
-      if (!apiKey) break;
-      const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
-      const payload = {
-        contents: history,
-        systemInstruction: {
-          parts: [{ text: systemInstruction }],
-        },
-      };
+  // 1. If Image is sent (Payment Proof Receipt)
+  if (isImage) {
+    const custName = session.customerName || pushName || 'يا فندم';
+    replyText = `📸 *تم استلام صورة إيصال التحويل بنجاح يا أستاذ ${custName}!* 💈👑
 
-      const res = await fetch(url, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
+وجارٍ مراجعة الإيصال واعتماد الحجز رسمياً من الاستقبال خلال دقائق معدودة. 🌟
+سيصلك إشعار تأكيد الموعد فور مراجعته، ونورتنا دائماً في صالون TrimMind الحداد VIP! ✨`;
+    session.step = 'idle';
+    bookingSessions.set(sessionKey, session);
+
+    let targetJid = remoteJid;
+    if (senderPhone && !remoteJid.includes('@s.whatsapp.net')) {
+      let clean = senderPhone.replace(/\D+/g, '');
+      if (clean.startsWith('01')) clean = '20' + clean.substring(1);
+      targetJid = `${clean}@s.whatsapp.net`;
+    }
+    await sendWhatsAppText(targetJid, replyText);
+    return;
+  }
+
+  const textLower = userMessage.toLowerCase().trim();
+
+  // Extract info from message
+  if (textLower.includes('محمد')) {
+    session.barberName = 'كابتن محمد';
+    session.barberId = 'barber-mohamed';
+  } else if (textLower.includes('أحمد') || textLower.includes('احمد')) {
+    session.barberName = 'كابتن أحمد';
+    session.barberId = 'barber-ahmed';
+  } else if (textLower.includes('عمر')) {
+    session.barberName = 'كابتن عمر';
+    session.barberId = 'barber-omar';
+  }
+
+  if (textLower.includes('300') || textLower.includes('vip') || textLower.includes('كاملة') || textLower.includes('كامله')) {
+    session.serviceName = 'باقة VIP كاملة (شعر + ذقن بالبخار + حمام كريم + ماسك)';
+    session.servicePrice = 300;
+    session.serviceId = 'srv-vip-full';
+  } else if (textLower.includes('150') || textLower.includes('شعر')) {
+    session.serviceName = 'حلاقة شعر VIP ملكي';
+    session.servicePrice = 150;
+    session.serviceId = 'srv-haircut';
+  } else if (textLower.includes('80') || textLower.includes('ذقن') || textLower.includes('دقن')) {
+    session.serviceName = 'تحديد وحلاقة ذقن بالبخار';
+    session.servicePrice = 80;
+    session.serviceId = 'srv-beard';
+  } else if (textLower.includes('120') || textLower.includes('بشرة') || textLower.includes('بشره') || textLower.includes('صبغة')) {
+    session.serviceName = 'تنظيف بشرة عميق / صبغة شعر';
+    session.servicePrice = 120;
+    session.serviceId = 'srv-facial';
+  }
+
+  if (textLower.includes('النهارده') || textLower.includes('النهاردة') || textLower.includes('اليوم') || textLower.includes('الساعة') || textLower.includes('الساعه') || textLower.includes('مساء') || textLower.includes('عصر')) {
+    session.dateTimeStr = userMessage;
+  }
+
+  // Check if user is in awaiting_name state or provided name
+  if (session.step === 'awaiting_name' || (session.serviceName && session.barberName && session.dateTimeStr && !session.customerName)) {
+    // If the message has a candidate name or confirms phone
+    let candidateName = userMessage.replace(/(على نفس الرقم|رقم الواتس|الواتساب|احجزلي|سجل|أيوة|ايوة|تمام|يا ريت)/gi, '').trim();
+    if (!candidateName && pushName) candidateName = pushName;
+    if (!candidateName) candidateName = 'عميل مميز VIP';
+
+    session.customerName = candidateName;
+    session.customerPhone = senderPhone || '01005437633';
+
+    // CREATE REAL BOOKING IN DATABASE!
+    try {
+      const created = await createBooking({
+        customerName: session.customerName,
+        customerPhone: session.customerPhone,
+        serviceId: session.serviceId || 'srv-vip',
+        serviceName: session.serviceName || 'باقة VIP كاملة',
+        servicePrice: session.servicePrice || 300,
+        totalAmount: session.servicePrice || 300,
+        bookingFeeAtBooking: 50,
+        barberName: session.barberName || 'كابتن محمد',
+        barberId: session.barberId || 'barber-mohamed',
+        bookingType: 'normal',
+        startsAt: new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString(),
       });
 
-      if (res.ok) {
-        const data = (await res.json()) as any;
-        replyText = data?.candidates?.[0]?.content?.parts?.[0]?.text || '';
-      }
+      session.bookingId = created.id;
+      session.step = 'awaiting_payment_proof';
+      bookingSessions.set(sessionKey, session);
+
+      replyText = `🎉 *تم تسجيل حجزك بنجاح في صالون TrimMind VIP!* 💈👑
+
+يا أستاذ *${session.customerName}*، تم إدراج حجزك على السيستم وقاعدة البيانات رسمياً! 🌟
+
+🧾 *فاتورة وبيانات الحجز الرسمية:*
+• *رقم الحجز (Reference ID):* \`#${created.id}\`
+• *الكابتن:* ${session.barberName} ✂️
+• *الخدمة:* ${session.serviceName}
+• *الميعاد:* ${session.dateTimeStr || 'اليوم'}
+• *إجمالي الفاتورة:* *${session.servicePrice} جنيه*
+• *العربون المطلوب لتأكيد الموعد:* *50 جنيه*
+
+💳 *طرق دفع وتحويل العربون:*
+• *InstaPay:* 01005437633
+• *Vodafone Cash:* 01005437633
+
+📸 *يرجى إرسال صورة إيصال التحويل (اسكرين شوت) هنا على الواتساب* ليقوم موظف الاستقبال باعتماد الحجز وتثبيت الكرسي فوراً!
+
+📍 *رابط متابعة دورك المباشر في الصالون:*
+https://trimmind.up.railway.app/track?q=${created.id}
+
+تنورنا وتطلع أحلى عريس يا باشا! ✨`;
     } catch (e: any) {
-      logDebug('GEMINI_CALL_ERROR', { model, error: e.message });
+      logDebug('CREATE_BOOKING_ERROR', { error: e.message });
+      replyText = `أهلاً بك يا أستاذ *${session.customerName}*! 💈 تم استلام طلبك وبنجهزه لحضرتك. تحب تأكد الحجز مع ${session.barberName} على رقم الواتساب ده (${senderPhone})؟`;
+    }
+  } else if ((session.serviceName || textLower.includes('احجز') || textLower.includes('حجز')) && (!session.customerName || !session.dateTimeStr)) {
+    // Missing either barber, date/time or name
+    if (!session.barberName) {
+      replyText = `يا هلا يا باشا! منورنا في صالون الحداد VIP 💈✨\n\nالكباتن المتاحين اليوم:\n• *كابتن أحمد* ✂️\n• *كابتن محمد* ✂️\n• *كابتن عمر* ✂️\n\nتحب تحجز مع مين فيهم يا غالي؟`;
+    } else if (!session.serviceName) {
+      replyText = `اختيار ممتاز مع ${session.barberName}! 👑\n\nباقات وخدمات الصالون:\n• *باقة VIP كاملة (الأكثر طلباً):* 300 جنيه\n• *حلاقة شعر VIP ملكي:* 150 جنيه\n• *تحديد وحلاقة ذقن بالبخار:* 80 جنيه\n\nتحب نعملك أنهي باقة فيهم يا باشا؟`;
+    } else if (!session.dateTimeStr) {
+      replyText = `تمام يا باشا! مع ${session.barberName} لـ ${session.serviceName} 👑\n\nيناسبك تيجي *النهارده ولا يوم تاني؟* والساعة كام بالظبط؟ (مواعيدنا يومياً من 10:00 الصبح لـ 12:00 بالليل)`;
+    } else {
+      session.step = 'awaiting_name';
+      bookingSessions.set(sessionKey, session);
+      replyText = `يا هلا يا باشا! لتسجيل الحجز وإصدار الفاتورة فوراً 👑:\n\n1. أتشرف باسم حضرتك الكريم؟\n2. وهل تحب نسجل الحجز على رقم الواتساب ده (*${senderPhone || 'نفس الرقم'}*)؟`;
+    }
+  }
+
+  // Fallback to Gemini AI if not captured by state machine
+  if (!replyText) {
+    const systemInstruction = `أنت المساعد الذكي الرسمي لصالون (TrimMind - صالون الحداد VIP).
+أسلوبك: مصري راقي، محترم، ذكي، سريع ومفيد ("يا هلا يا فندم", "منورنا يا باشا", "تحت أمرك يا غالي").
+
+# معلومات صالون TrimMind:
+- الفرع: فرع الحداد VIP (متاح يومياً من 10:00 صباحاً حتى 12:00 منتصف الليل).
+- الكباتن الحلاقين: كابتن أحمد، كابتن محمد، كابتن عمر.
+- أهم الخدمات والأسعار:
+  • باقة VIP كاملة: 300 جنيه
+  • حلاقة شعر VIP: 150 جنيه
+  • تحديد وحلاقة ذقن بالبخار: 80 جنيه
+  • تنظيف بشرة / صبغة: 120 جنيه
+- رقم الواتساب الحالي للعميل: ${senderPhone || 'رقم الواتساب الحالي'}
+- العربون المطلوب لتأكيد الحجز: 50 جنيه
+- بيانات تحويل العربون (إنستاباي / فودافون كاش): 01005437633
+- رابط الحجز المباشر: https://trimmind.up.railway.app
+- رابط تتبع الدور الحي: https://trimmind.up.railway.app/track
+
+# قواعد مهمة لإتمام الحجز:
+1. عند الحجز، اسأل العميل بلطف عن اسمه، واسأله هل يحب يسجل الحجز برقم الواتساب ده (${senderPhone}) ولا برقم تاني.
+2. اطلب منه تحويل العربون وإرسال صورة إيصال التحويل (اسكرين شوت) على الواتساب لتأكيد الحجز.
+3. رد دائماً باللهجة المصرية الودودة.`;
+
+    history.push({ role: 'user', parts: [{ text: userMessage }] });
+    if (history.length > 10) history.splice(0, history.length - 10);
+
+    const candidateModels = ['gemini-flash-latest', 'gemini-2.5-flash-lite', 'gemini-flash-lite-latest'];
+
+    for (const model of candidateModels) {
+      if (replyText) break;
+      try {
+        const apiKey = process.env.GEMINI_API_KEY_CUSTOMER || process.env.GEMINI_API_KEY || '';
+        if (!apiKey) break;
+        const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
+        const payload = {
+          contents: history,
+          systemInstruction: {
+            parts: [{ text: systemInstruction }],
+          },
+        };
+
+        const res = await fetch(url, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        });
+
+        if (res.ok) {
+          const data = (await res.json()) as any;
+          replyText = data?.candidates?.[0]?.content?.parts?.[0]?.text || '';
+        }
+      } catch (e: any) {
+        logDebug('GEMINI_CALL_ERROR', { model, error: e.message });
+      }
     }
   }
 
   if (!replyText) {
-    const textLower = userMessage.toLowerCase();
-    if (textLower.includes('حلاق') || textLower.includes('مين') || textLower.includes('متاح') || textLower.includes('كابتن')) {
-      replyText = `أهلاً بك يا فندم! 💈 الكباتن المتاحين اليوم في صالون الحداد VIP:\n- كابتن أحمد ✂️\n- كابتن محمد ✂️\n- كابتن عمر ✂️\n\nتقدر تختار حلاقك المفضل وتحجز موعدك فوراً من هنا:\nhttps://trimmind.up.railway.app 👑`;
-    } else if (textLower.includes('سعر') || textLower.includes('اسعار') || textLower.includes('خدمات') || textLower.includes('بكام') || textLower.includes('احلق') || textLower.includes('حلاقة') || textLower.includes('احجز')) {
-      replyText = `يا هلا بك يا فندم! 💈 قائمة خدمات وباقات صالون الحداد VIP:\n• حلاقة شعر VIP ملكي: 150 جنيه\n• حلاقة وتحديد ذقن بالبخار: 80 جنيه\n• باقة VIP كاملة (شعر + ذقن + حمام كريم + ماسك): 300 جنيه\n\nللحجز المباشر واختيار الموعد المناسب:\nhttps://trimmind.up.railway.app 👑`;
-    } else if (isImage) {
-      replyText = `أهلاً بك يا فندم! 💈 تم استلام صورة الإيصال بنجاح وجارٍ مراجعتها وتأكيد حجزك من الاستقبال فوراً 👑✨`;
-    } else {
-      replyText = `أهلاً بك في صالون TrimMind (الحداد VIP) 💈👑\nنورتنا يا غالي! نقدر نساعدك في حجز موعد، معرفة قائمة الأسعار والخدمات، أو متابعة دورك المباشر في الصالون.\nتحب نساعدك بإيه النهارده؟`;
-    }
+    replyText = `أهلاً بك في صالون TrimMind (الحداد VIP) 💈👑\nنورتنا يا غالي! نقدر نساعدك في حجز موعد مع كابتن محمد، أحمد، أو عمر، ومعرفة قائمة الأسعار أو متابعة دورك المباشر في الصالون.\nتحب نساعدك بإيه النهارده؟`;
   }
 
   history.push({ role: 'model', parts: [{ text: replyText }] });

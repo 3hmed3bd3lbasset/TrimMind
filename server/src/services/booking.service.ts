@@ -26,7 +26,7 @@ export async function createBooking(payload: any, actor?: any, ipAddress?: strin
     totalAmount: payload.totalAmount,
   }, actor?.id);
 
-  return {
+  const resObj = {
     ...booking,
     id: booking.id,
     bookingId: booking.id,
@@ -70,6 +70,42 @@ export async function createBooking(payload: any, actor?: any, ipAddress?: strin
     paymentProof: booking.paymentProof,
     created_at: booking.createdAt,
   };
+
+  // Dispatch rich WhatsApp booking confirmation notification
+  if (booking.customerPhone) {
+    const startsAtDate = new Date(booking.startsAt || Date.now());
+    const formattedDate = startsAtDate.toLocaleDateString('ar-EG', { weekday: 'long', month: 'long', day: 'numeric' });
+    const formattedTime = startsAtDate.toLocaleTimeString('ar-EG', { hour: '2-digit', minute: '2-digit' });
+
+    const confirmationMsg = `🎉 *تم استلام طلب حجزك بنجاح في صالون TrimMind VIP!* 💈👑
+
+يا هلا يا أستاذ *${booking.customerName || 'الفاضل'}* نورتنا! 🌟
+
+🧾 *فاتورة وبيانات الحجز:*
+• *رقم الحجز:* \`#${booking.id}\`
+• *الخدمة:* ${booking.serviceName || 'خدمة VIP'}
+• *الكابتن:* ${booking.barberName || 'حسب التوفر بالصالون'} ✂️
+• *الميعاد:* ${formattedDate} الساعة ${formattedTime}
+• *إجمالي الفاتورة:* ${booking.totalAtBooking || booking.servicePriceAtBooking || 150} جنيه
+• *العربون المطلوب:* ${booking.bookingFeeAtBooking || 50} جنيه
+
+💳 *بيانات تحويل وتأكيد العربون:*
+• *InstaPay:* 01005437633
+• *Vodafone Cash:* 01005437633
+
+📸 *يرجى إرسال صورة إيصال التحويل هنا على الواتساب* ليتم اعتماد الحجز فوراً من الاستقبال!
+
+📍 *رابط متابعة دورك المباشر في الطابور:*
+https://trimmind.up.railway.app/track?q=${booking.id}
+
+تنورنا وتطلع أحلى عريس يا باشا! ✨`;
+
+    import('./whatsapp.service.js')
+      .then((m) => m.sendWhatsAppText(booking.customerPhone, confirmationMsg))
+      .catch((e) => console.error('Failed to send auto WhatsApp booking confirmation:', e.message));
+  }
+
+  return resObj;
 }
 
 export async function getBookingById(bookingId: string): Promise<any> {
