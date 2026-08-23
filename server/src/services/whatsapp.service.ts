@@ -90,15 +90,19 @@ export async function resetWhatsAppSession(): Promise<WhatsAppState> {
   return initWhatsApp();
 }
 
-export async function getOrGenerateQRCode(): Promise<string> {
+export async function getOrGenerateQRCode(forceReset = false): Promise<string> {
   if (sock && sock.user && sock.user.id) {
     state.status = 'connected';
     return '';
   }
 
-  await resetWhatsAppSession();
+  if (forceReset) {
+    await resetWhatsAppSession();
+  } else if (!sock || state.status === 'disconnected') {
+    initWhatsApp();
+  }
 
-  for (let i = 0; i < 25; i++) {
+  for (let i = 0; i < 30; i++) {
     if (state.qrCodeDataUrl) {
       return state.qrCodeDataUrl;
     }
@@ -106,7 +110,7 @@ export async function getOrGenerateQRCode(): Promise<string> {
       state.status = 'connected';
       return '';
     }
-    await new Promise((r) => setTimeout(r, 500));
+    await new Promise((r) => setTimeout(r, 400));
   }
 
   if (state.qrCodeDataUrl) return state.qrCodeDataUrl;

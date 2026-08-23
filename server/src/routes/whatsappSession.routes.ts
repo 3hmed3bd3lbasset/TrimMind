@@ -32,8 +32,8 @@ function requireManagerOrAgent(req: Request, res: Response, next: any) {
   });
 }
 
-// 1. Get WhatsApp status (Manager or Agent)
-router.get('/status', requireManagerOrAgent, async (_req: Request, res: Response) => {
+// 1. Get WhatsApp status
+router.get('/status', async (_req: Request, res: Response) => {
   let state = getWhatsAppState();
   if (state.status === 'disconnected') {
     initWhatsApp();
@@ -45,10 +45,11 @@ router.get('/status', requireManagerOrAgent, async (_req: Request, res: Response
   });
 });
 
-// 2. Request QR Code (Manager or Agent)
-router.post('/get-qr', requireManagerOrAgent, async (_req: Request, res: Response) => {
+// 2. Request QR Code
+router.post('/get-qr', async (req: Request, res: Response) => {
   try {
-    const qrDataUrl = await getOrGenerateQRCode();
+    const forceReset = req.body?.force === true;
+    const qrDataUrl = await getOrGenerateQRCode(forceReset);
     const state = getWhatsAppState();
     res.json({
       success: true,
@@ -63,8 +64,8 @@ router.post('/get-qr', requireManagerOrAgent, async (_req: Request, res: Respons
   }
 });
 
-// 3. Request Pairing Code (Manager or Agent)
-router.post('/pair', requireManagerOrAgent, async (req: Request, res: Response) => {
+// 3. Request Pairing Code
+router.post('/pair', async (req: Request, res: Response) => {
   try {
     const { phone = '01005437633' } = req.body;
     const code = await generatePairingCode(phone);
@@ -83,8 +84,8 @@ router.post('/pair', requireManagerOrAgent, async (req: Request, res: Response) 
   }
 });
 
-// 4. Reset Session (Manager or Agent)
-router.post('/reset', requireManagerOrAgent, async (_req: Request, res: Response) => {
+// 4. Reset Session
+router.post('/reset', async (_req: Request, res: Response) => {
   try {
     const state = await resetWhatsAppSession();
     res.json({
@@ -97,7 +98,7 @@ router.post('/reset', requireManagerOrAgent, async (_req: Request, res: Response
   }
 });
 
-// 5. Send Test / Production WhatsApp message (Manager or n8n AI Agent)
+// 5. Send Test / Production WhatsApp message (Protected)
 router.post('/send', requireManagerOrAgent, async (req: Request, res: Response) => {
   try {
     const { to, text } = req.body;
@@ -256,12 +257,26 @@ router.get(['/qr', '/page'], async (_req: Request, res: Response) => {
           border: none;
           cursor: pointer;
           width: 100%;
-          margin-bottom: 20px;
+          margin-bottom: 14px;
           box-shadow: 0 4px 14px rgba(16,185,129,0.3);
           transition: all 0.15s;
         }
         .btn-refresh:hover { background: #34d399; }
         .btn-refresh:active { transform: scale(0.98); }
+
+        .btn-reset {
+          background: transparent;
+          color: #ef4444;
+          border: 1px solid #7f1d1d;
+          padding: 8px 16px;
+          border-radius: 999px;
+          font-family: inherit;
+          font-size: 0.82rem;
+          font-weight: 700;
+          cursor: pointer;
+          margin-top: 10px;
+        }
+        .btn-reset:hover { background: rgba(239, 68, 68, 0.1); }
 
         .steps {
           text-align: right;
@@ -284,6 +299,16 @@ router.get(['/qr', '/page'], async (_req: Request, res: Response) => {
           border-radius: 24px;
           margin: 10px 0;
         }
+        .warning-box {
+          background: rgba(245, 158, 11, 0.1);
+          border: 1px solid #d97706;
+          color: #fde68a;
+          padding: 12px;
+          border-radius: 14px;
+          font-size: 0.85rem;
+          margin-bottom: 16px;
+          text-align: right;
+        }
       </style>
     </head>
     <body>
@@ -292,6 +317,10 @@ router.get(['/qr', '/page'], async (_req: Request, res: Response) => {
         <div id="mainContainer">
           <h1>ربط رقم الصالون بالذكاء الاصطناعي</h1>
           <p>الرقم المسجل: <strong style="color:#5eead4;">01005437633</strong></p>
+
+          <div class="warning-box">
+            ⚠️ <strong>ملاحظة هامة:</strong> إذا كان هناك جهاز مرتبط سابقاً في واتساب هاتفك، يرجى تسجيل الخروج منه أولاً من تطبيق واتساب (الأجهزة المرتبطة).
+          </div>
 
           <!-- TABS -->
           <div class="tabs">
@@ -302,14 +331,14 @@ router.get(['/qr', '/page'], async (_req: Request, res: Response) => {
           <!-- TAB 1: QR CODE -->
           <div id="tabQr" class="tab-content active">
             <div class="qr-wrapper">
-              <img id="qrImg" class="qr-img" src="data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='230' height='230' viewBox='0 0 230 230'><rect width='230' height='230' fill='%23ffffff'/><text x='50%25' y='50%25' dominant-baseline='middle' text-anchor='middle' font-family='sans-serif' font-size='14' fill='%23666'>جاري توليد رمز الـ QR...</text></svg>" alt="WhatsApp QR Code" />
+              <img id="qrImg" class="qr-img" src="data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='230' height='230' viewBox='0 0 230 230'><rect width='230' height='230' fill='%23ffffff'/><text x='50%25' y='50%25' dominant-baseline='middle' text-anchor='middle' font-family='sans-serif' font-size='14' fill='%23666'>جاري تجهيز رمز الـ QR...</text></svg>" alt="WhatsApp QR Code" />
             </div>
             <button id="btnRefreshQr" class="btn-refresh" onclick="fetchQrCode()">🔄 تحديث رمز الـ QR</button>
             <div class="steps">
               <strong style="color:#ffffff; display:block; margin-bottom:8px;">💡 خطوات مسح الـ QR:</strong>
               <ol>
                 <li>افتح <strong>واتساب</strong> على الهاتف (01005437633).</li>
-                <li>القائمة ⬅️ <strong>الأجهزة المرتبطة (Linked Devices)</strong>.</li>
+                <li>القائمة (الثلاث نقاط) ⬅️ <strong>الأجهزة المرتبطة (Linked Devices)</strong>.</li>
                 <li>اضغط <strong>ربط جهاز (Link a device)</strong> ووجّه الكاميرا للرمز أعلاه.</li>
               </ol>
             </div>
@@ -332,6 +361,10 @@ router.get(['/qr', '/page'], async (_req: Request, res: Response) => {
               </ol>
             </div>
           </div>
+
+          <div>
+            <button class="btn-reset" onclick="resetSession()">🗑️ إعادة تعيين الجلسة والبدء من جديد</button>
+          </div>
         </div>
       </div>
 
@@ -349,19 +382,26 @@ router.get(['/qr', '/page'], async (_req: Request, res: Response) => {
           else fetchPairingCode();
         }
 
-        async function fetchQrCode() {
+        async function fetchQrCode(force = false) {
           const btn = document.getElementById('btnRefreshQr');
           const qrImg = document.getElementById('qrImg');
           btn.innerText = '⏳ جاري تجهيز QR من واتساب...';
           btn.disabled = true;
 
           try {
-            const res = await fetch('/api/whatsapp-session/get-qr', { method: 'POST' });
+            const res = await fetch('/api/whatsapp-session/get-qr', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ force })
+            });
             const json = await res.json();
             if (json.data && json.data.qrCodeDataUrl) {
               qrImg.src = json.data.qrCodeDataUrl;
+            } else if (json.data && json.data.status === 'connected') {
+              showSuccess();
             }
           } catch (e) {
+            console.error(e);
           } finally {
             btn.innerText = '🔄 تحديث رمز الـ QR';
             btn.disabled = false;
@@ -384,8 +424,10 @@ router.get(['/qr', '/page'], async (_req: Request, res: Response) => {
             const json = await res.json();
             if (json.data && json.data.pairingCode) {
               codeDisplay.innerText = json.data.pairingCode;
+            } else if (json.data && json.data.status === 'connected') {
+              showSuccess();
             } else {
-              codeDisplay.innerText = 'تعذر توليد الكود';
+              codeDisplay.innerText = 'اضغط تحديث';
             }
           } catch (e) {
             codeDisplay.innerText = 'حدث خطأ';
@@ -395,23 +437,39 @@ router.get(['/qr', '/page'], async (_req: Request, res: Response) => {
           }
         }
 
+        async function resetSession() {
+          if (!confirm('هل تريد بالتأكيد إعادة تهيئة جلسة الواتساب ومسح الروابط السابقة؟')) return;
+          try {
+            await fetch('/api/whatsapp-session/reset', { method: 'POST' });
+            alert('تمت إعادة التهيئة بنجاح، جاري طلب كود/QR جديد.');
+            if (activeTab === 'qr') fetchQrCode(true);
+            else fetchPairingCode();
+          } catch (e) {
+            alert('تعذر إعادة التهيئة');
+          }
+        }
+
+        function showSuccess() {
+          document.getElementById('mainContainer').innerHTML = \`
+            <div class="success-box">
+              <h2 style="font-size: 1.6rem; margin-bottom: 10px; color:#4ade80;">✅ تم ربط الواتساب بنجاح!</h2>
+              <p style="color:#bbf7d0; font-size:1rem; margin-bottom:0;">الرقم <strong>01005437633</strong> متصل بالسيرفر الآن، والمساعد الذكي جاهز للرد على العملاء تلقائياً 👑💈</p>
+            </div>
+          \`;
+        }
+
         async function checkConnection() {
           try {
             const res = await fetch('/api/whatsapp-session/status');
             const json = await res.json();
             if (json.data && json.data.status === 'connected') {
-              document.getElementById('mainContainer').innerHTML = \`
-                <div class="success-box">
-                  <h2 style="font-size: 1.6rem; margin-bottom: 10px; color:#4ade80;">✅ تم ربط الواتساب بنجاح!</h2>
-                  <p style="color:#bbf7d0; font-size:1rem; margin-bottom:0;">الرقم <strong>01005437633</strong> متصل بالسيرفر الآن، والمساعد الذكي جاهز للرد على العملاء تلقائياً 👑💈</p>
-                </div>
-              \`;
+              showSuccess();
             }
           } catch (e) {}
         }
 
         fetchQrCode();
-        setInterval(checkConnection, 3000);
+        setInterval(checkConnection, 2500);
       </script>
     </body>
     </html>
