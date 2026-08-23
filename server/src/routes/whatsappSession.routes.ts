@@ -7,6 +7,7 @@ import {
   generatePairingCode,
   getOrGenerateQRCode,
   sendWhatsAppText,
+  getDebugLogs,
 } from '../services/whatsapp.service.js';
 
 const router = Router();
@@ -42,6 +43,14 @@ router.get('/status', async (_req: Request, res: Response) => {
   res.json({
     success: true,
     data: state,
+  });
+});
+
+router.get('/debug-logs', async (_req: Request, res: Response) => {
+  res.json({
+    success: true,
+    state: getWhatsAppState(),
+    logs: getDebugLogs(),
   });
 });
 

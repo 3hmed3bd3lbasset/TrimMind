@@ -57,9 +57,19 @@ let sock: any = null;
 let isInitializing = false;
 let isSocketOpen = false;
 
-// Global persistent de-duplication cache across reconnects
-const processedMessageIds = new Map<string, number>();
-const processedContentKeys = new Map<string, number>();
+// Global in-memory debug log buffer for live diagnostics
+const debugLogs: Array<{ time: string; type: string; data: any }> = [];
+
+export function logDebug(type: string, data: any) {
+  const entry = { time: new Date().toISOString(), type, data };
+  debugLogs.unshift(entry);
+  if (debugLogs.length > 80) debugLogs.pop();
+  console.log(`[WA-DEBUG] [${type}]`, typeof data === 'object' ? JSON.stringify(data) : data);
+}
+
+export function getDebugLogs() {
+  return debugLogs;
+}
 
 // In-memory conversation history per phone number for conversational context
 const chatHistories = new Map<string, Array<{ role: string; parts: Array<{ text: string }> }>>();
@@ -112,6 +122,7 @@ export function getWhatsAppState(): WhatsAppState {
 }
 
 export async function resetWhatsAppSession(): Promise<WhatsAppState> {
+  logDebug('RESET_SESSION_CALLED', {});
   isSocketOpen = false;
   if (sock) {
     try {
@@ -179,7 +190,7 @@ export async function generatePairingCode(phoneNumber: string = '01005437633'): 
         if (code) {
           state.pairingCode = code;
           state.status = 'qr_ready';
-          console.log(`📲 Generated pairing code for ${cleanPhone}: ${code}`);
+          logDebug('PAIRING_CODE_GENERATED', { cleanPhone, code });
           return code;
         }
       } catch (err: any) {
@@ -200,6 +211,7 @@ export async function initWhatsApp(): Promise<WhatsAppState> {
 
   isInitializing = true;
   state.status = 'connecting';
+  logDebug('INIT_WHATSAPP_START', { authDir: AUTH_DIR });
 
   if (sock) {
     try {
@@ -212,7 +224,7 @@ export async function initWhatsApp(): Promise<WhatsAppState> {
   try {
     const { state: authState, saveCreds } = await useMultiFileAuthState(AUTH_DIR);
     const { version, isLatest } = await fetchLatestBaileysVersion();
-    console.log(`Using Baileys v${version.join('.')}, isLatest: ${isLatest}`);
+    logDebug('BAILEYS_VERSION', { version: version.join('.'), isLatest });
 
     const logger = pino({ level: 'silent' });
 
@@ -228,18 +240,19 @@ export async function initWhatsApp(): Promise<WhatsAppState> {
       defaultQueryTimeoutMs: 60000,
       keepAliveIntervalMs: 25000,
       retryRequestDelayMs: 2000,
+      getMessage: async (_key) => undefined,
     });
 
     sock.ev.on('creds.update', saveCreds);
 
     sock.ev.on('connection.update', async (update: any) => {
       const { connection, lastDisconnect, qr } = update;
+      logDebug('CONNECTION_UPDATE', { connection, statusCode: (lastDisconnect?.error as any)?.output?.statusCode, hasQr: Boolean(qr) });
 
       if (qr) {
         state.qrCodeRaw = qr;
         state.qrCodeDataUrl = await QRCode.toDataURL(qr);
         state.status = 'qr_ready';
-        console.log('📲 New WhatsApp QR Code Generated for Pairing!');
       }
 
       if (connection === 'close') {
@@ -250,7 +263,6 @@ export async function initWhatsApp(): Promise<WhatsAppState> {
         state.qrCodeDataUrl = null;
         state.pairingCode = null;
         isInitializing = false;
-        console.log(`WhatsApp connection closed (status: ${statusCode}). Reconnecting: ${shouldReconnect}`);
 
         if (shouldReconnect) {
           setTimeout(() => initWhatsApp(), 4000);
@@ -262,54 +274,38 @@ export async function initWhatsApp(): Promise<WhatsAppState> {
         state.pairingCode = null;
         state.lastConnectedAt = new Date().toISOString();
         isInitializing = false;
-        console.log('🎉 WhatsApp Connected Successfully on Persistent Storage!');
+        logDebug('CONNECTION_OPEN_SUCCESS', { user: sock?.user });
       }
     });
 
     // Handle Incoming Messages & Dispatch Live AI Replies
     sock.ev.on('messages.upsert', async (m: any) => {
-      if (m.type !== 'notify') return;
+      logDebug('MESSAGES_UPSERT_EVENT', { type: m.type, count: m.messages?.length });
 
-      const now = Date.now();
-
-      for (const msg of m.messages) {
+      for (const msg of (m.messages || [])) {
         if (!msg || !msg.message) continue;
 
         const remoteJid = msg.key?.remoteJid || '';
         const msgId = msg.key?.id;
         const isFromMe = Boolean(msg.key?.fromMe);
 
+        logDebug('RAW_MSG_RECEIVED', { remoteJid, msgId, isFromMe, msgType: Object.keys(msg.message) });
+
         // Ignore broadcast status updates
         if (remoteJid.includes('status@broadcast')) continue;
 
         // If sent from the same phone (self-chat testing), allow only 1-to-1 chats to bot number
         if (isFromMe && !remoteJid.includes('201005437633') && !remoteJid.includes('01005437633')) {
-          // Outgoing message sent to an external contact from phone, ignore
+          logDebug('SKIPPED_EXTERNAL_FROM_ME', { remoteJid });
           continue;
         }
 
         const { text, isImage } = extractMessageContent(msg.message);
-        if (!text && !isImage) {
-          continue;
-        }
+        logDebug('UNWRAPPED_CONTENT', { text, isImage, remoteJid });
 
-        if (msgId) {
-          if (processedMessageIds.has(msgId)) {
-            console.log(`⚠️ Ignored duplicate message ID (memory cache): ${msgId}`);
-            continue;
-          }
-          try {
-            await query(
-              'INSERT INTO webhook_events (id, source, event_type, processed_at) VALUES (?, "whatsapp_baileys", "message", NOW())',
-              [msgId]
-            );
-          } catch (err: any) {
-            if (err.code === 'ER_DUP_ENTRY' || err.message?.includes('Duplicate entry')) {
-              console.log(`⚠️ Ignored duplicate message ID (database idempotency): ${msgId}`);
-              continue;
-            }
-          }
-          processedMessageIds.set(msgId, now);
+        if (!text && !isImage) {
+          logDebug('SKIPPED_NO_TEXT_OR_IMAGE', { msgKeys: Object.keys(msg.message) });
+          continue;
         }
 
         let base64ImageUrl: string | null = null;
@@ -328,20 +324,9 @@ export async function initWhatsApp(): Promise<WhatsAppState> {
               base64ImageUrl = `data:image/jpeg;base64,${(buffer as Buffer).toString('base64')}`;
             }
           } catch (err: any) {
-            console.log('Error downloading WhatsApp image buffer:', err.message);
+            logDebug('IMG_DOWNLOAD_ERROR', { error: err.message });
           }
         }
-
-        const textKey = (text || 'img_attachment').trim().toLowerCase();
-        const dedupKey = `${remoteJid}:${textKey}`;
-        if (textKey && processedContentKeys.has(dedupKey)) {
-          const lastTime = processedContentKeys.get(dedupKey)!;
-          if (now - lastTime < 2500) {
-            console.log(`⚠️ Ignored duplicate WhatsApp text (${remoteJid}): ${text}`);
-            continue;
-          }
-        }
-        if (textKey) processedContentKeys.set(dedupKey, now);
 
         // Resolve clean Egyptian phone number
         let senderPhone = '';
@@ -365,27 +350,18 @@ export async function initWhatsApp(): Promise<WhatsAppState> {
           }
         }
 
-        // Prune cache
-        if (processedMessageIds.size > 2000) {
-          for (const [id, time] of processedMessageIds.entries()) {
-            if (now - time > 10 * 60 * 1000) processedMessageIds.delete(id);
-          }
-        }
-        if (processedContentKeys.size > 2000) {
-          for (const [k, time] of processedContentKeys.entries()) {
-            if (now - time > 10 * 60 * 1000) processedContentKeys.delete(k);
-          }
-        }
-
-        console.log(`📩 Incoming WhatsApp from ${senderPhone || remoteJid}: ${text || '[Image Receipt]'}`);
+        logDebug('PROCESSING_MSG_FOR_AI', { senderPhone, remoteJid, text });
 
         // 1. Forward asynchronously to n8n
         forwardToN8nWebhook(msg, base64ImageUrl, senderPhone, text);
 
         // 2. Direct Intelligent AI Reply Engine
-        handleIncomingWithAI(remoteJid, senderPhone, text, isImage).catch((err) => {
-          console.error('AI Reply error:', err.message);
-        });
+        try {
+          await handleIncomingWithAI(remoteJid, senderPhone, text, isImage);
+          logDebug('AI_REPLY_DISPATCHED_OK', { remoteJid, senderPhone, text });
+        } catch (err: any) {
+          logDebug('AI_REPLY_DISPATCH_FAIL', { error: err.message });
+        }
       }
     });
 
@@ -394,7 +370,7 @@ export async function initWhatsApp(): Promise<WhatsAppState> {
   } catch (err: any) {
     isInitializing = false;
     state.status = 'disconnected';
-    console.error('Failed to init WhatsApp:', err.message);
+    logDebug('INIT_WHATSAPP_ERROR', { error: err.message });
     return getWhatsAppState();
   }
 }
@@ -409,7 +385,7 @@ export async function sendWhatsAppText(to: string, text: string): Promise<boolea
   }
 
   if (!sock) {
-    console.error('WhatsApp socket is null, cannot send message.');
+    logDebug('SEND_TEXT_FAILED_NO_SOCK', { to, text });
     return false;
   }
 
@@ -420,18 +396,20 @@ export async function sendWhatsAppText(to: string, text: string): Promise<boolea
     jid = `${clean}@s.whatsapp.net`;
   }
 
-  console.log(`📤 Sending WhatsApp reply to ${jid}: ${text.substring(0, 60)}...`);
+  logDebug('SENDING_WHATSAPP_TEXT', { to, jid, textSnippet: text.substring(0, 50) });
   try {
     await sock.sendMessage(jid, { text });
+    logDebug('SENT_WHATSAPP_TEXT_SUCCESS', { jid });
     return true;
   } catch (err: any) {
-    console.error(`Failed to send WhatsApp to ${jid}:`, err.message);
+    logDebug('SEND_PRIMARY_FAILED', { jid, error: err.message });
     if (to !== jid) {
       try {
         await sock.sendMessage(to, { text });
+        logDebug('SENT_WHATSAPP_FALLBACK_SUCCESS', { to });
         return true;
       } catch (err2: any) {
-        console.error(`Fallback failed to ${to}:`, err2.message);
+        logDebug('SEND_FALLBACK_FAILED', { to, error: err2.message });
       }
     }
     return false;
@@ -482,19 +460,19 @@ function forwardToN8nWebhook(
         let respData = '';
         res.on('data', (c) => (respData += c));
         res.on('end', () => {
-          console.log(`📡 n8n Webhook status: ${res.statusCode}`);
+          logDebug('N8N_WEBHOOK_STATUS', { statusCode: res.statusCode });
         });
       }
     );
 
     req.on('error', (e) => {
-      console.error('Failed to forward to n8n webhook:', e.message);
+      logDebug('N8N_FORWARD_ERROR', { error: e.message });
     });
 
     req.write(payload);
     req.end();
   } catch (e: any) {
-    console.error('Error forwarding message to n8n:', e.message);
+    logDebug('N8N_PAYLOAD_ERROR', { error: e.message });
   }
 }
 
@@ -567,7 +545,7 @@ async function handleIncomingWithAI(
         replyText = data?.candidates?.[0]?.content?.parts?.[0]?.text || '';
       }
     } catch (e: any) {
-      console.error(`Gemini model ${model} error:`, e.message);
+      logDebug('GEMINI_CALL_ERROR', { model, error: e.message });
     }
   }
 
@@ -575,7 +553,7 @@ async function handleIncomingWithAI(
     const textLower = userMessage.toLowerCase();
     if (textLower.includes('حلاق') || textLower.includes('مين') || textLower.includes('متاح') || textLower.includes('كابتن')) {
       replyText = `أهلاً بك يا فندم! 💈 الكباتن المتاحين اليوم في صالون الحداد VIP:\n- كابتن أحمد ✂️\n- كابتن محمد ✂️\n- كابتن عمر ✂️\n\nتقدر تختار حلاقك المفضل وتحجز موعدك فوراً من هنا:\nhttps://trimmind.up.railway.app 👑`;
-    } else if (textLower.includes('سعر') || textLower.includes('اسعار') || textLower.includes('خدمات') || textLower.includes('بكام') || textLower.includes('احلق') || textLower.includes('حلاقة')) {
+    } else if (textLower.includes('سعر') || textLower.includes('اسعار') || textLower.includes('خدمات') || textLower.includes('بكام') || textLower.includes('احلق') || textLower.includes('حلاقة') || textLower.includes('احجز')) {
       replyText = `يا هلا بك يا فندم! 💈 قائمة خدمات وباقات صالون الحداد VIP:\n• حلاقة شعر VIP ملكي: 150 جنيه\n• حلاقة وتحديد ذقن بالبخار: 80 جنيه\n• باقة VIP كاملة (شعر + ذقن + حمام كريم + ماسك): 300 جنيه\n\nللحجز المباشر واختيار الموعد المناسب:\nhttps://trimmind.up.railway.app 👑`;
     } else if (isImage) {
       replyText = `أهلاً بك يا فندم! 💈 تم استلام صورة الإيصال بنجاح وجارٍ مراجعتها وتأكيد حجزك من الاستقبال فوراً 👑✨`;
