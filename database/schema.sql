@@ -314,4 +314,14 @@ CREATE TABLE IF NOT EXISTS `insight_reports` (
     INDEX idx_branch_period (`branch_id`, `period_start`, `period_end`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+-- 20. سجل معالجة أحداث الويب هوك لمنع التكرار (Persistent Database-Backed Webhook Idempotency)
+CREATE TABLE IF NOT EXISTS `webhook_events` (
+    `id` VARCHAR(128) PRIMARY KEY,
+    `source` VARCHAR(64) NOT NULL,
+    `event_type` VARCHAR(64),
+    `payload` JSON,
+    `processed_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    INDEX idx_source_event (`source`, `event_type`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
 SET FOREIGN_KEY_CHECKS = 1;

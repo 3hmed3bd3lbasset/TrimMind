@@ -133,9 +133,7 @@ export default function AuthPage() {
       const envManagerPass = (import.meta as any).env?.VITE_INITIAL_MANAGER_PASSWORD || (import.meta as any).env?.VITE_MANAGER_PASSWORD;
       const isPassValid =
         (matchedProfile.password && matchedProfile.password === password) ||
-        (matchedProfile.is_super_admin && envManagerPass && password === envManagerPass) ||
-        password === 'Admin@123456' ||
-        password === 'admin123456';
+        (matchedProfile.is_super_admin && envManagerPass && password === envManagerPass);
 
       if (!isPassValid) {
         toast.error('كلمة المرور غير صحيحة. يرجى التأكد من كلمة المرور الخاصة بحسابك.');

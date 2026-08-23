@@ -3,27 +3,37 @@ import dotenv from 'dotenv';
 
 dotenv.config();
 
+const dbUrl = process.env.MYSQL_URL || process.env.DATABASE_URL;
 const dbHost = process.env.DB_HOST || 'localhost';
 const dbPort = parseInt(process.env.DB_PORT || '3306', 10);
 const dbUser = process.env.DB_USER || 'root';
 const dbPassword = process.env.DB_PASSWORD || '';
 const dbName = process.env.DB_NAME || 'salon_db';
 
-export const pool = mysql.createPool({
-  host: dbHost,
-  port: dbPort,
-  user: dbUser,
-  password: dbPassword,
-  database: dbName,
-  waitForConnections: true,
-  connectionLimit: 15,
-  maxIdle: 10,
-  idleTimeout: 60000,
-  queueLimit: 0,
-  enableKeepAlive: true,
-  keepAliveInitialDelay: 0,
-  charset: 'utf8mb4',
-});
+export const pool = dbUrl
+  ? mysql.createPool({
+      uri: dbUrl,
+      waitForConnections: true,
+      connectionLimit: 15,
+      maxIdle: 10,
+      idleTimeout: 60000,
+      enableKeepAlive: true,
+    })
+  : mysql.createPool({
+      host: dbHost,
+      port: dbPort,
+      user: dbUser,
+      password: dbPassword,
+      database: dbName,
+      waitForConnections: true,
+      connectionLimit: 15,
+      maxIdle: 10,
+      idleTimeout: 60000,
+      queueLimit: 0,
+      enableKeepAlive: true,
+      keepAliveInitialDelay: 0,
+      charset: 'utf8mb4',
+    });
 
 // Helper for parameterized queries preventing SQL injection
 export async function query<T = any>(sql: string, params: any[] = []): Promise<T> {

@@ -57,10 +57,13 @@ export const ManagersManager: React.FC = () => {
     setFullName('');
     setPhone('010');
     setEmail('');
-    setPassword('admin123456');
+    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789!@#$';
+    let randPass = '';
+    for (let i = 0; i < 10; i++) randPass += chars.charAt(Math.floor(Math.random() * chars.length));
+    setPassword(randPass);
     setIsSuperAdmin(false);
     setSelectedBranches([branches[0]?.id || '']);
-    setShowPassword(false);
+    setShowPassword(true);
     setIsModalOpen(true);
   };
 
@@ -69,7 +72,7 @@ export const ManagersManager: React.FC = () => {
     setFullName(mgr.full_name);
     setPhone(mgr.phone || '');
     setEmail(mgr.email || '');
-    setPassword(mgr.password || 'admin123456');
+    setPassword(mgr.password || '');
     setIsSuperAdmin(!!mgr.is_super_admin);
     setSelectedBranches(mgr.assigned_branch_ids || (mgr.branch_id ? [mgr.branch_id] : []));
     setShowPassword(false);
@@ -81,7 +84,7 @@ export const ManagersManager: React.FC = () => {
   };
 
   const copyCredentials = (mgr: Profile) => {
-    const text = `بيانات دخول المدير:\nالاسم: ${mgr.full_name}\nالبريد / الهاتف: ${mgr.email || mgr.phone}\nكلمة السر: ${mgr.password || 'admin123456'}`;
+    const text = `بيانات دخول المدير:\nالاسم: ${mgr.full_name}\nالبريد / الهاتف: ${mgr.email || mgr.phone}\nكلمة السر: ${mgr.password || '••••••••'}`;
     navigator.clipboard.writeText(text);
     toast.success('تم نسخ بيانات الدخول إلى الحافظة');
   };
@@ -218,7 +221,7 @@ export const ManagersManager: React.FC = () => {
                     </span>
                     <div className="flex items-center gap-1.5">
                       <span className="font-mono font-bold text-forest bg-white px-2 py-0.5 rounded border border-border text-[11px]">
-                        {visiblePasswords[mgr.id] ? mgr.password || 'admin123456' : '••••••••'}
+                        {visiblePasswords[mgr.id] ? mgr.password || 'مشفّرة' : '••••••••'}
                       </span>
                       <button
                         type="button"

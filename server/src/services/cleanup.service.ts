@@ -1,6 +1,7 @@
 import fs from 'fs';
 import path from 'path';
 import cron from 'node-cron';
+import bcrypt from 'bcrypt';
 import { query } from '../config/database.js';
 
 const uploadDir = process.env.UPLOAD_DIR || 'uploads';
@@ -131,6 +132,15 @@ export async function ensureInitialDbData() {
         generated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         INDEX idx_branch_period (branch_id, period_start, period_end)
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+      CREATE TABLE IF NOT EXISTS webhook_events (
+        id VARCHAR(128) PRIMARY KEY,
+        source VARCHAR(64) NOT NULL,
+        event_type VARCHAR(64),
+        payload JSON,
+        processed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        INDEX idx_source_event (source, event_type)
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
     `);
 
     // Safely add no_show_marked_at column if not present
@@ -228,10 +238,13 @@ export async function ensureInitialDbData() {
       console.log('✅ Auto-seeded cafeteria products into MySQL DB');
     }
 
-    // 6. Check & Seed Profiles (Super Admin / Manager & Receptionist)
+    // 6. Check & Seed Profiles (Super Admin / Manager & Receptionist) with secure bcrypt hash
+    const defaultManagerHash = bcrypt.hashSync(process.env.MANAGER_PASSWORD || 'Admin@123456', 10);
+    const defaultReceptionistHash = bcrypt.hashSync(process.env.RECEPTIONIST_PASSWORD || 'Admin@123456', 10);
+
     await query(`
       INSERT INTO profiles (id, full_name, phone, email, password_hash, role, is_super_admin, is_active)
-      VALUES ('usr-manager-super', 'أحمد عبدالباسط (المدير العام)', '01285694670', 'admin@salon.com', 'Admin@123456', 'manager', 1, 1)
+      VALUES ('usr-manager-super', 'أحمد عبدالباسط (المدير العام)', '01285694670', 'admin@salon.com', ?, 'manager', 1, 1)
       ON DUPLICATE KEY UPDATE 
         full_name = VALUES(full_name),
         phone = VALUES(phone),
@@ -239,19 +252,19 @@ export async function ensureInitialDbData() {
         role = 'manager',
         is_super_admin = 1,
         is_active = 1;
-    `);
+    `, [defaultManagerHash]);
 
     await query(`
       INSERT INTO profiles (id, full_name, phone, email, password_hash, role, branch_id, is_super_admin, is_active)
-      VALUES ('usr-receptionist-main', 'موظف الاستقبال', '01005437633', 'reception@salon.com', 'Admin@123456', 'receptionist', 'branch-elhdad', 0, 1)
+      VALUES ('usr-receptionist-main', 'موظف الاستقبال', '01005437633', 'reception@salon.com', ?, 'receptionist', 'branch-elhdad', 0, 1)
       ON DUPLICATE KEY UPDATE 
         full_name = VALUES(full_name),
         phone = VALUES(phone),
         password_hash = VALUES(password_hash),
         role = 'receptionist',
         is_active = 1;
-    `);
-    console.log('✅ Auto-seeded manager & staff accounts in MySQL DB');
+    `, [defaultReceptionistHash]);
+    console.log('✅ Auto-seeded manager & staff accounts in MySQL DB with secure bcrypt hashes');
   } catch (err: any) {
     console.warn('Initial DB seeding notice:', err?.message);
   }

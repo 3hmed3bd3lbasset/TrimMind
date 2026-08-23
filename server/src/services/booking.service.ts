@@ -1,6 +1,6 @@
 import crypto from 'crypto';
 import { v4 as uuidv4 } from 'uuid';
-import { query } from '../config/database.js';
+import { query, queryConn, withTransaction } from '../config/database.js';
 import { broadcastToBranch, broadcastGlobal } from '../socket/realtime.js';
 
 export function generateSecureToken(prefix = 'VIP'): string {
@@ -13,58 +13,45 @@ export async function createBooking(payload: any, actor?: any, ipAddress?: strin
   const secureToken = generateSecureToken(payload.bookingType === 'vip' ? 'VIP' : 'NOR');
   const bookingDate = (payload.startsAt || new Date().toISOString()).split('T')[0];
 
-  // 1. Resolve Branch ID safely
-  let finalBranchId = payload.branchId || 'branch-elhdad';
-  try {
-    const branchRows = await query<any[]>('SELECT id FROM branches WHERE id = ? LIMIT 1', [finalBranchId]);
+  const txResult = await withTransaction(async (conn) => {
+    let finalBranchId = payload.branchId || 'branch-elhdad';
+    const branchRows = await queryConn<any[]>(conn, 'SELECT id FROM branches WHERE id = ? LIMIT 1', [finalBranchId]);
     if (!branchRows || branchRows.length === 0) {
-      const firstBranch = await query<any[]>('SELECT id FROM branches LIMIT 1');
+      const firstBranch = await queryConn<any[]>(conn, 'SELECT id FROM branches LIMIT 1');
       if (firstBranch && firstBranch.length > 0) {
         finalBranchId = firstBranch[0].id;
       }
     }
-  } catch {}
 
-  // 2. Fetch service price safely with fallbacks
-  let primaryService = { 
-    id: payload.serviceId || 'srv-haircut', 
-    name: payload.serviceName || 'خدمة الصالون', 
-    price: payload.servicePrice || 180 
-  };
-  let servicePrice = payload.servicePrice || 180;
-  try {
-    let services = await query<any[]>('SELECT * FROM services WHERE id = ? LIMIT 1', [payload.serviceId]);
+    let primaryService = { 
+      id: payload.serviceId || 'srv-haircut', 
+      name: payload.serviceName || 'خدمة الصالون', 
+      price: payload.servicePrice || 180 
+    };
+    let servicePrice = payload.servicePrice || 180;
+    let services = await queryConn<any[]>(conn, 'SELECT * FROM services WHERE id = ? LIMIT 1', [payload.serviceId]);
     if (!services || services.length === 0) {
-      services = await query<any[]>('SELECT * FROM services WHERE name LIKE ? LIMIT 1', [`%${payload.serviceId}%`]);
-    }
-    if (!services || services.length === 0) {
-      services = await query<any[]>('SELECT * FROM services LIMIT 1');
+      services = await queryConn<any[]>(conn, 'SELECT * FROM services WHERE name LIKE ? LIMIT 1', [`%${payload.serviceId}%`]);
     }
     if (services && services.length > 0) {
       primaryService = services[0];
       servicePrice = Number(primaryService.price || payload.servicePrice || 180);
     }
-  } catch {}
 
-  // Add additional services prices
-  if (payload.additionalServiceIds && payload.additionalServiceIds.length > 0) {
-    for (const addId of payload.additionalServiceIds) {
-      try {
-        const addSrv = await query<any[]>('SELECT price FROM services WHERE id = ? LIMIT 1', [addId]);
+    if (payload.additionalServiceIds && payload.additionalServiceIds.length > 0) {
+      for (const addId of payload.additionalServiceIds) {
+        const addSrv = await queryConn<any[]>(conn, 'SELECT price FROM services WHERE id = ? LIMIT 1', [addId]);
         if (addSrv && addSrv.length > 0) {
           servicePrice += Number(addSrv[0].price);
         }
-      } catch {}
+      }
     }
-  }
 
-  // 3. Calculate Products Total
-  let itemsTotal = 0;
-  const itemsToInsert: any[] = [];
-  if (payload.selectedProducts && payload.selectedProducts.length > 0) {
-    for (const p of payload.selectedProducts) {
-      try {
-        const prods = await query<any[]>('SELECT * FROM products WHERE id = ? LIMIT 1', [p.productId]);
+    let itemsTotal = 0;
+    const itemsToInsert: any[] = [];
+    if (payload.selectedProducts && payload.selectedProducts.length > 0) {
+      for (const p of payload.selectedProducts) {
+        const prods = await queryConn<any[]>(conn, 'SELECT * FROM products WHERE id = ? LIMIT 1', [p.productId]);
         if (prods && prods.length > 0) {
           const prod = prods[0];
           const pPrice = Number(prod.price);
@@ -78,52 +65,55 @@ export async function createBooking(payload: any, actor?: any, ipAddress?: strin
             quantity: p.quantity,
           });
         }
-      } catch {}
+      }
     }
-  }
 
-  // 4. Fetch booking fee from payload paymentProof or settings
-  let bookingFee = payload.paymentProof?.amount
-    ? Number(payload.paymentProof.amount)
-    : (payload.bookingType === 'vip' ? 100 : 50);
+    let bookingFee = payload.paymentProof?.amount
+      ? Number(payload.paymentProof.amount)
+      : (payload.bookingType === 'vip' ? 100 : 50);
 
-  try {
-    const settingsRows = await query<any[]>('SELECT setting_value FROM settings WHERE setting_key = "general" LIMIT 1');
+    const settingsRows = await queryConn<any[]>(conn, 'SELECT setting_value FROM settings WHERE setting_key = "general" LIMIT 1');
     if (settingsRows && settingsRows.length > 0) {
       const val = typeof settingsRows[0].setting_value === 'string' ? JSON.parse(settingsRows[0].setting_value) : settingsRows[0].setting_value;
       if (!payload.paymentProof?.amount) {
         bookingFee = payload.bookingType === 'vip' ? Number(val.booking_fee_vip || 100) : Number(val.booking_fee_normal || 50);
       }
     }
-  } catch {}
 
-  // 5. Smart Atomic Conflict Prevention for Queue Number
-  let assignedQueueNumber = 1;
-  try {
-    const activeBookings = await query<any[]>(
+    const activeBookings = await queryConn<any[]>(
+      conn,
       `SELECT queue_number FROM bookings 
        WHERE branch_id = ? AND booking_date = ? AND status != 'cancelled'
-       ORDER BY queue_number ASC`,
+       ORDER BY queue_number ASC FOR UPDATE`,
       [finalBranchId, bookingDate]
     );
+    let assignedQueueNumber = 1;
     const existingNums = new Set<number>(activeBookings.map((b) => b.queue_number).filter(Boolean));
     while (existingNums.has(assignedQueueNumber)) {
       assignedQueueNumber++;
     }
-  } catch {}
 
-  const initialStatus = payload.paymentProof ? 'pending_review' : 'awaiting_payment';
-  const total = payload.totalAmount || (servicePrice + itemsTotal);
+    if (payload.chairId) {
+      const chairRows = await queryConn<any[]>(
+        conn,
+        'SELECT id, status FROM chairs WHERE id = ? FOR UPDATE',
+        [payload.chairId]
+      );
+      if (chairRows && chairRows.length > 0 && chairRows[0].status === 'offline') {
+        throw new Error('الكرسي المحدد خارج الخدمة حالياً.');
+      }
+    }
 
-  // Normalize customer phone
-  let cleanPhone = (payload.customerPhone || '').replace(/\D+/g, '');
-  if (cleanPhone.startsWith('20') && cleanPhone.length === 12) {
-    cleanPhone = '0' + cleanPhone.substring(2);
-  }
+    const initialStatus = payload.paymentProof ? 'pending_review' : 'awaiting_payment';
+    const total = payload.totalAmount || (servicePrice + itemsTotal);
 
-  // 6. Insert Booking Record
-  try {
-    await query(
+    let cleanPhone = (payload.customerPhone || '').replace(/\D+/g, '');
+    if (cleanPhone.startsWith('20') && cleanPhone.length === 12) {
+      cleanPhone = '0' + cleanPhone.substring(2);
+    }
+
+    await queryConn(
+      conn,
       `INSERT INTO bookings (
         id, customer_id, customer_name, customer_phone, branch_id, barber_id, chair_id,
         service_id, additional_service_ids, booking_type, status, starts_at, ends_at,
@@ -131,63 +121,41 @@ export async function createBooking(payload: any, actor?: any, ipAddress?: strin
         discount_at_booking, items_total_at_booking, total_at_booking, secure_token, notes
       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
-        bookingId,
-        actor?.id || uuidv4(),
-        payload.customerName,
-        cleanPhone || payload.customerPhone,
-        finalBranchId,
-        payload.barberId || null,
-        payload.chairId || null,
-        primaryService.id,
-        JSON.stringify(payload.additionalServiceIds || []),
-        payload.bookingType,
-        initialStatus,
-        payload.startsAt,
-        payload.endsAt || null,
-        bookingDate,
-        assignedQueueNumber,
-        servicePrice,
-        bookingFee,
-        0,
-        itemsTotal,
-        total,
-        secureToken,
-        payload.notes || null,
+        bookingId, actor?.id || uuidv4(), payload.customerName, cleanPhone || payload.customerPhone, finalBranchId,
+        payload.barberId || null, payload.chairId || null, primaryService.id, JSON.stringify(payload.additionalServiceIds || []),
+        payload.bookingType, initialStatus, payload.startsAt, payload.endsAt || null, bookingDate, assignedQueueNumber,
+        servicePrice, bookingFee, 0, itemsTotal, total, secureToken, payload.notes || null,
       ]
     );
 
-    // Insert Booking Items
     for (const item of itemsToInsert) {
-      await query(
+      await queryConn(
+        conn,
         `INSERT INTO booking_items (id, booking_id, product_id, name, price_at_booking, quantity)
          VALUES (?, ?, ?, ?, ?, ?)`,
         [item.id, item.booking_id, item.product_id, item.name, item.price_at_booking, item.quantity]
-      ).catch(() => {});
+      );
     }
 
-    // Insert Payment Proof if provided
     if (payload.paymentProof) {
-      await query(
+      await queryConn(
+        conn,
         `INSERT INTO payment_proofs (
           id, booking_id, image_path, payment_method, sender_phone, transferred_amount, status, submitted_at
         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
         [
-          uuidv4(),
-          bookingId,
-          payload.paymentProof.imagePath || 'data:image/placeholder',
-          payload.paymentProof.paymentMethod || 'instapay',
-          payload.paymentProof.senderPhone || cleanPhone,
-          Number(payload.paymentProof.amount || bookingFee),
-          'pending_review',
-          new Date().toISOString(),
+          uuidv4(), bookingId, payload.paymentProof.imagePath || 'data:image/placeholder',
+          payload.paymentProof.paymentMethod || 'instapay', payload.paymentProof.senderPhone || cleanPhone,
+          Number(payload.paymentProof.amount || bookingFee), 'pending_review', new Date().toISOString(),
         ]
-      ).catch(() => {});
+      );
     }
-  } catch (dbErr: any) {
-    console.warn('Database insert note for booking:', dbErr.message);
-  }
 
-  // 7. Sync into liveSyncedBookings cache
+    return { bookingId, finalBranchId, primaryService, total, bookingFee, assignedQueueNumber, initialStatus, cleanPhone };
+  });
+
+  const { finalBranchId, primaryService, total, bookingFee, assignedQueueNumber, initialStatus, cleanPhone } = txResult;
+
   try {
     const { liveSyncedBookings } = await import('../routes/agentTools.routes.js');
     liveSyncedBookings.unshift({

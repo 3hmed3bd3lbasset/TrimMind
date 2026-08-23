@@ -10,6 +10,7 @@ import QRCode from 'qrcode';
 import https from 'https';
 import fs from 'fs';
 import path from 'path';
+import { query } from '../config/database.js';
 
 const UPLOAD_DIR =
   process.env.UPLOAD_DIR ||
@@ -219,8 +220,19 @@ export async function initWhatsApp(): Promise<WhatsAppState> {
 
           if (msgId) {
             if (processedMessageIds.has(msgId)) {
-              console.log(`⚠️ Ignored duplicate message ID: ${msgId}`);
+              console.log(`⚠️ Ignored duplicate message ID (memory cache): ${msgId}`);
               continue;
+            }
+            try {
+              await query(
+                'INSERT INTO webhook_events (id, source, event_type, processed_at) VALUES (?, "whatsapp_baileys", "message", NOW())',
+                [msgId]
+              );
+            } catch (err: any) {
+              if (err.code === 'ER_DUP_ENTRY' || err.message?.includes('Duplicate entry')) {
+                console.log(`⚠️ Ignored duplicate message ID (database idempotency): ${msgId}`);
+                continue;
+              }
             }
             processedMessageIds.set(msgId, now);
           }
