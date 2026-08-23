@@ -23,6 +23,7 @@ export const SettingsManager: React.FC = () => {
   const [secondaryPhone, setSecondaryPhone] = useState(settings.secondary_phone || '010 2345 6789');
   const [whatsappNumber, setWhatsappNumber] = useState(settings.whatsapp_number || '01012345678');
   const [managerReportPhone, setManagerReportPhone] = useState(settings.manager_report_phone || settings.whatsapp_number || '01285694670');
+  const [recallDays, setRecallDays] = useState(settings.recall_days_threshold || 40);
   const [workingHoursText, setWorkingHoursText] = useState(settings.working_hours_text || 'يومياً: 10:00 ص – 11:30 م (الحجز متاح 24/7)');
 
   const [normalFee, setNormalFee] = useState(settings.booking_fee_normal);
@@ -43,6 +44,7 @@ export const SettingsManager: React.FC = () => {
       secondary_phone: secondaryPhone,
       whatsapp_number: whatsappNumber,
       manager_report_phone: managerReportPhone,
+      recall_days_threshold: Number(recallDays),
       working_hours_text: workingHoursText,
       booking_fee_normal: Number(normalFee),
       booking_fee_vip: Number(vipFee),
@@ -52,7 +54,7 @@ export const SettingsManager: React.FC = () => {
       instapay_username: instapayUser,
       bank_account_info: bankInfo,
     });
-    toast.success('تم حفظ وتحديث إعدادات وبيانات الصالون وتقارير الذكاء الاصطناعي بنجاح');
+    toast.success('تم حفظ وتحديث إعدادات وبيانات الصالون وتقارير واستعادة العملاء بنجاح');
   };
 
   return (
@@ -178,6 +180,33 @@ export const SettingsManager: React.FC = () => {
               />
               <p className="text-[10px] text-ink-mute">
                 💡 يرسل المساعد الذكي ملخص التشغيل اليومي، باقات VIP، أوقات الذروة، وتوصية الذكاء الاصطناعي لهذا الرقم كل صباح الساعة 09:00 ص.
+              </p>
+            </div>
+          </div>
+
+          <div className="clinic-card p-5 sm:p-6 shadow-clinic-2 bg-white/95 space-y-4 border border-amber-500/30">
+            <h4 className="font-serif font-bold text-ink text-sm flex items-center gap-2 border-b border-border pb-3">
+              <Sparkles className="w-4 h-4 text-amber-600" />
+              <span>استعادة العملاء التلقائية بالذكاء الاصطناعي (AI Customer Recall):</span>
+            </h4>
+
+            <div className="space-y-1.5">
+              <label className="font-bold text-ink-soft flex items-center gap-1">
+                <span>مدة غياب العميل بعد آخر حلاقة لإرسال رسالة الترحيب والاستعادة (بالأيام):</span>
+              </label>
+              <div className="flex items-center gap-2">
+                <input
+                  type="number"
+                  min={7}
+                  max={365}
+                  value={recallDays}
+                  onChange={(e) => setRecallDays(Number(e.target.value))}
+                  className="w-28 bg-paper-warm border border-amber-500/30 focus:border-amber-600 rounded-xl px-3.5 py-2.5 text-xs text-ink outline-none font-mono font-bold text-center"
+                />
+                <span className="font-bold text-xs text-ink-soft">يوماً (مثلاً 40 أو 50 يوماً من آخر زيارة)</span>
+              </div>
+              <p className="text-[10px] text-ink-mute">
+                💈 يقوم المساعد الذكي تلقائياً بفحص العملاء الذين تجاوزوا هذه المدة وإرسال رسالة واتساب شخصية وودية تذكرهم بأنهم وحشونا، وتذكر حلاقهم المفضل وخدمتهم السابقة وتدعوهم للحجز هذا الأسبوع.
               </p>
             </div>
           </div>

@@ -51,6 +51,7 @@ export interface SalonSettings {
   instapay_username?: string;
   bank_account_info?: string;
   manager_report_phone?: string;
+  recall_days_threshold?: number;
 }
 
 export interface Branch {

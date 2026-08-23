@@ -42,10 +42,6 @@
         "bodyParameters": {
           "parameters": [
             {
-              "name": "thresholdDays",
-              "value": "21"
-            },
-            {
               "name": "branchId",
               "value": "branch-elhdad"
             }
@@ -64,7 +60,7 @@
     },
     {
       "parameters": {
-        "jsCode": "const items = $input.all();\nconst out = [];\nfor (const item of items) {\n  const list = item.json.data || [];\n  for (const c of list) {\n    if (c.customer_phone) {\n      out.push({\n        json: {\n          phone: c.customer_phone,\n          customerName: c.customer_name || 'عميلنا العزيز',\n          lastBarber: c.last_barber || 'كابتن الصالون',\n          lastService: c.last_service || 'حلاقة VIP',\n          daysSince: c.days_since_last_visit || 21\n        }\n      });\n    }\n  }\n}\nreturn out.slice(0, 10); // Batch max 10 per cycle to ensure high engagement"
+        "jsCode": "const items = $input.all();\nconst out = [];\nfor (const item of items) {\n  const list = item.json.data || [];\n  for (const c of list) {\n    if (c.customer_phone) {\n      out.push({\n        json: {\n          phone: c.customer_phone,\n          customerName: c.customer_name || 'عميلنا العزيز',\n          lastBarber: c.last_barber || 'كابتن الصالون',\n          lastService: c.last_service || 'حلاقة VIP',\n          daysSince: c.days_since_last_visit || 40\n        }\n      });\n    }\n  }\n}\nreturn out.slice(0, 10);"
       },
       "name": "Format Candidates Batch",
       "type": "n8n-nodes-base.code",
@@ -78,9 +74,9 @@
     {
       "parameters": {
         "promptType": "define",
-        "text": "=اكتب رسالة واتساب شخصية، راقية، ومرحبة جداً باللهجة المصرية لعميل صالون TrimMind لم يزر الصالون منذ {{ $json.daysSince }} يوماً:\nالاسم: {{ $json.customerName }}\nالحلاق المفضل السابق: {{ $json.lastBarber }}\nآخر خدمة: {{ $json.lastService }}",
+        "text": "=اكتب رسالة واتساب شخصية وودية جداً باللهجة المصرية لعميل صالون TrimMind لم يزر الصالون منذ {{ $json.daysSince }} يوماً:\nالاسم: {{ $json.customerName }}\nالحلاق المفضل السابق: {{ $json.lastBarber }}\nآخر خدمة: {{ $json.lastService }}",
         "options": {
-          "systemMessage": "أنت مسؤول خدمة عملاء صالون الحلاقة VIP الفاخر TrimMind.\nاكتب رسالة ودية راقية باللهجة المصرية تشعر العميل باهتمام الصالون به دون إلحاح مزعج.\nاذكر اسمه وكابتن الحلاقة الذي تعامل معه وادعه لتجديد إطلالته مع إمكانية الحجز المباشر بالرد على هذه الرسالة.\nاجعل الرسالة قصيرة (3-4 أسطر) وجميلة بالرموز التعبيرية 💈👑."
+          "systemMessage": "أنت مسؤول العناية بالعملاء لصالون TrimMind (صالون الحداد VIP).\nاكتب رسالة واتساب قصيرة جداً (3 أسطر فقط)، دافئة وأنيقة باللهجة المصرية تعبر عن أن العميل وحشنا جداً في الصالون منذ آخر حلاقة له مع كابتن الحلاقة المذكور.\nاسأله بود إن كان يحب نجهز له موعد ونحجز له الكرسي هذا الأسبوع، وأخبره أنه يقدر يحجز مباشرة بمجرد الرد على هذه الرسالة! 💈👑✨"
         }
       },
       "name": "Generate Personalized Recall Message",

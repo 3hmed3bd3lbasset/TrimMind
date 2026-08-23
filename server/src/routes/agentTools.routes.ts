@@ -1441,18 +1441,34 @@ router.post('/no-show/check-status', async (req: Request, res: Response) => {
   }
 });
 
-// ---------------------------------------------------------------------------
-// 17. AI Customer Recall: Candidates Query
-// ---------------------------------------------------------------------------
 router.post('/recall/candidates', async (req: Request, res: Response) => {
   try {
-    const { branchId = 'branch-elhdad', thresholdDays = 21 } = req.body;
+    const { branchId = 'branch-elhdad' } = req.body;
+    let daysThreshold = req.body.thresholdDays ? Number(req.body.thresholdDays) : null;
+
+    if (!daysThreshold) {
+      try {
+        const settingRows = await query<any[]>('SELECT setting_value FROM settings WHERE setting_key = "general" LIMIT 1');
+        if (settingRows && settingRows.length > 0) {
+          const val = typeof settingRows[0].setting_value === 'string' ? JSON.parse(settingRows[0].setting_value) : settingRows[0].setting_value;
+          if (val?.recall_days_threshold) {
+            daysThreshold = Number(val.recall_days_threshold);
+          }
+        }
+      } catch {}
+    }
+
+    if (!daysThreshold || isNaN(daysThreshold)) {
+      daysThreshold = 40;
+    }
+
     const recallRepo = new MySQLRecallRepository();
     const useCase = new FindRecallCandidatesUseCase(recallRepo);
-    const candidates = await useCase.execute(branchId, Number(thresholdDays));
+    const candidates = await useCase.execute(branchId, daysThreshold);
 
     return res.json({
       success: true,
+      thresholdDaysUsed: daysThreshold,
       count: candidates.length,
       data: candidates,
     });

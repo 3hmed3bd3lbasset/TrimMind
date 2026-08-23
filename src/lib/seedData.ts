@@ -249,6 +249,7 @@ export const INITIAL_SETTINGS: SalonSettings = {
   instapay_username: '01285694670',
   bank_account_info: '',
   manager_report_phone: '01285694670',
+  recall_days_threshold: 40,
 };
 
 export const INITIAL_PROFILES: Profile[] = [
