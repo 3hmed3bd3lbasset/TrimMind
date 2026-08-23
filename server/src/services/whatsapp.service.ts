@@ -28,11 +28,6 @@ const AUTH_DIR = process.env.WHATSAPP_AUTH_DIR || defaultAuthDir;
 const N8N_WEBHOOK_URL =
   process.env.N8N_WEBHOOK_URL || 'https://n8n-server-production-bdce.up.railway.app/webhook/whatsapp-webhook';
 
-const GEMINI_API_KEY =
-  process.env.GEMINI_API_KEY_CUSTOMER ||
-  process.env.GEMINI_API_KEY ||
-  '';
-
 // Ensure auth dir exists
 try {
   if (!fs.existsSync(AUTH_DIR)) {
@@ -245,115 +240,125 @@ export async function initWhatsApp(): Promise<WhatsAppState> {
       const now = Date.now();
 
       for (const msg of m.messages) {
-        if (!msg.key.fromMe && msg.message) {
-          const remoteJid = msg.key.remoteJid || '';
-          const msgId = msg.key.id;
+        if (!msg || !msg.message) continue;
 
-          if (msgId) {
-            if (processedMessageIds.has(msgId)) {
-              console.log(`⚠️ Ignored duplicate message ID (memory cache): ${msgId}`);
-              continue;
-            }
-            try {
-              await query(
-                'INSERT INTO webhook_events (id, source, event_type, processed_at) VALUES (?, "whatsapp_baileys", "message", NOW())',
-                [msgId]
-              );
-            } catch (err: any) {
-              if (err.code === 'ER_DUP_ENTRY' || err.message?.includes('Duplicate entry')) {
-                console.log(`⚠️ Ignored duplicate message ID (database idempotency): ${msgId}`);
-                continue;
-              }
-            }
-            processedMessageIds.set(msgId, now);
-          }
+        const remoteJid = msg.key?.remoteJid || '';
+        const msgId = msg.key?.id;
+        const isFromMe = Boolean(msg.key?.fromMe);
 
-          const text =
-            msg.message.conversation ||
-            msg.message.extendedTextMessage?.text ||
-            msg.message.imageMessage?.caption ||
-            '';
+        // Ignore broadcast status updates
+        if (remoteJid.includes('status@broadcast')) continue;
 
-          const isImage = Boolean(msg.message.imageMessage);
-          if (!text.trim() && !isImage) {
+        // If sent from the same phone (self-chat testing), allow only 1-to-1 chats to bot number
+        if (isFromMe && !remoteJid.includes('201005437633') && !remoteJid.includes('01005437633')) {
+          // Outgoing message sent to an external contact from phone, ignore
+          continue;
+        }
+
+        if (msgId) {
+          if (processedMessageIds.has(msgId)) {
+            console.log(`⚠️ Ignored duplicate message ID (memory cache): ${msgId}`);
             continue;
           }
-
-          let base64ImageUrl: string | null = null;
-          if (isImage) {
-            try {
-              const buffer = await downloadMediaMessage(
-                msg,
-                'buffer',
-                {},
-                {
-                  logger: pino({ level: 'silent' }),
-                  reuploadRequest: sock.updateMediaMessage,
-                }
-              );
-              if (buffer) {
-                base64ImageUrl = `data:image/jpeg;base64,${(buffer as Buffer).toString('base64')}`;
-              }
-            } catch (err: any) {
-              console.log('Error downloading WhatsApp image buffer:', err.message);
-            }
-          }
-
-          const textKey = (text || 'img_attachment').trim().toLowerCase();
-          const dedupKey = `${remoteJid}:${textKey}`;
-          if (textKey && processedContentKeys.has(dedupKey)) {
-            const lastTime = processedContentKeys.get(dedupKey)!;
-            if (now - lastTime < 3000) {
-              console.log(`⚠️ Ignored duplicate WhatsApp text (${remoteJid}): ${text}`);
+          try {
+            await query(
+              'INSERT INTO webhook_events (id, source, event_type, processed_at) VALUES (?, "whatsapp_baileys", "message", NOW())',
+              [msgId]
+            );
+          } catch (err: any) {
+            if (err.code === 'ER_DUP_ENTRY' || err.message?.includes('Duplicate entry')) {
+              console.log(`⚠️ Ignored duplicate message ID (database idempotency): ${msgId}`);
               continue;
             }
           }
-          if (textKey) processedContentKeys.set(dedupKey, now);
-
-          // Resolve clean Egyptian phone number
-          let senderPhone = '';
-          const candidateJids = [
-            (msg.key as any).remoteJidAlt,
-            (msg.key as any).participant,
-            (msg as any).participant,
-            remoteJid,
-          ].filter(Boolean);
-
-          for (const cJid of candidateJids) {
-            if (typeof cJid === 'string' && cJid.includes('@s.whatsapp.net')) {
-              let clean = cJid.replace('@s.whatsapp.net', '').replace(/[^0-9]/g, '');
-              if (clean.startsWith('20') && clean.length === 12) {
-                clean = '0' + clean.substring(2);
-              }
-              if (clean.startsWith('01') && clean.length === 11) {
-                senderPhone = clean;
-                break;
-              }
-            }
-          }
-
-          // Prune cache
-          if (processedMessageIds.size > 2000) {
-            for (const [id, time] of processedMessageIds.entries()) {
-              if (now - time > 10 * 60 * 1000) processedMessageIds.delete(id);
-            }
-          }
-          if (processedContentKeys.size > 2000) {
-            for (const [k, time] of processedContentKeys.entries()) {
-              if (now - time > 10 * 60 * 1000) processedContentKeys.delete(k);
-            }
-          }
-
-          console.log(`📩 Incoming WhatsApp from ${senderPhone || remoteJid}: ${text || '[Image Receipt]'}`);
-
-          // 1. Forward asynchronously to n8n
-          forwardToN8nWebhook(msg, base64ImageUrl, senderPhone, text);
-
-          // 2. Direct Intelligent AI Reply Engine
-          handleIncomingWithAI(remoteJid, senderPhone, text, isImage).catch((err) => {
-            console.error('AI Reply error:', err.message);
-          });
+          processedMessageIds.set(msgId, now);
         }
+
+        const text =
+          msg.message.conversation ||
+          msg.message.extendedTextMessage?.text ||
+          msg.message.imageMessage?.caption ||
+          '';
+
+        const isImage = Boolean(msg.message.imageMessage);
+        if (!text.trim() && !isImage) {
+          continue;
+        }
+
+        let base64ImageUrl: string | null = null;
+        if (isImage) {
+          try {
+            const buffer = await downloadMediaMessage(
+              msg,
+              'buffer',
+              {},
+              {
+                logger: pino({ level: 'silent' }),
+                reuploadRequest: sock.updateMediaMessage,
+              }
+            );
+            if (buffer) {
+              base64ImageUrl = `data:image/jpeg;base64,${(buffer as Buffer).toString('base64')}`;
+            }
+          } catch (err: any) {
+            console.log('Error downloading WhatsApp image buffer:', err.message);
+          }
+        }
+
+        const textKey = (text || 'img_attachment').trim().toLowerCase();
+        const dedupKey = `${remoteJid}:${textKey}`;
+        if (textKey && processedContentKeys.has(dedupKey)) {
+          const lastTime = processedContentKeys.get(dedupKey)!;
+          if (now - lastTime < 3000) {
+            console.log(`⚠️ Ignored duplicate WhatsApp text (${remoteJid}): ${text}`);
+            continue;
+          }
+        }
+        if (textKey) processedContentKeys.set(dedupKey, now);
+
+        // Resolve clean Egyptian phone number
+        let senderPhone = '';
+        const candidateJids = [
+          (msg.key as any)?.remoteJidAlt,
+          (msg.key as any)?.participant,
+          (msg as any)?.participant,
+          remoteJid,
+        ].filter(Boolean);
+
+        for (const cJid of candidateJids) {
+          if (typeof cJid === 'string' && cJid.includes('@s.whatsapp.net')) {
+            let clean = cJid.replace('@s.whatsapp.net', '').replace(/[^0-9]/g, '');
+            if (clean.startsWith('20') && clean.length === 12) {
+              clean = '0' + clean.substring(2);
+            }
+            if (clean.startsWith('01') && clean.length === 11) {
+              senderPhone = clean;
+              break;
+            }
+          }
+        }
+
+        // Prune cache
+        if (processedMessageIds.size > 2000) {
+          for (const [id, time] of processedMessageIds.entries()) {
+            if (now - time > 10 * 60 * 1000) processedMessageIds.delete(id);
+          }
+        }
+        if (processedContentKeys.size > 2000) {
+          for (const [k, time] of processedContentKeys.entries()) {
+            if (now - time > 10 * 60 * 1000) processedContentKeys.delete(k);
+          }
+        }
+
+        console.log(`📩 Incoming WhatsApp from ${senderPhone || remoteJid}: ${text || '[Image Receipt]'}`);
+
+        // 1. Forward asynchronously to n8n
+        forwardToN8nWebhook(msg, base64ImageUrl, senderPhone, text);
+
+        // 2. Direct Intelligent AI Reply Engine
+        handleIncomingWithAI(remoteJid, senderPhone, text, isImage).catch((err) => {
+          console.error('AI Reply error:', err.message);
+        });
       }
     });
 
@@ -377,7 +382,8 @@ export async function sendWhatsAppText(to: string, text: string): Promise<boolea
   }
 
   if (!sock) {
-    throw new Error('واتساب غير متصل حالياً بالسيرفر.');
+    console.error('WhatsApp socket is null, cannot send message.');
+    return false;
   }
 
   let jid = to;
@@ -388,8 +394,21 @@ export async function sendWhatsAppText(to: string, text: string): Promise<boolea
   }
 
   console.log(`📤 Sending WhatsApp reply to ${jid}: ${text.substring(0, 60)}...`);
-  await sock.sendMessage(jid, { text });
-  return true;
+  try {
+    await sock.sendMessage(jid, { text });
+    return true;
+  } catch (err: any) {
+    console.error(`Failed to send WhatsApp to ${jid}:`, err.message);
+    if (to !== jid) {
+      try {
+        await sock.sendMessage(to, { text });
+        return true;
+      } catch (err2: any) {
+        console.error(`Fallback failed to ${to}:`, err2.message);
+      }
+    }
+    return false;
+  }
 }
 
 // Helper to forward incoming message to n8n Webhook
@@ -469,7 +488,7 @@ async function handleIncomingWithAI(
 
 # معلومات صالون TrimMind الحقيقية:
 - الفرع: فرع الحداد VIP (متاح يومياً من 10:00 صباحاً حتى 12:00 منتصف الليل).
-- الكباتن الحلاقين: كابتن أحمد، كابتن محمد، كابتن عمر.
+- الكباتن الحلاقين: كابتن أحمد، كابتن محمد، كابتن عمر (جميعهم متاحون وجاهزون لخدمتك).
 - أهم الخدمات والأسعار:
   • حلاقة شعر VIP ملكي: 150 جنيه
   • تحديد وحلاقة ذقن بالبخار: 80 جنيه
@@ -500,7 +519,9 @@ async function handleIncomingWithAI(
   for (const model of candidateModels) {
     if (replyText) break;
     try {
-      const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${GEMINI_API_KEY}`;
+      const apiKey = process.env.GEMINI_API_KEY_CUSTOMER || process.env.GEMINI_API_KEY || '';
+      if (!apiKey) break;
+      const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
       const payload = {
         contents: history,
         systemInstruction: {
@@ -524,7 +545,12 @@ async function handleIncomingWithAI(
   }
 
   if (!replyText) {
-    if (isImage) {
+    const textLower = userMessage.toLowerCase();
+    if (textLower.includes('حلاق') || textLower.includes('مين') || textLower.includes('متاح') || textLower.includes('كابتن')) {
+      replyText = `أهلاً بك يا فندم! 💈 الكباتن المتاحين اليوم في صالون الحداد VIP:\n- كابتن أحمد ✂️\n- كابتن محمد ✂️\n- كابتن عمر ✂️\n\nتقدر تختار حلاقك المفضل وتحجز موعدك فوراً من هنا:\nhttps://trimmind.up.railway.app 👑`;
+    } else if (textLower.includes('سعر') || textLower.includes('اسعار') || textLower.includes('خدمات') || textLower.includes('بكام') || textLower.includes('احلق') || textLower.includes('حلاقة')) {
+      replyText = `يا هلا بك يا فندم! 💈 قائمة خدمات وباقات صالون الحداد VIP:\n• حلاقة شعر VIP ملكي: 150 جنيه\n• حلاقة وتحديد ذقن بالبخار: 80 جنيه\n• باقة VIP كاملة (شعر + ذقن + حمام كريم + ماسك): 300 جنيه\n\nللحجز المباشر واختيار الموعد المناسب:\nhttps://trimmind.up.railway.app 👑`;
+    } else if (isImage) {
       replyText = `أهلاً بك يا فندم! 💈 تم استلام صورة الإيصال بنجاح وجارٍ مراجعتها وتأكيد حجزك من الاستقبال فوراً 👑✨`;
     } else {
       replyText = `أهلاً بك في صالون TrimMind (الحداد VIP) 💈👑\nنورتنا يا غالي! نقدر نساعدك في حجز موعد، معرفة قائمة الأسعار والخدمات، أو متابعة دورك المباشر في الصالون.\nتحب نساعدك بإيه النهارده؟`;
@@ -535,5 +561,11 @@ async function handleIncomingWithAI(
   chatHistories.set(sessionKey, history);
 
   // Send WhatsApp Reply
-  await sendWhatsAppText(remoteJid, replyText);
+  let targetJid = remoteJid;
+  if (senderPhone && !remoteJid.includes('@s.whatsapp.net')) {
+    let clean = senderPhone.replace(/\D+/g, '');
+    if (clean.startsWith('01')) clean = '20' + clean.substring(1);
+    targetJid = `${clean}@s.whatsapp.net`;
+  }
+  await sendWhatsAppText(targetJid, replyText);
 }
