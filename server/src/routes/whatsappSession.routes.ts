@@ -32,8 +32,8 @@ function requireManagerOrAgent(req: Request, res: Response, next: any) {
   });
 }
 
-// 1. Get WhatsApp status (Manager only)
-router.get('/status', requireAuth, requireRoles('manager'), async (_req: Request, res: Response) => {
+// 1. Get WhatsApp status (Manager or Agent)
+router.get('/status', requireManagerOrAgent, async (_req: Request, res: Response) => {
   let state = getWhatsAppState();
   if (state.status === 'disconnected') {
     initWhatsApp();
@@ -45,8 +45,8 @@ router.get('/status', requireAuth, requireRoles('manager'), async (_req: Request
   });
 });
 
-// 2. Request QR Code (Manager only)
-router.post('/get-qr', requireAuth, requireRoles('manager'), async (_req: Request, res: Response) => {
+// 2. Request QR Code (Manager or Agent)
+router.post('/get-qr', requireManagerOrAgent, async (_req: Request, res: Response) => {
   try {
     const qrDataUrl = await getOrGenerateQRCode();
     const state = getWhatsAppState();
@@ -63,8 +63,8 @@ router.post('/get-qr', requireAuth, requireRoles('manager'), async (_req: Reques
   }
 });
 
-// 3. Request Pairing Code (Manager only)
-router.post('/pair', requireAuth, requireRoles('manager'), async (req: Request, res: Response) => {
+// 3. Request Pairing Code (Manager or Agent)
+router.post('/pair', requireManagerOrAgent, async (req: Request, res: Response) => {
   try {
     const { phone = '01005437633' } = req.body;
     const code = await generatePairingCode(phone);
@@ -83,8 +83,8 @@ router.post('/pair', requireAuth, requireRoles('manager'), async (req: Request, 
   }
 });
 
-// 4. Reset Session (Manager only)
-router.post('/reset', requireAuth, requireRoles('manager'), async (_req: Request, res: Response) => {
+// 4. Reset Session (Manager or Agent)
+router.post('/reset', requireManagerOrAgent, async (_req: Request, res: Response) => {
   try {
     const state = await resetWhatsAppSession();
     res.json({
