@@ -6,18 +6,23 @@ export function formatCurrency(amount: number): string {
 
 export function format12Hour(timeStr: string): string {
   if (!timeStr) return '';
-  // Check if string contains ISO date/time
-  let timePart = timeStr;
-  if (timeStr.includes('T')) {
-    const timeMatch = timeStr.match(/T(\d{2}:\d{2})/);
-    if (timeMatch) timePart = timeMatch[1];
+  
+  // Extract hour and minute cleanly from ISO string, SQL datetime, or pure time string
+  let match = timeStr.match(/T(\d{1,2}):(\d{2})/);
+  if (!match) {
+    match = timeStr.match(/\s(\d{1,2}):(\d{2})/);
+  }
+  if (!match) {
+    match = timeStr.match(/^(\d{1,2}):(\d{2})/);
+  }
+  if (!match) {
+    match = timeStr.match(/(\d{1,2}):(\d{2})/);
   }
 
-  const parts = timePart.split(':');
-  if (parts.length < 2) return timeStr;
+  if (!match) return timeStr;
 
-  let hour = parseInt(parts[0], 10);
-  const minute = parts[1];
+  let hour = parseInt(match[1], 10);
+  const minute = match[2];
 
   if (isNaN(hour)) return timeStr;
 
@@ -35,7 +40,13 @@ export function format12Hour(timeStr: string): string {
 }
 
 export function formatDate(dateString: string): string {
-  const date = new Date(dateString);
+  if (!dateString) return '';
+  // Replace space with T for cross-browser Date parsing if it's a SQL datetime
+  const safeDateStr = dateString.includes(' ') && !dateString.includes('T')
+    ? dateString.replace(' ', 'T')
+    : dateString;
+  const date = new Date(safeDateStr);
+  if (isNaN(date.getTime())) return dateString;
   return date.toLocaleDateString('ar-EG', {
     weekday: 'short',
     year: 'numeric',
@@ -45,7 +56,7 @@ export function formatDate(dateString: string): string {
 }
 
 export function formatDateTime(dateString: string): string {
-  const date = new Date(dateString);
+  if (!dateString) return '';
   return `${formatDate(dateString)} - ${format12Hour(dateString)}`;
 }
 

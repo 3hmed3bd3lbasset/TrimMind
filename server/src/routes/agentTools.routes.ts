@@ -1006,27 +1006,47 @@ router.post('/payments/submit-proof', async (req: Request, res: Response) => {
     }
 
     if (!targetBooking) {
+      const { bookingSessions } = await import('../services/whatsapp.service.js');
+      const activeSession = bookingSessions.get(cleanPhone) ||
+                            bookingSessions.get(`20${cleanPhone.replace(/^0+/, '')}`) ||
+                            bookingSessions.get(cleanPhone.replace(/^20/, '0'));
+
       const fallbackId = `BK-${Math.floor(1000 + Math.random() * 9000)}`;
+      const resolvedName = activeSession?.customerName || (cleanPhone ? `أحمد (${cleanPhone.slice(-4)})` : 'عميل الصالون');
+      const resolvedService = activeSession?.serviceName || 'قص شعر كلاسيكي';
+      const resolvedServiceId = activeSession?.serviceId || 'srv-1';
+      const resolvedPrice = activeSession?.servicePrice || 180;
+      const resolvedBarber = activeSession?.barberName || 'كابتن محمد الحداد';
+      const resolvedBarberId = activeSession?.barberId || 'barber-mohamed';
+      const resolvedDeposit = activeSession?.depositAmount || (activeSession?.bookingType === 'vip' ? 100 : 50);
+      const resolvedBookingType = activeSession?.bookingType || 'normal';
+
       const newDraftBooking = {
         id: fallbackId,
-        customer_name: cleanPhone ? `عميل واتساب (${cleanPhone.slice(-4)})` : 'عميل جديد',
+        customer_name: resolvedName,
         customer_phone: cleanPhone || '01005437633',
-        customerName: cleanPhone ? `عميل واتساب (${cleanPhone.slice(-4)})` : 'عميل جديد',
+        customerName: resolvedName,
         customerPhone: cleanPhone || '01005437633',
-        service_id: 'srv-haircut',
-        service_name: 'قص وتصفيف الشعر الاحترافي',
-        barber_id: 'barber-lead',
-        barber_name: 'كابتن الصالون الرئيسي',
+        service_id: resolvedServiceId,
+        service_name: resolvedService,
+        serviceName: resolvedService,
+        barber_id: resolvedBarberId,
+        barber_name: resolvedBarber,
+        barberName: resolvedBarber,
         branch_id: 'branch-elhdad',
         booking_date: new Date().toISOString().split('T')[0],
         starts_at: `${new Date().toISOString().split('T')[0]} 16:00:00`,
         status: 'pending_review',
-        booking_fee_at_booking: 50,
+        booking_fee_at_booking: resolvedDeposit,
+        total_at_booking: resolvedPrice,
+        totalAmount: resolvedPrice,
+        booking_type: resolvedBookingType,
         payment_proof: JSON.stringify({
           image_url: finalProofUrl,
           sender_phone: cleanPhone,
           submitted_at: new Date().toISOString(),
-          status: 'pending_review'
+          status: 'pending_review',
+          transferred_amount: resolvedDeposit,
         })
       };
 
@@ -1035,8 +1055,8 @@ router.post('/payments/submit-proof', async (req: Request, res: Response) => {
 
       try {
         await query(
-          `INSERT INTO bookings (id, customer_name, customer_phone, service_id, barber_id, branch_id, booking_date, starts_at, status, booking_fee_at_booking, payment_proof, created_at, updated_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'pending_review', 50, ?, NOW(), NOW())`,
+          `INSERT INTO bookings (id, customer_name, customer_phone, service_id, barber_id, branch_id, booking_date, starts_at, status, booking_fee_at_booking, total_at_booking, booking_type, payment_proof, created_at, updated_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'pending_review', ?, ?, ?, ?, NOW(), NOW())`,
           [
             fallbackId,
             newDraftBooking.customer_name,
@@ -1046,6 +1066,9 @@ router.post('/payments/submit-proof', async (req: Request, res: Response) => {
             newDraftBooking.branch_id,
             newDraftBooking.booking_date,
             newDraftBooking.starts_at,
+            newDraftBooking.booking_fee_at_booking,
+            newDraftBooking.total_at_booking,
+            newDraftBooking.booking_type,
             newDraftBooking.payment_proof
           ]
         );

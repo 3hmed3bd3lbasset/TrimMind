@@ -762,21 +762,29 @@ function extractDateTimeFromText(text: string) {
 
 // Helper to extract customer name cleanly
 function extractNameFromText(text: string, pushName: string = '') {
-  const explicitMatch = text.match(/(?:اسمي|معاك|انا|أنا|باسم|الاسم|معك)\s+([^\s,،]+(?:\s+[^\s,،]+)?)/i);
-  if (explicitMatch && explicitMatch[1] && explicitMatch[1].length >= 2) {
-    return explicitMatch[1].trim();
+  const explicitMatch = text.match(/(?:اسمي|سجل اسمي|سجلني باسم|معاك|انا|أنا|باسم|الاسم|معك)\s+([^\s,،]+(?:\s+[^\s,،]+){0,2})/i);
+  if (explicitMatch && explicitMatch[1]) {
+    let cleanCandidate = explicitMatch[1]
+      .replace(/(واستناني|استناني|على نفس|علي نفس|نفس الرقم|على الرقم|رقم الواتس|الواتس|بكرا|بكرة|الساعة|الساعه).*/gi, '')
+      .trim();
+    if (cleanCandidate.length >= 2) {
+      return cleanCandidate;
+    }
   }
 
   let clean = text
-    .replace(/(عايز اجي|عايز احجز|احجزلي|اسجل|سجلني|سجل|على نفس الرقم|نفس الرقم|رقم الواتس|الواتساب|واوفق مع|مع الحداد|مع كريم|مع عمر|مع الكابتن|كابتن|الحداد|كريم|عمر|بكرا|بكرة|النهارده|اليوم|الساعة \d+|الساعه \d+|\d+|ج|جنيه|كدا|كده)/gi, '')
+    .replace(/(عايز اجي|عايز احجز|احجزلي|اسجل|سجلني|سجل اسمي|سجل|واستناني|استناني|على نفس الرقم|علي نفس الرقم|على نفس|علي نفس|نفس الرقم|رقم الواتس|الواتساب|الواتس|واوفق مع|مع الحداد|مع كريم|مع عمر|مع الكابتن|كابتن|الحداد|كريم|عمر|بكرا|بكرة|النهارده|اليوم|الساعة \d+|الساعه \d+|\d+|ج|جنيه|كدا|كده)/gi, '')
     .replace(/(أيوة|ايوة|تمام|يا ريت|حبيبي|تسلم|شكرا|شكراً|يا غالي|يا باشا|لا ياعم|ياعم)/gi, '')
     .trim();
+
+  clean = clean.replace(/(على نفس.*|علي نفس.*|على الرقم.*|نفس الرقم.*)/gi, '').trim();
 
   if (clean && clean.length >= 2 && clean.length <= 25 && !clean.includes('http')) {
     return clean;
   }
 
-  return pushName || 'أحمد';
+  const cleanPushName = (pushName || 'أحمد').replace(/(على نفس.*|علي نفس.*)/gi, '').trim();
+  return cleanPushName || 'أحمد';
 }
 
 // Direct Native Intelligent Interactive AI Agent Response Engine - 100% Dynamic MySQL Database Integration

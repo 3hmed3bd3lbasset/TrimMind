@@ -11,7 +11,7 @@ interface ThermalInvoiceProps {
 }
 
 export const ThermalInvoice: React.FC<ThermalInvoiceProps> = ({ booking, isOpen, onClose }) => {
-  const { branches, barbers, services } = useSalonStore();
+  const { branches, barbers, services, settings } = useSalonStore();
 
   if (!isOpen || !booking) return null;
 
@@ -19,15 +19,18 @@ export const ThermalInvoice: React.FC<ThermalInvoiceProps> = ({ booking, isOpen,
   const barber = barbers.find((b) => b.id === booking.barber_id);
   const service = services.find((s) => s.id === booking.service_id);
 
-  const effectiveServicePrice = service?.price || booking.service_price_at_booking || 180;
+  const displayBarberName = barber?.full_name || (booking as any).barber_name || (booking as any).barberName || 'محمد الحداد';
+  const displayServiceName = service?.name || (booking as any).service_name || (booking as any).serviceName || 'قص شعر كلاسيكي';
+  const effectiveServicePrice = service?.price || booking.service_price_at_booking || (booking as any).total_at_booking || 180;
   const additionalTotal = (booking.additional_service_ids || []).reduce((sum, addId) => {
     const s = services.find((srv) => srv.id === addId);
     return sum + (s?.price || 0);
   }, 0);
   const itemsTotal = (booking.items || []).reduce((sum, item) => sum + (item.price_at_booking * item.quantity), 0);
-  const calculatedTotal = Math.max(booking.total_at_booking, effectiveServicePrice + additionalTotal + itemsTotal - (booking.discount_at_booking || 0));
+  const calculatedTotal = Math.max(booking.total_at_booking || 0, effectiveServicePrice + additionalTotal + itemsTotal - (booking.discount_at_booking || 0));
   const depositPaid = booking.booking_fee_at_booking || 50;
   const remaining = Math.max(0, calculatedTotal - depositPaid);
+  const salonTitle = settings?.salon_name || 'صالون TrimMind (الحداد VIP)';
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
@@ -35,7 +38,7 @@ export const ThermalInvoice: React.FC<ThermalInvoiceProps> = ({ booking, isOpen,
         <div className="flex items-center justify-between border-b border-slate-800 pb-3">
           <div className="flex items-center gap-2">
             <Printer className="w-5 h-5 text-amber-400" />
-            <h3 className="font-bold text-white text-base">معاينة الفاتورة الحرارية (80mm POS)</h3>
+            <h3 className="font-bold text-white text-sm font-cairo">معاينة الفاتورة الحرارية (80mm POS)</h3>
           </div>
           <button
             onClick={onClose}
@@ -53,10 +56,10 @@ export const ThermalInvoice: React.FC<ThermalInvoiceProps> = ({ booking, isOpen,
         >
           {/* Header */}
           <div className="text-center space-y-1 border-b border-dashed border-neutral-400 pb-2">
-            <h2 className="font-extrabold text-sm text-neutral-950 font-cairo">صالون النخبة VIP</h2>
-            <p className="text-[10px] text-neutral-600 font-sans">{branch?.name}</p>
-            <p className="text-[10px] text-neutral-600 font-sans">{branch?.address}</p>
-            <p className="text-[10px] text-neutral-700">هاتف: {branch?.phone}</p>
+            <h2 className="font-extrabold text-sm text-neutral-950 font-cairo">{salonTitle}</h2>
+            <p className="text-[10px] text-neutral-600 font-sans">{branch?.name || 'الفرع الرئيسي'}</p>
+            <p className="text-[10px] text-neutral-600 font-sans">{branch?.address || 'شارع جمال عبد الناصر'}</p>
+            <p className="text-[10px] text-neutral-700">هاتف: {branch?.phone || '01005437633'}</p>
           </div>
 
           {/* Booking Info */}
@@ -71,7 +74,7 @@ export const ThermalInvoice: React.FC<ThermalInvoiceProps> = ({ booking, isOpen,
             </div>
             <div className="flex justify-between">
               <span>الحلاق المختص:</span>
-              <span>{barber?.full_name}</span>
+              <span>{displayBarberName}</span>
             </div>
             <div className="flex justify-between">
               <span>التاريخ:</span>
@@ -86,8 +89,8 @@ export const ThermalInvoice: React.FC<ThermalInvoiceProps> = ({ booking, isOpen,
               <span>السعر</span>
             </div>
             <div className="flex justify-between">
-              <span>{service?.name}</span>
-              <span>{formatCurrency(service?.price || booking.service_price_at_booking)}</span>
+              <span>{displayServiceName}</span>
+              <span>{formatCurrency(effectiveServicePrice)}</span>
             </div>
 
             {/* Additional Services */}
@@ -144,7 +147,7 @@ export const ThermalInvoice: React.FC<ThermalInvoiceProps> = ({ booking, isOpen,
               <QrCode className="w-full h-full text-neutral-800" />
             </div>
             <p className="text-[9px] text-neutral-500 font-sans">
-              شكراً لاختياركم صالون النخبة VIP • نسعد بخدمتكم
+              شكراً لاختياركم {salonTitle} • نسعد بخدمتكم
             </p>
           </div>
         </div>

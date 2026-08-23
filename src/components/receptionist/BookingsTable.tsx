@@ -180,14 +180,14 @@ export const BookingsTable: React.FC<BookingsTableProps> = ({ branchId }) => {
                 </div>
                 <div>
                   <span className="text-[10px] text-ink-mute block">الكابتن:</span>
-                  <p className="font-bold text-forest">{barber?.full_name || 'أي حلاق متاح'}</p>
+                  <p className="font-bold text-forest">{barber?.full_name || (b as any).barber_name || (b as any).barberName || 'محمد الحداد'}</p>
                 </div>
               </div>
 
               {/* Service & Total Box */}
               <div className="p-2.5 bg-paper-warm/80 rounded-xl border border-border flex items-center justify-between">
                 <div>
-                  <p className="font-bold text-ink text-xs">{primarySrv?.name || 'خدمة محددة'}</p>
+                  <p className="font-bold text-ink text-xs">{primarySrv?.name || (b as any).service_name || (b as any).serviceName || 'قص شعر كلاسيكي'}</p>
                   {b.additional_service_ids && b.additional_service_ids.length > 0 && (
                     <p className="text-[10px] text-forest font-semibold">
                       +{b.additional_service_ids.length} خدمات إضافية
@@ -196,7 +196,7 @@ export const BookingsTable: React.FC<BookingsTableProps> = ({ branchId }) => {
                 </div>
                 <div className="text-left">
                   <span className="text-[10px] text-ink-mute block">الإجمالي:</span>
-                  <p className="font-serif font-bold text-forest text-sm">{formatCurrency(b.total_at_booking)}</p>
+                  <p className="font-serif font-bold text-forest text-sm">{formatCurrency(b.total_at_booking || (b as any).totalAmount || primarySrv?.price || 180)}</p>
                 </div>
               </div>
 
@@ -280,7 +280,7 @@ export const BookingsTable: React.FC<BookingsTableProps> = ({ branchId }) => {
 
                     <td className="py-3.5 px-4">
                       <div>
-                        <p className="font-bold text-ink">{primarySrv?.name || 'خدمة محددة'}</p>
+                        <p className="font-bold text-ink">{primarySrv?.name || (b as any).service_name || (b as any).serviceName || 'قص شعر كلاسيكي'}</p>
                         {b.additional_service_ids && b.additional_service_ids.length > 0 && (
                           <p className="text-[10px] text-forest font-semibold">
                             +{b.additional_service_ids.length} خدمات إضافية
@@ -295,7 +295,7 @@ export const BookingsTable: React.FC<BookingsTableProps> = ({ branchId }) => {
                     </td>
 
                     <td className="py-3.5 px-4 text-ink-soft font-medium">
-                      {barber?.full_name || 'أي حلاق متاح'}
+                      {barber?.full_name || (b as any).barber_name || (b as any).barberName || 'محمد الحداد'}
                     </td>
 
                     <td className="py-3.5 px-4 text-ink-soft">
