@@ -121,10 +121,17 @@ export async function getLiveSalonContext(): Promise<LiveSalonContext> {
 
   if (!services || services.length === 0) {
     services = [
-      { id: 'srv-haircut', name: 'حلاقة شعر VIP ملكي', price: 150, category: 'hair' },
-      { id: 'srv-beard', name: 'تحديد وحلاقة ذقن بالبخار', price: 80, category: 'beard' },
-      { id: 'srv-vip-full', name: 'باقة VIP كاملة (شعر + ذقن + حمام كريم + ماسك)', price: 300, category: 'vip' },
-      { id: 'srv-facial', name: 'تنظيف بشرة عميق / صبغة شعر', price: 120, category: 'treatment' },
+      { id: 'srv-haircut-classic', name: 'قص شعر كلاسيكي (Classic Haircut)', price: 180, duration_minutes: 30, category: 'hair' },
+      { id: 'srv-vip-royal', name: 'VIP Royal Cut', price: 480, duration_minutes: 60, category: 'vip_package' },
+      { id: 'srv-vip-gentleman', name: 'VIP Gentleman', price: 650, duration_minutes: 90, category: 'vip_package' },
+      { id: 'srv-vip-full', name: 'VIP Full Experience', price: 750, duration_minutes: 120, category: 'vip_package' },
+      { id: 'srv-vip-executive', name: 'VIP Executive', price: 900, duration_minutes: 130, category: 'vip_package' },
+      { id: 'srv-haircut-beard', name: 'قص شعر + لحية', price: 220, duration_minutes: 40, category: 'hair' },
+      { id: 'srv-beard-trim', name: 'تحديد لحية', price: 100, duration_minutes: 30, category: 'beard' },
+      { id: 'srv-kids', name: 'قص شعر أطفال', price: 120, duration_minutes: 40, category: 'kids' },
+      { id: 'srv-fade', name: 'تدرج Fade', price: 180, duration_minutes: 35, category: 'hair' },
+      { id: 'srv-protein', name: 'بروتين وترطيب شعر', price: 300, duration_minutes: 60, category: 'treatment' },
+      { id: 'srv-facial', name: 'تنظيف بشرة', price: 240, duration_minutes: 45, category: 'treatment' },
     ];
   }
 
@@ -135,9 +142,9 @@ export async function getLiveSalonContext(): Promise<LiveSalonContext> {
 
   if (!barbers || barbers.length === 0) {
     barbers = [
-      { id: 'barber-mohamed', name: 'كابتن محمد' },
-      { id: 'barber-ahmed', name: 'كابتن أحمد' },
-      { id: 'barber-omar', name: 'كابتن عمر' },
+      { id: 'barber-mohamed', name: 'محمد الحداد' },
+      { id: 'barber-karim', name: 'كريم السيد' },
+      { id: 'barber-omar', name: 'عمر خالد' },
     ];
   }
 
