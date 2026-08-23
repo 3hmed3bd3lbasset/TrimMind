@@ -33,7 +33,11 @@ import auditRoutes from './routes/audit.routes.js';
 import aiRoutes from './routes/ai.routes.js';
 import agentToolsRoutes from './routes/agentTools.routes.js';
 import whatsappSessionRoutes from './routes/whatsappSession.routes.js';
+import waitlistRoutes from './routes/waitlist.routes.js';
+import recallRoutes from './routes/recall.routes.js';
+import insightsRoutes from './routes/insights.routes.js';
 import { initWhatsApp } from './services/whatsapp.service.js';
+import { initNoShowProtectionCron } from './services/noshow.service.js';
 
 dotenv.config();
 
@@ -79,6 +83,9 @@ app.use('/api/ai', aiRoutes);
 app.use('/api/agent-tools', agentToolsRoutes);
 app.use('/api/whatsapp', agentToolsRoutes);
 app.use('/api/whatsapp-session', whatsappSessionRoutes);
+app.use('/api/waitlist', waitlistRoutes);
+app.use('/api/recall', recallRoutes);
+app.use('/api/insights', insightsRoutes);
 
 // Health check endpoint
 app.get('/api/health', (_req, res) => {
@@ -116,6 +123,7 @@ app.use(errorHandler);
 // 6. Initialize Realtime WebSockets & Cron Tasks
 initSocketIO(server, CLIENT_URL);
 initCleanupCron();
+initNoShowProtectionCron();
 
 import { initReminderService } from './services/reminder.service.js';
 import { ensureInitialDbData } from './services/cleanup.service.js';

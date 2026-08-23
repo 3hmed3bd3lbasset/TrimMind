@@ -7,6 +7,7 @@ import { BookingsTable } from '../components/receptionist/BookingsTable';
 import { BookingRevenuesManager } from '../components/manager/BookingRevenuesManager';
 import { WalkInModal } from '../components/receptionist/WalkInModal';
 import { PaymentProofModal } from '../components/receptionist/PaymentProofModal';
+import { WaitlistPanel } from '../components/receptionist/WaitlistPanel';
 import { NotificationBell } from '../components/common/NotificationBell';
 import { Chair, Booking } from '../types';
 import {
@@ -53,10 +54,10 @@ export default function ReceptionistDashboard() {
     updateChair,
   } = useSalonStore();
 
-  const [activeTab, setActiveTab] = useState<'chairs' | 'bookings' | 'revenues'>(() => {
+  const [activeTab, setActiveTab] = useState<'chairs' | 'bookings' | 'waitlist' | 'revenues'>(() => {
     if (typeof window !== 'undefined') {
       const saved = sessionStorage.getItem('receptionist_active_tab');
-      if (saved === 'chairs' || saved === 'bookings' || saved === 'revenues') return saved;
+      if (saved === 'chairs' || saved === 'bookings' || saved === 'waitlist' || saved === 'revenues') return saved;
     }
     return 'chairs';
   });
@@ -367,6 +368,18 @@ export default function ReceptionistDashboard() {
         </button>
 
         <button
+          onClick={() => setActiveTab('waitlist')}
+          className={`flex items-center gap-2 px-5 py-2.5 rounded-full font-bold transition-all ${
+            activeTab === 'waitlist'
+              ? 'bg-forest text-paper shadow-clinic-1'
+              : 'bg-white/70 border border-border text-ink-soft hover:text-ink hover:bg-paper-warm'
+          }`}
+        >
+          <Clock className="w-4 h-4 text-amber-600" />
+          <span>قائمة الانتظار الذكية</span>
+        </button>
+
+        <button
           onClick={() => setActiveTab('revenues')}
           className={`flex items-center gap-2 px-5 py-2.5 rounded-full font-bold transition-all ${
             activeTab === 'revenues'
@@ -392,6 +405,8 @@ export default function ReceptionistDashboard() {
         </div>
       ) : activeTab === 'bookings' ? (
         <BookingsTable branchId={branchId} />
+      ) : activeTab === 'waitlist' ? (
+        <WaitlistPanel branchId={branchId} />
       ) : (
         <div className="clinic-card p-4 sm:p-6 bg-white/95 shadow-clinic-2">
           <BookingRevenuesManager />

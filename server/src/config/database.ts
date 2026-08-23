@@ -27,12 +27,33 @@ export const pool = mysql.createPool({
 
 // Helper for parameterized queries preventing SQL injection
 export async function query<T = any>(sql: string, params: any[] = []): Promise<T> {
+  const [results] = await pool.execute(sql, params);
+  return results as T;
+}
+
+// Helper for queries within a dedicated connection / transaction
+export async function queryConn<T = any>(conn: mysql.PoolConnection, sql: string, params: any[] = []): Promise<T> {
+  const [results] = await conn.execute(sql, params);
+  return results as T;
+}
+
+// Managed transaction helper ensuring BEGIN, COMMIT, and ROLLBACK
+export async function withTransaction<T>(callback: (conn: mysql.PoolConnection) => Promise<T>): Promise<T> {
+  const conn = await pool.getConnection();
   try {
-    const [results] = await pool.execute(sql, params);
-    return results as T;
-  } catch (err: any) {
-    console.warn(`[DB Query Notice]: ${err?.message || err}`);
-    return [] as unknown as T;
+    await conn.beginTransaction();
+    const result = await callback(conn);
+    await conn.commit();
+    return result;
+  } catch (error) {
+    try {
+      await conn.rollback();
+    } catch (rbErr) {
+      console.error('[DB Transaction Rollback Error]:', rbErr);
+    }
+    throw error;
+  } finally {
+    conn.release();
   }
 }
 
@@ -50,3 +71,4 @@ export async function testDbConnection(): Promise<boolean> {
     return false;
   }
 }
+

@@ -378,6 +378,11 @@ export async function cancelBooking(bookingId: string, reason?: string, actor?: 
   broadcastToBranch(booking.branch_id, 'BOOKING_CANCELLED', eventPayload);
   broadcastGlobal('SYNC_STATE');
 
+  // Trigger Smart Waitlist auto-offer hook for the freed branch/barber/date
+  import('./waitlist.service.js').then(({ offerSlotToNextEntry }) => {
+    offerSlotToNextEntry(booking.branch_id, booking.barber_id, booking.booking_date).catch(() => {});
+  }).catch(() => {});
+
   if (booking.customer_phone) {
     import('./whatsapp.service.js').then(({ sendWhatsAppText }) => {
       const clientName = booking.customer_name || 'عزيزنا العميل';

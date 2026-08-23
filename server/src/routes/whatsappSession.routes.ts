@@ -1,4 +1,5 @@
 import { Router, Request, Response } from 'express';
+import { requireAuth, requireRoles } from '../middleware/auth.js';
 import {
   getWhatsAppState,
   initWhatsApp,
@@ -9,6 +10,9 @@ import {
 } from '../services/whatsapp.service.js';
 
 const router = Router();
+
+// Protect WhatsApp session management routes - Manager only
+router.use(requireAuth, requireRoles('manager'));
 
 // 1. Get WhatsApp status
 router.get('/status', async (_req: Request, res: Response) => {

@@ -103,6 +103,27 @@ export const api = {
   updateSettings: (settings: any) => apiClient.patch('/settings', settings),
   getAuditLogs: (action?: string) => apiClient.get('/audit-logs', { params: { action } }),
 
+  // Smart Waitlist
+  joinWaitlist: (data: any) => apiClient.post('/waitlist', data),
+  getBranchWaitlist: (branchId: string, date?: string) =>
+    apiClient.get(`/waitlist/branch/${branchId}`, { params: { date } }),
+  promoteWaitlistEntry: (id: string) => apiClient.post(`/waitlist/${id}/promote`),
+  getWaitlistClaim: (token: string) => apiClient.get(`/waitlist/claim/${token}`),
+  claimWaitlistOffer: (token: string) => apiClient.post(`/waitlist/claim/${token}`),
+
+  // AI Customer Recall
+  getRecallCandidates: (branchId?: string, thresholdDays?: number) =>
+    apiClient.get('/recall/candidates', { params: { branchId, thresholdDays } }),
+  sendRecallCampaign: (data: any) => apiClient.post('/recall/send', data),
+  getRecallCampaigns: (branchId?: string) =>
+    apiClient.get('/recall/campaigns', { params: { branchId } }),
+
+  // AI Business Insights
+  getInsightsSummary: (branchId?: string, periodDays?: number) =>
+    apiClient.get('/insights/summary', { params: { branchId, periodDays } }),
+  askInsightsAssistant: (branchId: string, question: string) =>
+    apiClient.post('/insights/ask', { branchId, question }),
+
   // Upload
   uploadProof: (file: File) => {
     const formData = new FormData();

@@ -54,6 +54,90 @@ export function initCleanupCron() {
 
 export async function ensureInitialDbData() {
   try {
+    // 0. Ensure all upgrade tables exist in MySQL
+    await query(`
+      CREATE TABLE IF NOT EXISTS financial_records (
+        id VARCHAR(64) PRIMARY KEY,
+        booking_id VARCHAR(64),
+        branch_id VARCHAR(64) NOT NULL,
+        barber_id VARCHAR(64),
+        amount DECIMAL(10, 2) NOT NULL,
+        type ENUM('deposit', 'final_payment', 'full_payment', 'refund', 'cafeteria', 'product') NOT NULL,
+        payment_method ENUM('cash', 'vodafone_cash', 'instapay', 'credit_card') DEFAULT 'cash',
+        reference_number VARCHAR(100),
+        notes TEXT,
+        recorded_by VARCHAR(64),
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        INDEX idx_branch_type_date (branch_id, type, created_at)
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+    `);
+
+    await query(`
+      CREATE TABLE IF NOT EXISTS waitlist_entries (
+        id VARCHAR(64) PRIMARY KEY,
+        branch_id VARCHAR(64) NOT NULL,
+        barber_id VARCHAR(64),
+        customer_name VARCHAR(150) NOT NULL,
+        customer_phone VARCHAR(20) NOT NULL,
+        preferred_date DATE NOT NULL,
+        preferred_time_window VARCHAR(50),
+        service_id VARCHAR(64),
+        status ENUM('waiting', 'offered', 'claimed', 'expired', 'cancelled') DEFAULT 'waiting',
+        offer_token VARCHAR(64) UNIQUE,
+        offered_at TIMESTAMP NULL,
+        offer_expires_at TIMESTAMP NULL,
+        claimed_booking_id VARCHAR(64),
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        INDEX idx_waitlist_status (branch_id, preferred_date, status),
+        INDEX idx_waitlist_phone (customer_phone)
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+    `);
+
+    await query(`
+      CREATE TABLE IF NOT EXISTS recall_campaigns (
+        id VARCHAR(64) PRIMARY KEY,
+        branch_id VARCHAR(64) NOT NULL,
+        created_by VARCHAR(64),
+        threshold_days INT NOT NULL,
+        notes VARCHAR(255),
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+    `);
+
+    await query(`
+      CREATE TABLE IF NOT EXISTS recall_sends (
+        id VARCHAR(64) PRIMARY KEY,
+        campaign_id VARCHAR(64) NOT NULL,
+        customer_phone VARCHAR(20) NOT NULL,
+        customer_name VARCHAR(150),
+        message_text TEXT NOT NULL,
+        status ENUM('queued', 'sent', 'failed', 'rebooked') DEFAULT 'queued',
+        sent_at TIMESTAMP NULL,
+        rebooked_at TIMESTAMP NULL,
+        rebooked_booking_id VARCHAR(64),
+        INDEX idx_recall_phone (customer_phone),
+        INDEX idx_recall_status (status)
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+    `);
+
+    await query(`
+      CREATE TABLE IF NOT EXISTS insight_reports (
+        id VARCHAR(64) PRIMARY KEY,
+        branch_id VARCHAR(64) NOT NULL,
+        period_start DATE NOT NULL,
+        period_end DATE NOT NULL,
+        metrics_json JSON NOT NULL,
+        narrative_text TEXT NOT NULL,
+        generated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        INDEX idx_branch_period (branch_id, period_start, period_end)
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+    `);
+
+    // Safely add no_show_marked_at column if not present
+    try {
+      await query('ALTER TABLE bookings ADD COLUMN no_show_marked_at TIMESTAMP NULL');
+    } catch {}
+
     // 1. Check & Seed Branches
     const branches = await query<any[]>('SELECT id FROM branches LIMIT 1');
     if (!branches || branches.length === 0) {

@@ -18,18 +18,19 @@
       "position": [
         200,
         300
-      ]
+      ],
+      "id": "34ab30a8-76ca-4a59-8bf8-01814d3be323"
     },
     {
       "parameters": {
         "method": "POST",
-        "url": "={{ $env.BACKEND_API_URL || 'https://trimmind.up.railway.app' }}/api/agent-tools/reminders/upcoming",
+        "url": "https://trimmind.up.railway.app/api/agent-tools/reminders/upcoming",
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [
             {
               "name": "x-agent-secret",
-              "value": "={{ $env.AGENT_API_SECRET || 'trim-mind-agent-secret-key-2026' }}"
+              "value": "trim-mind-agent-secret-key-2026"
             }
           ]
         },
@@ -50,7 +51,8 @@
       "position": [
         420,
         300
-      ]
+      ],
+      "id": "0a4d6e02-b044-42f7-ad27-d5d12c8f94e4"
     },
     {
       "parameters": {
@@ -63,7 +65,8 @@
       "position": [
         640,
         300
-      ]
+      ],
+      "id": "e7ea8566-66a7-471e-843e-9ac16bd976d7"
     },
     {
       "parameters": {
@@ -75,7 +78,8 @@
       "position": [
         860,
         300
-      ]
+      ],
+      "id": "af7365c1-e2a9-4059-8c62-fb0a46443466"
     },
     {
       "parameters": {
@@ -111,7 +115,8 @@
       "position": [
         1100,
         300
-      ]
+      ],
+      "id": "9d75caab-beed-4e8a-83a2-1b8629f7df90"
     }
   ],
   "connections": {
@@ -160,7 +165,9 @@
       ]
     }
   },
+  "active": true,
   "settings": {
     "executionOrder": "v1"
-  }
+  },
+  "meta": null
 }

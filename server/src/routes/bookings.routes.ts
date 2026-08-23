@@ -10,7 +10,7 @@ import {
   rateBookingSchema,
 } from '../validators/booking.schema.js';
 import { bookingLimiter } from '../middleware/rateLimiter.js';
-import { requireAuth, optionalAuth, AuthenticatedRequest } from '../middleware/auth.js';
+import { requireAuth, requireRoles, optionalAuth, AuthenticatedRequest } from '../middleware/auth.js';
 import { broadcastToBranch, broadcastGlobal } from '../socket/realtime.js';
 
 import { liveSyncedBookings } from './agentTools.routes.js';
@@ -149,7 +149,8 @@ router.post('/:id/cancel', validateBody(cancelBookingSchema), async (req: Authen
 // PATCH /api/bookings/:id/status (Staff status change)
 router.patch(
   '/:id/status',
-  optionalAuth,
+  requireAuth,
+  requireRoles('manager', 'receptionist', 'barber'),
   validateBody(updateBookingStatusSchema),
   async (req: AuthenticatedRequest, res: Response) => {
     try {
@@ -303,8 +304,8 @@ router.post('/:id/rate', validateBody(rateBookingSchema), async (req, res: Respo
   }
 });
 
-// PATCH /api/bookings/:id/payment-proof (Review Payment Proof)
-router.patch('/:id/payment-proof', optionalAuth, async (req: AuthenticatedRequest, res: Response) => {
+// PATCH /api/bookings/:id/payment-proof (Review Payment Proof - Staff Only)
+router.patch('/:id/payment-proof', requireAuth, requireRoles('manager', 'receptionist'), async (req: AuthenticatedRequest, res: Response) => {
   try {
     const { status, reason } = req.body;
     let booking = await getBookingById(req.params.id);

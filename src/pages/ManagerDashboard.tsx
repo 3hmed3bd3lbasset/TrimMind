@@ -11,6 +11,9 @@ import { SettingsManager } from '../components/manager/SettingsManager';
 import { ManagersManager } from '../components/manager/ManagersManager';
 import { ReceptionistManager } from '../components/manager/ReceptionistManager';
 import { AuditLogViewer } from '../components/manager/AuditLogViewer';
+import { AIInsightsPanel } from '../components/manager/AIInsightsPanel';
+import { CustomerRecallManager } from '../components/manager/CustomerRecallManager';
+import { WaitlistManager } from '../components/manager/WaitlistManager';
 import { NotificationBell } from '../components/common/NotificationBell';
 import {
   Shield,
@@ -26,6 +29,7 @@ import {
   FileText,
   Crown,
   Lock,
+  Clock,
   Tv,
   X,
   Sparkles,
@@ -38,6 +42,9 @@ export default function ManagerDashboard() {
   const { currentUser, branches } = useSalonStore();
   const [activeTab, setActiveTab] = useState<
     | 'analytics'
+    | 'insights'
+    | 'recall'
+    | 'waitlist'
     | 'revenues'
     | 'branches'
     | 'barbers'
@@ -70,6 +77,27 @@ export default function ManagerDashboard() {
   );
 
   const SECTIONS = [
+    {
+      id: 'insights',
+      label: 'تقارير وتحليلات الذكاء الاصطناعي',
+      desc: 'ملخص ذكي للإيرادات، ساعات الذروة، ونسب الحضور',
+      icon: Sparkles,
+      category: 'الذكاء والتحليلات',
+    },
+    {
+      id: 'recall',
+      label: 'إعادة جذب العملاء (AI Recall)',
+      desc: 'استهداف المنقطعين بحملات واتساب مخصصة',
+      icon: UserCheck,
+      category: 'الذكاء والتحليلات',
+    },
+    {
+      id: 'waitlist',
+      label: 'قائمة الانتظار الذكية',
+      desc: 'إدارة الشواغر وإرسال روابط الحجز للشخص التالي',
+      icon: Clock,
+      category: 'الذكاء والتحليلات',
+    },
     {
       id: 'revenues',
       label: 'إيرادات ومقبوضات الحجوزات',
@@ -361,6 +389,9 @@ export default function ManagerDashboard() {
       {/* Main Workspace Card */}
       <div className="clinic-card p-3.5 sm:p-6 shadow-clinic-2 bg-white/95">
         {activeTab === 'analytics' && <AnalyticsCharts />}
+        {activeTab === 'insights' && <AIInsightsPanel branchId={currentUser.branch_id || 'branch-elhdad'} />}
+        {activeTab === 'recall' && <CustomerRecallManager branchId={currentUser.branch_id || 'branch-elhdad'} />}
+        {activeTab === 'waitlist' && <WaitlistManager branchId={currentUser.branch_id || 'branch-elhdad'} />}
         {activeTab === 'revenues' && <BookingRevenuesManager />}
         {activeTab === 'branches' && <BranchManager />}
         {activeTab === 'barbers' && <BarberManager />}

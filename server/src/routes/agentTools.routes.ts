@@ -17,10 +17,10 @@ function requireAgentAuth(req: Request, res: Response, next: NextFunction): void
 
   const providedKey = (secretHeader as string) || bearerToken;
 
-  if (providedKey && providedKey !== AGENT_API_SECRET) {
+  if (!providedKey || providedKey !== AGENT_API_SECRET) {
     res.status(401).json({
       success: false,
-      error: 'Unauthorized access to Agent Tools API. Invalid secret token.',
+      error: 'Unauthorized access to Agent Tools API. Valid secret token required in x-agent-secret or Authorization header.',
     });
     return;
   }
