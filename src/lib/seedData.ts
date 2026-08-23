@@ -248,6 +248,7 @@ export const INITIAL_SETTINGS: SalonSettings = {
   vodafone_cash_number: '01285694689',
   instapay_username: '01285694670',
   bank_account_info: '',
+  manager_report_phone: '01285694670',
 };
 
 export const INITIAL_PROFILES: Profile[] = [

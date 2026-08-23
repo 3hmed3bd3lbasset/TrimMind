@@ -22,6 +22,7 @@ export const SettingsManager: React.FC = () => {
   const [primaryPhone, setPrimaryPhone] = useState(settings.primary_phone || '010 1234 5678');
   const [secondaryPhone, setSecondaryPhone] = useState(settings.secondary_phone || '010 2345 6789');
   const [whatsappNumber, setWhatsappNumber] = useState(settings.whatsapp_number || '01012345678');
+  const [managerReportPhone, setManagerReportPhone] = useState(settings.manager_report_phone || settings.whatsapp_number || '01285694670');
   const [workingHoursText, setWorkingHoursText] = useState(settings.working_hours_text || 'يومياً: 10:00 ص – 11:30 م (الحجز متاح 24/7)');
 
   const [normalFee, setNormalFee] = useState(settings.booking_fee_normal);
@@ -41,6 +42,7 @@ export const SettingsManager: React.FC = () => {
       primary_phone: primaryPhone,
       secondary_phone: secondaryPhone,
       whatsapp_number: whatsappNumber,
+      manager_report_phone: managerReportPhone,
       working_hours_text: workingHoursText,
       booking_fee_normal: Number(normalFee),
       booking_fee_vip: Number(vipFee),
@@ -50,7 +52,7 @@ export const SettingsManager: React.FC = () => {
       instapay_username: instapayUser,
       bank_account_info: bankInfo,
     });
-    toast.success('تم حفظ وتحديث إعدادات وبيانات الصالون والفوتر بنجاح');
+    toast.success('تم حفظ وتحديث إعدادات وبيانات الصالون وتقارير الذكاء الاصطناعي بنجاح');
   };
 
   return (
@@ -154,6 +156,29 @@ export const SettingsManager: React.FC = () => {
                   className="w-full bg-paper-warm border border-border focus:border-forest rounded-xl px-3 py-2.5 text-xs text-ink outline-none font-mono"
                 />
               </div>
+            </div>
+          </div>
+
+          <div className="clinic-card p-5 sm:p-6 shadow-clinic-2 bg-white/95 space-y-4 border border-emerald-500/30">
+            <h4 className="font-serif font-bold text-ink text-sm flex items-center gap-2 border-b border-border pb-3">
+              <Sparkles className="w-4 h-4 text-emerald-600" />
+              <span>تقارير الذكاء الاصطناعي اليومية (AI Daily Report):</span>
+            </h4>
+
+            <div className="space-y-1.5">
+              <label className="font-bold text-ink-soft flex items-center gap-1">
+                <span>رقم هاتف المدير لاستلام التقرير الصباحي على الواتساب:</span>
+              </label>
+              <input
+                type="text"
+                value={managerReportPhone}
+                onChange={(e) => setManagerReportPhone(e.target.value)}
+                placeholder="01005437633"
+                className="w-full bg-paper-warm border border-emerald-500/30 focus:border-emerald-600 rounded-xl px-3.5 py-2.5 text-xs text-ink outline-none font-mono font-bold"
+              />
+              <p className="text-[10px] text-ink-mute">
+                💡 يرسل المساعد الذكي ملخص التشغيل اليومي، باقات VIP، أوقات الذروة، وتوصية الذكاء الاصطناعي لهذا الرقم كل صباح الساعة 09:00 ص.
+              </p>
             </div>
           </div>
 

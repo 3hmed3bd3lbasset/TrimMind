@@ -1143,12 +1143,37 @@ router.all('/manager/daily-report-data', async (req: Request, res: Response) => 
     const today = new Date().toISOString().split('T')[0];
     const yesterday = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString().split('T')[0];
 
-    // 1. Manager contact info
-    const managerRows = await query<any[]>(
-      "SELECT phone, full_name FROM profiles WHERE role = 'manager' AND is_active = 1 ORDER BY is_super_admin DESC LIMIT 1"
-    );
-    const managerPhone = managerRows?.[0]?.phone || '01285694670';
-    const managerName = managerRows?.[0]?.full_name || 'المدير العام';
+    // 1. Manager contact info from Settings (highest priority), then Profiles
+    let managerPhone = '';
+    let managerName = 'المدير العام';
+
+    try {
+      const settingRows = await query<any[]>('SELECT setting_value FROM settings WHERE setting_key = "general" LIMIT 1');
+      if (settingRows && settingRows.length > 0) {
+        const val = typeof settingRows[0].setting_value === 'string' ? JSON.parse(settingRows[0].setting_value) : settingRows[0].setting_value;
+        if (val?.manager_report_phone) {
+          managerPhone = normalizePhone(val.manager_report_phone);
+        } else if (val?.whatsapp_number) {
+          managerPhone = normalizePhone(val.whatsapp_number);
+        } else if (val?.primary_phone) {
+          managerPhone = normalizePhone(val.primary_phone);
+        }
+      }
+    } catch {}
+
+    if (!managerPhone) {
+      const managerRows = await query<any[]>(
+        "SELECT phone, full_name FROM profiles WHERE role = 'manager' AND is_active = 1 ORDER BY is_super_admin DESC LIMIT 1"
+      );
+      if (managerRows && managerRows.length > 0) {
+        managerPhone = normalizePhone(managerRows[0].phone || '');
+        managerName = managerRows[0].full_name || managerName;
+      }
+    }
+
+    if (!managerPhone) {
+      managerPhone = '01285694670';
+    }
 
     // 2. Today's bookings
     const todayBookings = await query<any[]>(

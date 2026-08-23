@@ -50,6 +50,7 @@ export interface SalonSettings {
   vodafone_cash_number?: string;
   instapay_username?: string;
   bank_account_info?: string;
+  manager_report_phone?: string;
 }
 
 export interface Branch {
