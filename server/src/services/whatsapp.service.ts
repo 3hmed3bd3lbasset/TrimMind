@@ -595,9 +595,74 @@ function forwardToN8nWebhook(
   }
 }
 
-function getRandomHour() {
-  const hours = ['1:00 ظهراً', '2:30 عصراً', '4:00 عصراً', '5:30 مساءً', '7:00 مساءً', '8:30 مساءً', '10:00 مساءً'];
-  return hours[Math.floor(Math.random() * hours.length)];
+function getSmartCairoTimeForNormalSession(): { dateTimeStr: string; timeStr: string; startsAtISO: string } {
+  // Strict Africa/Cairo Timezone
+  const nowCairo = new Date(new Date().toLocaleString('en-US', { timeZone: 'Africa/Cairo' }));
+  const currentHour = nowCairo.getHours();
+  const currentMinute = nowCairo.getMinutes();
+
+  // If after 10:30 PM (salon closing time is 12:00 AM), schedule for tomorrow afternoon
+  if (currentHour >= 22 && currentMinute > 30) {
+    const tomorrow = new Date(nowCairo.getTime() + 24 * 60 * 60 * 1000);
+    const tomorrowStr = tomorrow.toLocaleDateString('ar-EG', { weekday: 'long', month: 'long', day: 'numeric' });
+    const randomTomorrowHours = [
+      { label: '1:00 ظهراً', hour: 13, min: 0 },
+      { label: '3:30 عصراً', hour: 15, min: 30 },
+      { label: '5:00 مساءً', hour: 17, min: 0 },
+      { label: '7:00 مساءً', hour: 19, min: 0 },
+      { label: '9:00 مساءً', hour: 21, min: 0 },
+    ];
+    const chosen = randomTomorrowHours[Math.floor(Math.random() * randomTomorrowHours.length)];
+    tomorrow.setHours(chosen.hour, chosen.min, 0, 0);
+    return {
+      dateTimeStr: `غداً (${tomorrowStr}) - الساعة ${chosen.label}`,
+      timeStr: chosen.label,
+      startsAtISO: tomorrow.toISOString(),
+    };
+  }
+
+  // Salon operating slots for today
+  const candidateSlotsToday = [
+    { hour: 11, min: 0, label: '11:00 صباحاً' },
+    { hour: 12, min: 30, label: '12:30 ظهراً' },
+    { hour: 14, min: 0, label: '2:00 ظهراً' },
+    { hour: 15, min: 30, label: '3:30 عصراً' },
+    { hour: 17, min: 0, label: '5:00 مساءً' },
+    { hour: 18, min: 30, label: '6:30 مساءً' },
+    { hour: 20, min: 0, label: '8:00 مساءً' },
+    { hour: 21, min: 30, label: '9:30 مساءً' },
+    { hour: 23, min: 0, label: '11:00 مساءً' },
+  ];
+
+  // Pick only future slots (at least 30 minutes from now)
+  const currentTotalMinutes = currentHour * 60 + currentMinute;
+  const validFutureSlots = candidateSlotsToday.filter(
+    (s) => s.hour * 60 + s.min >= currentTotalMinutes + 30
+  );
+
+  if (validFutureSlots.length > 0) {
+    const chosen = validFutureSlots[Math.floor(Math.random() * Math.min(3, validFutureSlots.length))];
+    const targetDate = new Date(nowCairo);
+    targetDate.setHours(chosen.hour, chosen.min, 0, 0);
+    return {
+      dateTimeStr: `اليوم - الساعة ${chosen.label}`,
+      timeStr: chosen.label,
+      startsAtISO: targetDate.toISOString(),
+    };
+  } else {
+    // If very late today, give a slot in ~45-60 minutes
+    const nextHour = currentHour + 1;
+    const isPm = nextHour >= 12;
+    const dispHour = nextHour % 12 || 12;
+    const label = `${dispHour}:00 ${isPm ? 'مساءً' : 'صباحاً'}`;
+    const targetDate = new Date(nowCairo);
+    targetDate.setHours(nextHour, 0, 0, 0);
+    return {
+      dateTimeStr: `اليوم - الساعة ${label}`,
+      timeStr: label,
+      startsAtISO: targetDate.toISOString(),
+    };
+  }
 }
 
 // Direct Native Intelligent Interactive AI Agent Response Engine - 100% Dynamic MySQL Database Integration
@@ -806,7 +871,9 @@ ${barbersList}
     const randomBarber = liveCtx.barbers[Math.floor(Math.random() * liveCtx.barbers.length)] || { id: 'barber-1', name: 'كابتن الصالون' };
     session.barberName = randomBarber.name;
     session.barberId = randomBarber.id;
-    session.dateTimeStr = `اليوم - ${getRandomHour()}`;
+    const smartCairo = getSmartCairoTimeForNormalSession();
+    session.dateTimeStr = smartCairo.dateTimeStr;
+    session.targetTime = smartCairo.timeStr;
     session.step = 'choosing_service';
     bookingSessions.set(sessionKey, session);
 

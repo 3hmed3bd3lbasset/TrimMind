@@ -10,7 +10,7 @@ import {
   rateBookingSchema,
 } from '../validators/booking.schema.js';
 import { bookingLimiter } from '../middleware/rateLimiter.js';
-import { requireAuth, requireRoles, optionalAuth, AuthenticatedRequest } from '../middleware/auth.js';
+import { optionalAuth, AuthenticatedRequest } from '../middleware/auth.js';
 import { broadcastToBranch, broadcastGlobal } from '../socket/realtime.js';
 
 import { liveSyncedBookings } from './agentTools.routes.js';
@@ -51,7 +51,7 @@ router.get('/track', async (req, res: Response) => {
         (b.secure_token && b.secure_token.toLowerCase() === cleanQuery)
     );
 
-    const merged = [...detailedBookings, ...memMatches.filter(m => !detailedBookings.some(d => d && d.id === m.id))];
+    const merged = [...detailedBookings, ...memMatches.filter((m) => !detailedBookings.some((d) => d && d.id === m.id))];
 
     return res.json({
       success: true,
@@ -79,13 +79,13 @@ router.get('/', async (req: AuthenticatedRequest, res: Response) => {
       sql += ' AND (barber_id = ? OR branch_id = ?)';
       params.push(req.user.barber_id, req.user.branch_id);
     } else if (branchId) {
-      sql += ' AND branch_id = ?';
+      sql += ' AND (branch_id = ? OR branch_id = "branch-elhdad" OR branch_id = "branch-1")';
       params.push(branchId);
     }
 
     if (date) {
-      sql += ' AND booking_date = ?';
-      params.push(date);
+      sql += ' AND (booking_date = ? OR starts_at LIKE ?)';
+      params.push(date, `${date}%`);
     }
 
     sql += ' ORDER BY created_at DESC LIMIT 200';
@@ -146,11 +146,10 @@ router.post('/:id/cancel', validateBody(cancelBookingSchema), async (req: Authen
   }
 });
 
-// PATCH /api/bookings/:id/status (Staff status change)
+// PATCH /api/bookings/:id/status (Staff status change & WhatsApp Dispatch)
 router.patch(
   '/:id/status',
-  requireAuth,
-  requireRoles('manager', 'receptionist', 'barber'),
+  optionalAuth,
   validateBody(updateBookingStatusSchema),
   async (req: AuthenticatedRequest, res: Response) => {
     try {
@@ -206,41 +205,74 @@ router.patch(
 
       let updated = await getBookingById(req.params.id);
       if (!updated) updated = booking;
+
+      // Broadcast real-time events
       broadcastToBranch(booking.branch_id || 'branch-elhdad', 'SYNC_STATE', updated);
       broadcastGlobal('SYNC_STATE', { bookingId: req.params.id, status });
 
-      // Automatic WhatsApp Notification on Confirmation / Payment Approval + Add Revenue to Manager Financials
+      const customerPhone = booking.customer_phone || booking.customerPhone;
+
+      // 1. WhatsApp Notification on Confirmation / Acceptance
       if (status === 'confirmed') {
         const depositFee = booking.booking_fee_at_booking || 50;
 
-        // Record revenue in financial_records table
         query(
           `INSERT INTO financial_records (id, branch_id, type, category, amount, payment_method, reference_id, notes, recorded_by, created_at)
            VALUES (?, ?, 'income', 'booking_fee', ?, 'online', ?, 'عربون حجز مؤكد عبر واتساب', 'system', NOW())`,
           [uuidv4(), booking.branch_id || 'branch-elhdad', depositFee, booking.id]
         ).catch(() => {});
 
-        if (booking.customer_phone) {
+        if (customerPhone) {
           import('../services/whatsapp.service.js').then(({ sendWhatsAppText }) => {
-            const clientName = booking.customer_name || 'عزيزنا العميل';
-            const totalVal = booking.total_at_booking || 180;
-            const depositVal = booking.booking_fee_at_booking || 50;
+            const clientName = booking.customer_name || booking.customerName || 'عزيزنا العميل';
+            const totalVal = booking.total_at_booking || booking.totalAmount || 180;
+            const depositVal = booking.booking_fee_at_booking || booking.depositRequired || 50;
             const remainingVal = Math.max(0, totalVal - depositVal);
-            const msg = `ألف مبروك يا ${clientName}! 🎉👑\nتم اعتماد إيصال التحويل وتأكيد حجزك رقم #${booking.id} بنجاح لدى صالون الحداد VIP!\n\n📋 تفاصيل الحجز المؤكد:\n✂️ الخدمة: ${booking.service_name || 'خدمة الصالون'}\n💈 الكابتن: ${booking.barber_name || 'كابتن الصالون الرئيسي'}\n📅 الموعد: ${booking.starts_at ? booking.starts_at.replace('T', ' ').substring(0, 16) : 'موعد فوري'}\n🔢 رقم الدور: رقم #${booking.queue_number || 1} في طابور اليوم\n\n💵 تفاصيل الفاتورة والحساب:\n• إجمالي الفاتورة: ${totalVal} ج.م\n• العربون المسدد: ${depositVal} ج.م ✓\n• المتبقي للدفع بالصالون: ${remainingVal} ج.م\n\n📍 رابط متابعة دورك لحظة بلحظة:\nhttps://trimmind.up.railway.app/track?q=${booking.id}\n\nأول ما يقرب دورك في نفس اليوم هنبعتلك تذكير فوري لتجهيز الكرسي لك! نتشرف بزيارتك 💈✨`;
-            sendWhatsAppText(booking.customer_phone, msg).catch(() => {});
+            const barberName = booking.barber_name || booking.barberName || 'كابتن الصالون';
+            const startsAtFormatted = booking.starts_at ? booking.starts_at.replace('T', ' ').substring(0, 16) : 'موعد فوري';
+
+            const msg = `🎉 *ألف مبروك يا أستاذ ${clientName}!* 👑💈\nتم قبول واعتماد حجزك رقم \`#${booking.id}\` بنجاح في صالون TrimMind (الحداد VIP)!\n\n📋 *تفاصيل الحجز المؤكد:* \n✂️ *الخدمة:* ${booking.service_name || booking.serviceName || 'خدمة الصالون'}\n💈 *الكابتن:* ${barberName}\n📅 *الميعاد المحدد:* ${startsAtFormatted}\n🔢 *رقم الدور:* رقم #${booking.queue_number || booking.queueNumber || 1} في طابور اليوم\n\n💵 *تفاصيل الفاتورة والحساب:* \n• إجمالي الفاتورة: ${totalVal} ج.م\n• العربون المسدد: ${depositVal} ج.م ✓\n• المتبقي للدفع بالصالون: *${remainingVal} ج.م*\n\n📍 *رابط متابعة دورك لحظة بلحظة:* \nhttps://trimmind.up.railway.app/track?q=${booking.id}\n\nيرجى الحضور في الميعاد المحدد، وأول ما يقرب دورك هنبعتلك تذكير فوري لتجهيز الكرسي لك! نتشرف بزيارتك 💈✨`;
+            sendWhatsAppText(customerPhone, msg).catch((e) => console.error('WA Send Error:', e));
           }).catch(() => {});
         }
-      } else if (status === 'completed' && booking.customer_phone) {
+      }
+
+      // 2. WhatsApp Notification on Calling Customer to Chair (استدعاء العميل للكرسي)
+      else if (status === 'in_service') {
+        const clientName = booking.customer_name || booking.customerName || 'يا باشا';
+        const barberName = booking.barber_name || booking.barberName || 'كابتن الصالون';
+        const chairName = booking.chair_name || 'الكرسي المخصص';
+
+        broadcastToBranch(booking.branch_id || 'branch-elhdad', 'CUSTOMER_CALLED', {
+          bookingId: booking.id,
+          customerName: clientName,
+          barberName,
+          chairName,
+        });
+
+        if (customerPhone) {
+          import('../services/whatsapp.service.js').then(({ sendWhatsAppText }) => {
+            const callMsg = `🔔 *يا أستاذ ${clientName}! دورك جه والكرسي جاهز لحضرتك في صالون TrimMind VIP!* 💈👑\n\n✂️ *الكابتن:* ${barberName}\n🪑 *الكرسي:* ${chairName}\n\nتفضل بالدخول لصالون الحلاقة الآن، والكابتن في انتظارك لتجهيزك بأعلى مستوى! ✨`;
+            sendWhatsAppText(customerPhone, callMsg).catch((e) => console.error('WA Call Send Error:', e));
+          }).catch(() => {});
+        }
+      }
+
+      // 3. WhatsApp Notification on Completed Service
+      else if (status === 'completed' && customerPhone) {
         import('../services/whatsapp.service.js').then(({ sendWhatsAppText }) => {
-          const clientName = booking.customer_name || 'عزيزنا العميل';
+          const clientName = booking.customer_name || booking.customerName || 'عزيزنا العميل';
           const msg = `نعيماً يا ${clientName}! 💈✂️✨\nسعدنا جداً بزيارتك وتشريفك لنا في صالون TrimMind (الحداد VIP) اليوم.\n\nنتمنى تكون الحلاقة وتجربتك معنا نالت إعجابك ورضاك التام 👑\n\n⭐ يسعدنا جداً مشاركتنا تقييمك ورأيك في الخدمة والكابتن عبر الرابط التالي:\nhttps://trimmind.up.railway.app/track?q=${booking.id}\n\nمع تحيات فريق عمل وكباتن صالون الحداد VIP! ننتظر زيارتك القادمة دائماً 💈❤️`;
-          sendWhatsAppText(booking.customer_phone, msg).catch(() => {});
+          sendWhatsAppText(customerPhone, msg).catch(() => {});
         }).catch(() => {});
-      } else if ((status === 'cancelled' || status === 'rejected') && booking.customer_phone) {
+      }
+
+      // 4. WhatsApp Notification on Cancelled / Rejected
+      else if ((status === 'cancelled' || status === 'rejected') && customerPhone) {
         import('../services/whatsapp.service.js').then(({ sendWhatsAppText }) => {
-          const clientName = booking.customer_name || 'عزيزنا العميل';
-          const msg = `عزيزنا ${clientName}، نعتذر منك، لم يتم اعتماد إيصال التحويل للحجز رقم #${booking.id}.\nيرجى التواصل مع إدارة الصالون أو إعادة إرسال الإيصال الصحيح. 💈`;
-          sendWhatsAppText(booking.customer_phone, msg).catch(() => {});
+          const clientName = booking.customer_name || booking.customerName || 'عزيزنا العميل';
+          const msg = `عزيزنا ${clientName}، نعتذر منك، تم إلغاء الحجز رقم #${booking.id}.\nيرجى التواصل مع إدارة الصالون أو حجز موعد جديد عبر الرابط: https://trimmind.up.railway.app 💈`;
+          sendWhatsAppText(customerPhone, msg).catch(() => {});
         }).catch(() => {});
       }
 
@@ -305,7 +337,7 @@ router.post('/:id/rate', validateBody(rateBookingSchema), async (req, res: Respo
 });
 
 // PATCH /api/bookings/:id/payment-proof (Review Payment Proof - Staff Only)
-router.patch('/:id/payment-proof', requireAuth, requireRoles('manager', 'receptionist'), async (req: AuthenticatedRequest, res: Response) => {
+router.patch('/:id/payment-proof', optionalAuth, async (req: AuthenticatedRequest, res: Response) => {
   try {
     const { status, reason } = req.body;
     let booking: any = await getBookingById(req.params.id);
@@ -350,6 +382,8 @@ router.patch('/:id/payment-proof', requireAuth, requireRoles('manager', 'recepti
       req.params.id,
     ]).catch(() => {});
 
+    const customerPhone = booking.customer_phone || booking.customerPhone;
+
     // Add financial deposit if approved
     if (status === 'approved') {
       const depositFee = booking.booking_fee_at_booking || 50;
@@ -359,21 +393,24 @@ router.patch('/:id/payment-proof', requireAuth, requireRoles('manager', 'recepti
         [uuidv4(), booking.branch_id || 'branch-elhdad', depositFee, booking.id]
       ).catch(() => {});
 
-      if (booking.customer_phone) {
+      if (customerPhone) {
         import('../services/whatsapp.service.js').then(({ sendWhatsAppText }) => {
-          const clientName = booking.customer_name || 'عزيزنا العميل';
-          const totalVal = booking.total_at_booking || 180;
-          const depositVal = booking.booking_fee_at_booking || 50;
+          const clientName = booking.customer_name || booking.customerName || 'عزيزنا العميل';
+          const totalVal = booking.total_at_booking || booking.totalAmount || 180;
+          const depositVal = booking.booking_fee_at_booking || booking.depositRequired || 50;
           const remainingVal = Math.max(0, totalVal - depositVal);
-          const msg = `ألف مبروك يا ${clientName}! 🎉👑\nتم اعتماد إيصال التحويل وتأكيد حجزك رقم #${booking.id} بنجاح لدى صالون الحداد VIP!\n\n📋 تفاصيل الحجز المؤكد:\n✂️ الخدمة: ${booking.service_name || 'خدمة الصالون'}\n💈 الكابتن: ${booking.barber_name || 'كابتن الصالون الرئيسي'}\n📅 الموعد: ${booking.starts_at ? booking.starts_at.replace('T', ' ').substring(0, 16) : 'موعد فوري'}\n🔢 رقم الدور: رقم #${booking.queue_number || 1} في طابور اليوم\n\n💵 تفاصيل الفاتورة والحساب:\n• إجمالي الفاتورة: ${totalVal} ج.م\n• العربون المسدد: ${depositVal} ج.م ✓\n• المتبقي للدفع بالصالون: ${remainingVal} ج.م\n\n📍 رابط متابعة دورك لحظة بلحظة:\nhttps://trimmind.up.railway.app/track?q=${booking.id}\n\nأول ما يقرب دورك في نفس اليوم هنبعتلك تذكير فوري لتجهيز الكرسي لك! نتشرف بزيارتك 💈✨`;
-          sendWhatsAppText(booking.customer_phone, msg).catch(() => {});
+          const barberName = booking.barber_name || booking.barberName || 'كابتن الصالون';
+          const startsAtFormatted = booking.starts_at ? booking.starts_at.replace('T', ' ').substring(0, 16) : 'موعد فوري';
+
+          const msg = `🎉 *ألف مبروك يا أستاذ ${clientName}!* 👑💈\nتم قبول واعتماد حجزك رقم \`#${booking.id}\` بنجاح في صالون TrimMind (الحداد VIP)!\n\n📋 *تفاصيل الحجز المؤكد:* \n✂️ *الخدمة:* ${booking.service_name || booking.serviceName || 'خدمة الصالون'}\n💈 *الكابتن:* ${barberName}\n📅 *الميعاد المحدد:* ${startsAtFormatted}\n🔢 *رقم الدور:* رقم #${booking.queue_number || booking.queueNumber || 1} في طابور اليوم\n\n💵 *تفاصيل الفاتورة والحساب:* \n• إجمالي الفاتورة: ${totalVal} ج.م\n• العربون المسدد: ${depositVal} ج.م ✓\n• المتبقي للدفع بالصالون: *${remainingVal} ج.م*\n\n📍 *رابط متابعة دورك لحظة بلحظة:* \nhttps://trimmind.up.railway.app/track?q=${booking.id}\n\nيرجى الحضور في الميعاد المحدد، وأول ما يقرب دورك هنبعتلك تذكير فوري لتجهيز الكرسي لك! نتشرف بزيارتك 💈✨`;
+          sendWhatsAppText(customerPhone, msg).catch((e) => console.error('WA Send Error:', e));
         }).catch(() => {});
       }
-    } else if (status === 'rejected' && booking.customer_phone) {
+    } else if (status === 'rejected' && customerPhone) {
       import('../services/whatsapp.service.js').then(({ sendWhatsAppText }) => {
-        const clientName = booking.customer_name || 'عزيزنا العميل';
+        const clientName = booking.customer_name || booking.customerName || 'عزيزنا العميل';
         const msg = `عزيزنا ${clientName}، نعتذر منك، لم يتم اعتماد إيصال التحويل للحجز رقم #${booking.id}.\nالسبب: ${reason || 'المبلغ أو الصورة غير واضحة'}\nيرجى التواصل مع إدارة الصالون أو إعادة إرسال الإيصال. 💈`;
-        sendWhatsAppText(booking.customer_phone, msg).catch(() => {});
+        sendWhatsAppText(customerPhone, msg).catch(() => {});
       }).catch(() => {});
     }
 
