@@ -155,14 +155,14 @@ router.patch(
   async (req: AuthenticatedRequest, res: Response) => {
     try {
       const { status, note } = req.body;
-      let booking = await getBookingById(req.params.id);
+      let booking: any = await getBookingById(req.params.id);
       const targetLive = liveSyncedBookings.find((b) => b.id === req.params.id);
 
       if (targetLive) {
         targetLive.status = status;
         if (!booking) booking = targetLive;
       } else if (!booking) {
-        const autoBooking = {
+        const autoBooking: any = {
           id: req.params.id,
           bookingId: req.params.id,
           customer_name: 'عميل الصالون',
@@ -308,7 +308,7 @@ router.post('/:id/rate', validateBody(rateBookingSchema), async (req, res: Respo
 router.patch('/:id/payment-proof', requireAuth, requireRoles('manager', 'receptionist'), async (req: AuthenticatedRequest, res: Response) => {
   try {
     const { status, reason } = req.body;
-    let booking = await getBookingById(req.params.id);
+    let booking: any = await getBookingById(req.params.id);
     if (!booking) {
       const targetLive = liveSyncedBookings.find((b) => b.id === req.params.id);
       if (targetLive) {

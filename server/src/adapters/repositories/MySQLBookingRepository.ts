@@ -1,0 +1,320 @@
+import { v4 as uuidv4 } from 'uuid';
+import { IBookingRepository, CreateBookingData } from '../../domain/repositories/IBookingRepository.js';
+import { Booking, BookingStatus } from '../../domain/entities/Booking.entity.js';
+import { query, queryConn, withTransaction } from '../../config/database.js';
+
+export class MySQLBookingRepository implements IBookingRepository {
+  public async createWithTransaction(data: CreateBookingData, actorId?: string): Promise<Booking> {
+    const bookingId = data.id || `BK-${Math.floor(1000 + Math.random() * 9000)}`;
+    const secureToken = `SEC-${uuidv4().substring(0, 8).toUpperCase()}`;
+    const bookingDate = (data.startsAt || new Date().toISOString()).split('T')[0];
+
+    return await withTransaction(async (conn) => {
+      // 1. Validate Branch
+      let finalBranchId = data.branchId || 'branch-elhdad';
+      const branchRows = await queryConn<any[]>(conn, 'SELECT id, name FROM branches WHERE id = ? LIMIT 1', [finalBranchId]);
+      let branchName = 'الحداد - ELHDAD';
+      if (!branchRows || branchRows.length === 0) {
+        const firstBranch = await queryConn<any[]>(conn, 'SELECT id, name FROM branches LIMIT 1');
+        if (firstBranch && firstBranch.length > 0) {
+          finalBranchId = firstBranch[0].id;
+          branchName = firstBranch[0].name;
+        }
+      } else {
+        branchName = branchRows[0].name;
+      }
+
+      // 2. Fetch service & calculate prices
+      let servicePrice = data.servicePrice || 180;
+      let serviceName = data.serviceName || 'خدمة الصالون';
+      const serviceRows = await queryConn<any[]>(conn, 'SELECT id, name, price FROM services WHERE id = ? LIMIT 1', [data.serviceId]);
+      if (serviceRows && serviceRows.length > 0) {
+        servicePrice = Number(serviceRows[0].price);
+        serviceName = serviceRows[0].name;
+      }
+
+      if (data.additionalServiceIds && data.additionalServiceIds.length > 0) {
+        for (const addId of data.additionalServiceIds) {
+          const addSrv = await queryConn<any[]>(conn, 'SELECT price FROM services WHERE id = ? LIMIT 1', [addId]);
+          if (addSrv && addSrv.length > 0) {
+            servicePrice += Number(addSrv[0].price);
+          }
+        }
+      }
+
+      // 3. Products
+      let itemsTotal = 0;
+      const itemsToInsert: any[] = [];
+      if (data.selectedProducts && data.selectedProducts.length > 0) {
+        for (const p of data.selectedProducts) {
+          const prodRows = await queryConn<any[]>(conn, 'SELECT id, name, price FROM products WHERE id = ? LIMIT 1', [p.productId]);
+          if (prodRows && prodRows.length > 0) {
+            const pPrice = Number(prodRows[0].price);
+            itemsTotal += pPrice * p.quantity;
+            itemsToInsert.push({
+              id: uuidv4(),
+              booking_id: bookingId,
+              product_id: prodRows[0].id,
+              name: prodRows[0].name,
+              price_at_booking: pPrice,
+              quantity: p.quantity,
+            });
+          }
+        }
+      }
+
+      // 4. Booking Fee
+      let bookingFee = data.paymentProof?.amount
+        ? Number(data.paymentProof.amount)
+        : (data.bookingType === 'vip' ? 100 : 50);
+
+      // 5. ATOMIC ROW-LOCKED QUEUE NUMBER GENERATION
+      const activeBookings = await queryConn<any[]>(
+        conn,
+        `SELECT queue_number FROM bookings 
+         WHERE branch_id = ? AND booking_date = ? AND status != 'cancelled'
+         ORDER BY queue_number ASC FOR UPDATE`,
+        [finalBranchId, bookingDate]
+      );
+      let assignedQueueNumber = 1;
+      const existingNums = new Set<number>(activeBookings.map((b) => b.queue_number).filter(Boolean));
+      while (existingNums.has(assignedQueueNumber)) {
+        assignedQueueNumber++;
+      }
+
+      // 6. Validate Chair
+      if (data.chairId) {
+        const chairRows = await queryConn<any[]>(conn, 'SELECT id, status FROM chairs WHERE id = ? FOR UPDATE', [data.chairId]);
+        if (chairRows && chairRows.length > 0 && chairRows[0].status === 'offline') {
+          throw new Error('الكرسي المحدد خارج الخدمة حالياً.');
+        }
+      }
+
+      const initialStatus: BookingStatus = data.paymentProof ? 'pending_review' : 'awaiting_payment';
+      const total = servicePrice + itemsTotal;
+
+      let cleanPhone = (data.customerPhone || '').replace(/\D+/g, '');
+      if (cleanPhone.startsWith('20') && cleanPhone.length === 12) {
+        cleanPhone = '0' + cleanPhone.substring(2);
+      }
+
+      // 7. Insert Booking
+      await queryConn(
+        conn,
+        `INSERT INTO bookings (
+          id, customer_id, customer_name, customer_phone, branch_id, barber_id, chair_id,
+          service_id, additional_service_ids, booking_type, status, starts_at, ends_at,
+          booking_date, queue_number, service_price_at_booking, booking_fee_at_booking,
+          discount_at_booking, items_total_at_booking, total_at_booking, secure_token, notes
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [
+          bookingId, actorId || uuidv4(), data.customerName, cleanPhone, finalBranchId,
+          data.barberId || null, data.chairId || null, data.serviceId, JSON.stringify(data.additionalServiceIds || []),
+          data.bookingType, initialStatus, data.startsAt || new Date().toISOString(), data.endsAt || null,
+          bookingDate, assignedQueueNumber, servicePrice, bookingFee, 0, itemsTotal, total, secureToken, data.notes || null,
+        ]
+      );
+
+      for (const item of itemsToInsert) {
+        await queryConn(
+          conn,
+          `INSERT INTO booking_items (id, booking_id, product_id, name, price_at_booking, quantity)
+           VALUES (?, ?, ?, ?, ?, ?)`,
+          [item.id, item.booking_id, item.product_id, item.name, item.price_at_booking, item.quantity]
+        );
+      }
+
+      let proofEntity: any = null;
+      if (data.paymentProof) {
+        proofEntity = {
+          id: uuidv4(),
+          booking_id: bookingId,
+          image_path: data.paymentProof.imagePath || 'data:image/placeholder',
+          payment_method: (data.paymentProof.paymentMethod || 'instapay') as any,
+          sender_phone: data.paymentProof.senderPhone || cleanPhone,
+          transferred_amount: Number(data.paymentProof.amount || bookingFee),
+          status: 'pending_review' as const,
+          submitted_at: new Date().toISOString(),
+        };
+
+        await queryConn(
+          conn,
+          `INSERT INTO payment_proofs (
+            id, booking_id, image_path, payment_method, sender_phone, transferred_amount, status, submitted_at
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+          [
+            proofEntity.id, proofEntity.booking_id, proofEntity.image_path, proofEntity.payment_method,
+            proofEntity.sender_phone, proofEntity.transferred_amount, proofEntity.status, proofEntity.submitted_at,
+          ]
+        );
+      }
+
+      // Fetch Barber Name
+      let barberName = 'كابتن الصالون';
+      if (data.barberId) {
+        const barbRows = await queryConn<any[]>(conn, 'SELECT full_name FROM barbers WHERE id = ? LIMIT 1', [data.barberId]);
+        if (barbRows && barbRows.length > 0) barberName = barbRows[0].full_name;
+      }
+
+      return new Booking(
+        bookingId,
+        actorId || null,
+        data.customerName,
+        cleanPhone,
+        finalBranchId,
+        data.barberId || null,
+        data.chairId || null,
+        data.serviceId,
+        data.additionalServiceIds || [],
+        data.bookingType,
+        initialStatus,
+        data.startsAt || new Date().toISOString(),
+        data.endsAt || null,
+        bookingDate,
+        assignedQueueNumber,
+        servicePrice,
+        bookingFee,
+        0,
+        itemsTotal,
+        total,
+        secureToken,
+        data.notes || null,
+        new Date().toISOString(),
+        itemsToInsert,
+        proofEntity,
+        serviceName,
+        barberName,
+        branchName
+      );
+    });
+  }
+
+  public async findById(bookingId: string): Promise<Booking | null> {
+    const rows = await query<any[]>(
+      `SELECT b.*, 
+              COALESCE(s.name, 'خدمة الصالون') as service_name, 
+              COALESCE(bar.full_name, 'كابتن الصالون') as barber_name,
+              COALESCE(br.name, 'الحداد - ELHDAD') as branch_name
+       FROM bookings b
+       LEFT JOIN services s ON b.service_id = s.id
+       LEFT JOIN barbers bar ON b.barber_id = bar.id
+       LEFT JOIN branches br ON b.branch_id = br.id
+       WHERE b.id = ? LIMIT 1`,
+      [bookingId]
+    );
+    if (!rows || rows.length === 0) return null;
+    const b = rows[0];
+
+    const items = await query<any[]>('SELECT * FROM booking_items WHERE booking_id = ?', [bookingId]);
+    const proofs = await query<any[]>('SELECT * FROM payment_proofs WHERE booking_id = ? LIMIT 1', [bookingId]);
+
+    return new Booking(
+      b.id,
+      b.customer_id,
+      b.customer_name,
+      b.customer_phone,
+      b.branch_id,
+      b.barber_id,
+      b.chair_id,
+      b.service_id,
+      typeof b.additional_service_ids === 'string' ? JSON.parse(b.additional_service_ids || '[]') : b.additional_service_ids || [],
+      b.booking_type,
+      b.status,
+      b.starts_at,
+      b.ends_at,
+      b.booking_date,
+      b.queue_number,
+      Number(b.service_price_at_booking || 180),
+      Number(b.booking_fee_at_booking || 50),
+      Number(b.discount_at_booking || 0),
+      Number(b.items_total_at_booking || 0),
+      Number(b.total_at_booking || 180),
+      b.secure_token,
+      b.notes,
+      b.created_at,
+      items,
+      proofs[0] || null,
+      b.service_name,
+      b.barber_name,
+      b.branch_name
+    );
+  }
+
+  public async findBySecureToken(token: string): Promise<Booking | null> {
+    const rows = await query<any[]>('SELECT id FROM bookings WHERE secure_token = ? LIMIT 1', [token]);
+    if (!rows || rows.length === 0) return null;
+    return this.findById(rows[0].id);
+  }
+
+  public async search(q: string, branchId?: string): Promise<Booking[]> {
+    const clean = q.trim().toLowerCase();
+    const phone = q.replace(/\D+/g, '');
+
+    let sql = `
+      SELECT b.id FROM bookings b
+      WHERE (b.id = ? OR b.customer_phone LIKE ? OR LOWER(b.customer_name) LIKE ? OR b.secure_token = ?)
+    `;
+    const params: any[] = [q, `%${phone}%`, `%${clean}%`, q];
+
+    if (branchId) {
+      sql += ' AND b.branch_id = ?';
+      params.push(branchId);
+    }
+    sql += ' ORDER BY b.created_at DESC LIMIT 20';
+
+    const rows = await query<any[]>(sql, params);
+    const results: Booking[] = [];
+    for (const r of rows) {
+      const b = await this.findById(r.id);
+      if (b) results.push(b);
+    }
+    return results;
+  }
+
+  public async updateStatus(bookingId: string, status: BookingStatus, note?: string, actorId?: string): Promise<Booking> {
+    await query('UPDATE bookings SET status = ?, updated_at = NOW() WHERE id = ?', [status, bookingId]);
+    const b = await this.findById(bookingId);
+    if (!b) throw new Error('Booking not found');
+    return b;
+  }
+
+  public async reviewPaymentProof(bookingId: string, status: 'approved' | 'rejected', reason?: string, reviewerId?: string): Promise<Booking> {
+    const nextStatus: BookingStatus = status === 'approved' ? 'confirmed' : 'rejected';
+    await query(
+      'UPDATE payment_proofs SET status = ?, rejection_reason = ?, reviewed_by = ?, reviewed_at = NOW() WHERE booking_id = ?',
+      [status, reason || null, reviewerId || null, bookingId]
+    );
+    await query('UPDATE bookings SET status = ?, updated_at = NOW() WHERE id = ?', [nextStatus, bookingId]);
+    const b = await this.findById(bookingId);
+    if (!b) throw new Error('Booking not found');
+    return b;
+  }
+
+  public async findOverdueConfirmed(graceMinutes: number): Promise<Booking[]> {
+    const rows = await query<any[]>(
+      `SELECT id FROM bookings
+       WHERE status = 'confirmed'
+         AND starts_at IS NOT NULL
+         AND starts_at < DATE_SUB(NOW(), INTERVAL ? MINUTE)
+         AND no_show_marked_at IS NULL`,
+      [graceMinutes]
+    );
+    const results: Booking[] = [];
+    for (const r of rows) {
+      const b = await this.findById(r.id);
+      if (b) results.push(b);
+    }
+    return results;
+  }
+
+  public async markNoShow(bookingId: string): Promise<void> {
+    await query('UPDATE bookings SET status = "no_show", no_show_marked_at = NOW(), updated_at = NOW() WHERE id = ?', [bookingId]);
+  }
+
+  public async cancel(bookingId: string, reason?: string, actorId?: string): Promise<void> {
+    await query(
+      'UPDATE bookings SET status = "cancelled", cancellation_reason = ?, cancelled_at = NOW(), updated_at = NOW() WHERE id = ?',
+      [reason || 'إلغاء حجز', bookingId]
+    );
+  }
+}

@@ -540,7 +540,7 @@ router.post('/bookings/create-pending', async (req: Request, res: Response) => {
         depositRequired: 50,
         total_at_booking: resolvedPrice,
         totalAmount: resolvedPrice,
-        secure_token: newBooking.secure_token || `TK-${newBooking.id}`,
+        secure_token: (newBooking as any).secure_token || (newBooking as any).secureToken || `TK-${newBooking.id}`,
         created_at: new Date().toISOString(),
         trackingUrl: `https://trimmind.up.railway.app/track?q=${newBooking.id}`,
         paymentInstructions: {
