@@ -223,7 +223,8 @@ router.patch(
         ).catch(() => {});
 
         if (customerPhone) {
-          import('../services/whatsapp.service.js').then(({ sendWhatsAppText }) => {
+          try {
+            const { sendWhatsAppText } = await import('../services/whatsapp.service.js');
             const clientName = booking.customer_name || booking.customerName || 'عزيزنا العميل';
             const totalVal = booking.total_at_booking || booking.totalAmount || 180;
             const depositVal = booking.booking_fee_at_booking || booking.depositRequired || 50;
@@ -232,8 +233,11 @@ router.patch(
             const startsAtFormatted = booking.starts_at ? booking.starts_at.replace('T', ' ').substring(0, 16) : 'اليوم';
 
             const msg = `🎉 *ألف مبروك يا أستاذ ${clientName}!* 👑💈\nتم قبول واعتماد حجزك رقم \`#${booking.id}\` بنجاح في صالون TrimMind (الحداد VIP)!\n\n📋 *تفاصيل الحجز المؤكد:*\n✂️ *الخدمة:* ${booking.service_name || booking.serviceName || 'قص شعر كلاسيكي'}\n💈 *الكابتن:* ${barberName}\n📅 *الميعاد:* ${startsAtFormatted}\n🔢 *رقم الدور:* رقم #${booking.queue_number || booking.queueNumber || 1} في طابور الصالون\n\n💵 *تفاصيل الفاتورة والحساب:*\n• إجمالي الفاتورة: ${totalVal} ج.م\n• العربون المسدد: ${depositVal} ج.م ✓\n• المتبقي للدفع بالصالون: *${remainingVal} ج.م*\n\n📍 *رابط متابعة دورك لحظة بلحظة:*\nhttps://trimmind.up.railway.app/track?q=${booking.id}\n\nيرجى الحضور في الميعاد المحدد، وأول ما يقرب دورك هنبعتلك تذكير فوري لتجهيز الكرسي لك! نتشرف بزيارتك 💈✨`;
-            sendWhatsAppText(customerPhone, msg).catch((e) => console.error('WA Confirmed Send Error:', e));
-          }).catch(() => {});
+            await sendWhatsAppText(customerPhone, msg);
+            console.log('WA Confirmed Status sent successfully to:', customerPhone);
+          } catch (e) {
+            console.error('WA Confirmed Send Error:', e);
+          }
         }
       }
 
@@ -414,24 +418,31 @@ router.patch('/:id/payment-proof', optionalAuth, async (req: AuthenticatedReques
       ).catch(() => {});
 
       if (customerPhone) {
-        import('../services/whatsapp.service.js').then(({ sendWhatsAppText }) => {
+        try {
+          const { sendWhatsAppText } = await import('../services/whatsapp.service.js');
           const clientName = booking.customer_name || booking.customerName || 'عزيزنا العميل';
           const totalVal = booking.total_at_booking || booking.totalAmount || 180;
           const depositVal = booking.booking_fee_at_booking || booking.depositRequired || 50;
           const remainingVal = Math.max(0, totalVal - depositVal);
-          const barberName = booking.barber_name || booking.barberName || 'كابتن الصالون';
-          const startsAtFormatted = booking.starts_at ? booking.starts_at.replace('T', ' ').substring(0, 16) : 'موعد فوري';
+          const barberName = booking.barber_name || booking.barberName || 'محمد الحداد';
+          const startsAtFormatted = booking.starts_at ? booking.starts_at.replace('T', ' ').substring(0, 16) : 'اليوم';
 
-          const msg = `🎉 *ألف مبروك يا أستاذ ${clientName}!* 👑💈\nتم قبول واعتماد حجزك رقم \`#${booking.id}\` بنجاح في صالون TrimMind (الحداد VIP)!\n\n📋 *تفاصيل الحجز المؤكد:* \n✂️ *الخدمة:* ${booking.service_name || booking.serviceName || 'خدمة الصالون'}\n💈 *الكابتن:* ${barberName}\n📅 *الميعاد المحدد:* ${startsAtFormatted}\n🔢 *رقم الدور:* رقم #${booking.queue_number || booking.queueNumber || 1} في طابور اليوم\n\n💵 *تفاصيل الفاتورة والحساب:* \n• إجمالي الفاتورة: ${totalVal} ج.م\n• العربون المسدد: ${depositVal} ج.م ✓\n• المتبقي للدفع بالصالون: *${remainingVal} ج.م*\n\n📍 *رابط متابعة دورك لحظة بلحظة:* \nhttps://trimmind.up.railway.app/track?q=${booking.id}\n\nيرجى الحضور في الميعاد المحدد، وأول ما يقرب دورك هنبعتلك تذكير فوري لتجهيز الكرسي لك! نتشرف بزيارتك 💈✨`;
-          sendWhatsAppText(customerPhone, msg).catch((e) => console.error('WA Send Error:', e));
-        }).catch(() => {});
+          const msg = `🎉 *ألف مبروك يا أستاذ ${clientName}!* 👑💈\nتم قبول واعتماد حجزك رقم \`#${booking.id}\` بنجاح في صالون TrimMind (الحداد VIP)!\n\n📋 *تفاصيل الحجز المؤكد:*\n✂️ *الخدمة:* ${booking.service_name || booking.serviceName || 'قص شعر كلاسيكي'}\n💈 *الكابتن:* ${barberName}\n📅 *الميعاد:* ${startsAtFormatted}\n🔢 *رقم الدور:* رقم #${booking.queue_number || booking.queueNumber || 1} في طابور الصالون\n\n💵 *تفاصيل الفاتورة والحساب:*\n• إجمالي الفاتورة: ${totalVal} ج.م\n• العربون المسدد: ${depositVal} ج.م ✓\n• المتبقي للدفع بالصالون: *${remainingVal} ج.م*\n\n📍 *رابط متابعة دورك لحظة بلحظة:*\nhttps://trimmind.up.railway.app/track?q=${booking.id}\n\nيرجى الحضور في الميعاد المحدد، وأول ما يقرب دورك هنبعتلك تذكير فوري لتجهيز الكرسي لك! نتشرف بزيارتك 💈✨`;
+          await sendWhatsAppText(customerPhone, msg);
+          console.log('WA Proof Approved message sent successfully to:', customerPhone);
+        } catch (e) {
+          console.error('WA Proof Send Error:', e);
+        }
       }
     } else if (status === 'rejected' && customerPhone) {
-      import('../services/whatsapp.service.js').then(({ sendWhatsAppText }) => {
+      try {
+        const { sendWhatsAppText } = await import('../services/whatsapp.service.js');
         const clientName = booking.customer_name || booking.customerName || 'عزيزنا العميل';
         const msg = `عزيزنا ${clientName}، نعتذر منك، لم يتم اعتماد إيصال التحويل للحجز رقم #${booking.id}.\nالسبب: ${reason || 'المبلغ أو الصورة غير واضحة'}\nيرجى التواصل مع إدارة الصالون أو إعادة إرسال الإيصال. 💈`;
-        sendWhatsAppText(customerPhone, msg).catch(() => {});
-      }).catch(() => {});
+        await sendWhatsAppText(customerPhone, msg);
+      } catch (e) {
+        console.error('WA Reject Send Error:', e);
+      }
     }
 
     broadcastToBranch(booking.branch_id || 'branch-elhdad', 'PAYMENT_PROOF_REVIEWED', {
