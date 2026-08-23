@@ -8,7 +8,12 @@ import { broadcastToBranch, broadcastGlobal } from '../socket/realtime.js';
 const router = Router();
 
 // 1. Security & Authentication Middleware for Agent Tools
-const AGENT_API_SECRET = process.env.AGENT_API_SECRET || process.env.WHATSAPP_AGENT_SECRET || 'trim-mind-agent-secret-key-2026';
+const AGENT_API_SECRET =
+  process.env.AGENT_API_SECRET ||
+  process.env.WHATSAPP_AGENT_SECRET ||
+  (process.env.NODE_ENV === 'production'
+    ? (() => { throw new Error('AGENT_API_SECRET must be configured in environment'); })()
+    : 'trim-mind-agent-secret-key-2026');
 
 function requireAgentAuth(req: Request, res: Response, next: NextFunction): void {
   const secretHeader = req.headers['x-agent-secret'] || req.headers['x-api-key'];
@@ -552,61 +557,12 @@ router.post('/bookings/create-pending', async (req: Request, res: Response) => {
 
       liveSyncedBookings.unshift(bookingData);
 
-      return res.status(201).json({
-        success: true,
-        message: 'تم إنشاء الحجز المبدئي بنجاح.',
-        data: bookingData,
-      });
-    } catch (dbErr) {
-      // Graceful fallback response if MySQL row insertion has constraint or table state
-      let branchRow = (await query<any[]>('SELECT * FROM branches WHERE id = ?', [finalBranchId]))?.[0];
-      if (!branchRow) {
-        branchRow = (await query<any[]>('SELECT * FROM branches LIMIT 1'))?.[0];
-      }
-      const instapayHandle = branchRow?.instapay_username || liveSyncedState.settings?.instapay_username || branchRow?.phone || '01285694670';
-      const vodafoneCashNumber = branchRow?.vodafone_cash_number || liveSyncedState.settings?.vodafone_cash_number || branchRow?.phone || '01285694689';
-
-      const fallbackBooking = {
-        id: bookingId,
-        bookingId: bookingId,
-        customer_name: finalCustomerName,
-        customerName: finalCustomerName,
-        customer_phone: cleanPhone,
-        customerPhone: cleanPhone,
-        service_id: matchedService.id,
-        service_name: resolvedServiceName,
-        serviceName: resolvedServiceName,
-        booking_type: resolvedBookingType,
-        bookingType: resolvedBookingType,
-        barber_id: barberId || 'barber-lead',
-        barber_name: 'كابتن الصالون الرئيسي',
-        branch_id: finalBranchId,
-        branch_name: branchRow?.name || 'الحداد - ELHDAD',
-        status: 'awaiting_payment',
-        queue_number: nextQueueNum,
-        queueNumber: nextQueueNum,
-        starts_at: finalStartsAt,
-        startsAt: finalStartsAt,
-        depositRequired: 50,
-        booking_fee_at_booking: 50,
-        totalAmount: resolvedPrice,
-        total_at_booking: resolvedPrice,
-        secure_token: `TK-${bookingId}`,
-        created_at: new Date().toISOString(),
-        trackingUrl: `https://trimmind.up.railway.app/track?q=${bookingId}`,
-        paymentInstructions: {
-          instapay: instapayHandle,
-          vodafoneCash: vodafoneCashNumber,
-          depositRequired: 50,
-        },
-      };
-
-      liveSyncedBookings.unshift(fallbackBooking);
-
-      return res.status(201).json({
-        success: true,
-        message: 'تم إنشاء الحجز المبدئي بنجاح.',
-        data: fallbackBooking,
+    } catch (dbErr: any) {
+      console.error('Database error in /bookings/create-pending:', dbErr);
+      return res.status(500).json({
+        success: false,
+        error: 'تعذر تسجيل الحجز في قاعدة البيانات، يرجى إعادة المحاولة.',
+        details: dbErr?.message || 'DB Error',
       });
     }
   } catch (err: any) {
@@ -775,15 +731,22 @@ router.post('/bookings/cancel', async (req: Request, res: Response) => {
 
     if (bookingId) {
       booking = await getBookingById(bookingId.trim().toUpperCase());
+      if (booking && cleanPhone) {
+        const bPhone = normalizePhone(booking.customer_phone);
+        if (bPhone !== cleanPhone && !bPhone.endsWith(cleanPhone.slice(-9))) {
+          return res.status(403).json({ success: false, error: 'رقم الهاتف غير مطابق لبيانات الحجز المطلوب إلغاؤه.' });
+        }
+      }
     } else if (cleanPhone) {
       // Find latest active booking by phone
       try {
         const rows = await query<any[]>(
           `SELECT id FROM bookings 
-           WHERE REPLACE(REPLACE(customer_phone, ' ', ''), '+', '') LIKE ? 
+           WHERE (REPLACE(REPLACE(customer_phone, ' ', ''), '+', '') = ? 
+              OR customer_phone LIKE ?)
              AND status NOT IN ('cancelled', 'completed', 'rejected')
            ORDER BY created_at DESC LIMIT 1`,
-          [`%${cleanPhone.slice(-8)}%`]
+          [cleanPhone, `%${cleanPhone.slice(-9)}`]
         );
         if (rows && rows.length > 0) {
           booking = await getBookingById(rows[0].id);
@@ -793,18 +756,17 @@ router.post('/bookings/cancel', async (req: Request, res: Response) => {
       if (!booking) {
         booking = liveSyncedBookings.find(
           (b) =>
-            ((b.customer_phone && b.customer_phone.includes(cleanPhone.slice(-8))) ||
-             (b.customerPhone && b.customerPhone.includes(cleanPhone.slice(-8)))) &&
+            ((b.customer_phone && normalizePhone(b.customer_phone) === cleanPhone) ||
+             (b.customerPhone && normalizePhone(b.customerPhone) === cleanPhone)) &&
             b.status !== 'cancelled' && b.status !== 'completed'
         );
       }
     }
 
     if (!booking) {
-      return res.json({
-        success: true,
-        message: 'تم إلغاء أي حجز معلق مرتبط برقمك بنجاح.',
-        data: { status: 'cancelled' }
+      return res.status(404).json({
+        success: false,
+        error: 'لم يتم العثور على أي حجز نشط مرتبط برقمك لإلغائه.',
       });
     }
 
@@ -936,7 +898,7 @@ router.post('/bookings/reschedule', async (req: Request, res: Response) => {
 
     // Security Ownership Check
     const storedPhoneClean = normalizePhone(booking.customer_phone);
-    if (!storedPhoneClean.endsWith(cleanPhone.slice(-8))) {
+    if (storedPhoneClean !== cleanPhone && !storedPhoneClean.endsWith(cleanPhone.slice(-9))) {
       return res.status(403).json({
         success: false,
         error: 'رقم الهاتف غير مطابق لبيانات الحجز.',

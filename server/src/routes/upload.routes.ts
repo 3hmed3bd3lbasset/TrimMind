@@ -13,22 +13,32 @@ if (!fs.existsSync(uploadDir)) {
   fs.mkdirSync(uploadDir, { recursive: true });
 }
 
+const MIME_TO_EXT: Record<string, string> = {
+  'image/jpeg': '.jpg',
+  'image/jpg': '.jpg',
+  'image/png': '.png',
+  'image/webp': '.webp',
+};
+
 // Multer Storage Configuration
 const storage = multer.diskStorage({
   destination: (_req, _file, cb) => {
     cb(null, uploadDir);
   },
   filename: (_req, file, cb) => {
-    const ext = path.extname(file.originalname).toLowerCase();
-    const safeName = `proof_${Date.now()}_${uuidv4().slice(0, 8)}${ext}`;
+    const safeExt = MIME_TO_EXT[file.mimetype.toLowerCase()] || '.jpg';
+    const safeName = `proof_${Date.now()}_${uuidv4().slice(0, 8)}${safeExt}`;
     cb(null, safeName);
   },
 });
 
 // File filter (Only JPEG, PNG, WEBP allowed)
 const fileFilter: multer.Options['fileFilter'] = (_req, file, cb) => {
-  const allowedMimes = ['image/jpeg', 'image/png', 'image/webp', 'image/jpg'];
-  if (allowedMimes.includes(file.mimetype)) {
+  const allowedMimes = Object.keys(MIME_TO_EXT);
+  const origExt = path.extname(file.originalname).toLowerCase();
+  const allowedExts = ['.jpg', '.jpeg', '.png', '.webp'];
+
+  if (allowedMimes.includes(file.mimetype.toLowerCase()) && (allowedExts.includes(origExt) || origExt === '')) {
     cb(null, true);
   } else {
     cb(new Error('صيغة الملف غير مدعومة. يرجى رفع صورة بصيغة PNG أو JPG أو WEBP فقط.'));

@@ -51,3 +51,16 @@ export const uploadLimiter = rateLimit({
     error: 'تم تجاوز الحد المسموح لرفع الملفات والصور. يرجى المحاولة لاحقاً.',
   },
 });
+
+// AI Chat Limiter (Anti-Spam & Cost Protection)
+export const aiLimiter = rateLimit({
+  windowMs: 1 * 60 * 1000, // 1 minute
+  max: 30, // Max 30 AI queries per minute per IP
+  standardHeaders: true,
+  legacyHeaders: false,
+  validate: { xForwardedForHeader: false },
+  message: {
+    success: false,
+    error: 'تم تجاوز الحد المسموح من استفسارات المساعد الذكي. يرجى الانتظار دقيقة والمحاولة مجدداً.',
+  },
+});

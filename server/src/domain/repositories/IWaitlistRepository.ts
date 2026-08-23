@@ -17,5 +17,5 @@ export interface IWaitlistRepository {
   findByOfferToken(token: string): Promise<WaitlistEntry | null>;
   findNextCandidate(branchId: string, barberId?: string | null, date?: string): Promise<WaitlistEntry | null>;
   updateOffer(id: string, token: string, expiresAt: Date): Promise<void>;
-  markClaimed(id: string, bookingId: string): Promise<void>;
+  markClaimed(id: string, bookingId: string): Promise<boolean>;
 }

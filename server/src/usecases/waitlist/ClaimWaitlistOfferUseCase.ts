@@ -26,7 +26,12 @@ export class ClaimWaitlistOfferUseCase {
       notes: `تم الحجز عبر قائمة الانتظار الذكية (عرض رقم ${token.toUpperCase()})`,
     });
 
-    await this.waitlistRepo.markClaimed(entry.id, booking.id);
+    const claimed = await this.waitlistRepo.markClaimed(entry.id, booking.id);
+    if (!claimed) {
+      // Rollback booking if already claimed concurrently
+      await this.bookingRepo.cancel(booking.id, 'إلغاء بسبب حجز العرض مسبقاً من طرف آخر');
+      throw new Error('عذراً، تم حجز هذا العرض مسبقاً.');
+    }
 
     this.realtimeNotifier.broadcastToBranch(entry.branchId, 'WAITLIST_UPDATED', { id: entry.id, status: 'claimed' });
     this.realtimeNotifier.broadcastGlobal('SYNC_STATE', { type: 'WAITLIST_CLAIMED', entryId: entry.id });

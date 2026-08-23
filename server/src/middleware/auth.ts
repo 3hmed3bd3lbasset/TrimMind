@@ -18,7 +18,11 @@ export interface AuthenticatedRequest extends Request {
   user?: AuthUser;
 }
 
-const JWT_SECRET = process.env.JWT_SECRET || 'fallback_dev_secret_only_change_in_prod_123456789';
+const JWT_SECRET =
+  process.env.JWT_SECRET ||
+  (process.env.NODE_ENV === 'production'
+    ? (() => { throw new Error('JWT_SECRET environment variable is strictly required in production mode'); })()
+    : 'fallback_dev_secret_only_change_in_prod_123456789');
 
 export async function requireAuth(req: AuthenticatedRequest, res: Response, next: NextFunction) {
   try {

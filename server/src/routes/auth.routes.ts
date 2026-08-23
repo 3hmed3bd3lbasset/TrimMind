@@ -120,8 +120,16 @@ router.patch('/profiles/:id', requireAuth, requireRoles('manager'), async (req: 
     if (email !== undefined) { fields.push('email = ?'); values.push(email); }
     if (role !== undefined) { fields.push('role = ?'); values.push(role); }
     if (branch_id !== undefined) { fields.push('branch_id = ?'); values.push(branch_id); }
-    if (barber_id !== undefined) { fields.push('barber_id = ?'); values.push(barber_id); }
-    if (is_super_admin !== undefined) { fields.push('is_super_admin = ?'); values.push(is_super_admin ? 1 : 0); }
+    if (is_super_admin !== undefined) {
+      if (!req.user?.is_super_admin) {
+        return res.status(403).json({
+          success: false,
+          error: 'تعديل صلاحية المدير العام يتطلب حساب مدير عام رئيسي حصراً',
+        });
+      }
+      fields.push('is_super_admin = ?');
+      values.push(is_super_admin ? 1 : 0);
+    }
     if (is_active !== undefined) { fields.push('is_active = ?'); values.push(is_active ? 1 : 0); }
     if (password) {
       const hash = await hashPassword(password);

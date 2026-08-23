@@ -100,10 +100,11 @@ export class MySQLWaitlistRepository implements IWaitlistRepository {
     );
   }
 
-  public async markClaimed(id: string, bookingId: string): Promise<void> {
-    await query(
-      'UPDATE waitlist_entries SET status = "claimed", claimed_booking_id = ? WHERE id = ?',
+  public async markClaimed(id: string, bookingId: string): Promise<boolean> {
+    const result: any = await query(
+      'UPDATE waitlist_entries SET status = "claimed", claimed_booking_id = ? WHERE id = ? AND status = "offered"',
       [bookingId, id]
     );
+    return Boolean(result && result.affectedRows > 0);
   }
 }

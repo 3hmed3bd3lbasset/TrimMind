@@ -16,12 +16,24 @@ const allowedOrigins = [
 
 export const corsMiddleware: RequestHandler = cors({
   origin: (origin, callback) => {
-    // Allow requests without origin (same-origin, static files, curl)
+    // Allow requests without origin (same-origin, static files, curl, mobile apps)
     if (!origin) {
       return callback(null, true);
     }
-    // Allow localhost, railway domains, or any client
-    callback(null, true);
+    
+    // Check against allowed origins list or railway/local dev domains
+    const isAllowed =
+      allowedOrigins.includes(origin) ||
+      origin.endsWith('.railway.app') ||
+      origin.endsWith('.up.railway.app') ||
+      origin.includes('localhost') ||
+      origin.includes('127.0.0.1');
+
+    if (isAllowed) {
+      return callback(null, true);
+    }
+
+    return callback(new Error(`CORS Error: Origin ${origin} is not allowed`));
   },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],

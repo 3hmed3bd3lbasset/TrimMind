@@ -1,5 +1,8 @@
 import { Router, Request, Response } from 'express';
 
+import { optionalAuth, AuthenticatedRequest } from '../middleware/auth.js';
+import { aiLimiter } from '../middleware/rateLimiter.js';
+
 const router = Router();
 
 const ROLE_KEYS: Record<string, string> = {
@@ -11,15 +14,28 @@ const ROLE_KEYS: Record<string, string> = {
 
 const candidateModels = ['gemini-flash-lite-latest', 'gemini-2.5-flash-lite', 'gemini-flash-latest'];
 
-router.post('/chat', async (req: Request, res: Response): Promise<void> => {
+const SYSTEM_PROMPT_TEMPLATES: Record<string, string> = {
+  customer: 'أنت المساعد الذكي لصالون الحلاقة الراقي TrimMind. وظيفتك الإجابة عن استفسارات العملاء حول الخدمات والمواعيد والعناوين بأسلوب مهذب ومرحب واحترافي.',
+  barber: 'أنت المساعد الذكي لكابتن الحلاقة في صالون TrimMind. ساعد في إدارة المواعيد والخدمات والعملاء.',
+  receptionist: 'أنت المساعد الذكي لموظف الاستقبال في صالون TrimMind. ساعد في تنظيم الطابور والحجوزات ومراجعة الإيصالات.',
+  manager: 'أنت المساعد التحليلي لمدير صالون TrimMind. قدم تحليلات وتقارير مالية وتوصيات إدارية دقيقة.',
+};
+
+router.post('/chat', aiLimiter, optionalAuth, async (req: AuthenticatedRequest, res: Response): Promise<void> => {
   try {
-    const { role = 'customer', systemInstruction, contents } = req.body;
-    const apiKey = ROLE_KEYS[role] || ROLE_KEYS.customer;
+    const { contents, customContext } = req.body;
+
+    // Server-enforced role: Only authenticated users can use staff roles
+    const effectiveRole = req.user ? req.user.role : 'customer';
+    const apiKey = ROLE_KEYS[effectiveRole] || ROLE_KEYS.customer;
 
     if (!contents || !Array.isArray(contents) || contents.length === 0) {
-      res.status(400).json({ error: 'Contents array is required' });
+      res.status(400).json({ success: false, error: 'Contents array is required' });
       return;
     }
+
+    const baseSystemPrompt = SYSTEM_PROMPT_TEMPLATES[effectiveRole] || SYSTEM_PROMPT_TEMPLATES.customer;
+    const finalSystemPrompt = customContext ? `${baseSystemPrompt}\n\nسياق إضافي للصالون: ${String(customContext).slice(0, 500)}` : baseSystemPrompt;
 
     let responseText = '';
 
@@ -28,12 +44,12 @@ router.post('/chat', async (req: Request, res: Response): Promise<void> => {
       try {
         const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
         
-        const payload: any = { contents };
-        if (systemInstruction) {
-          payload.systemInstruction = {
-            parts: [{ text: systemInstruction }],
-          };
-        }
+        const payload: any = {
+          contents,
+          systemInstruction: {
+            parts: [{ text: finalSystemPrompt }],
+          },
+        };
 
         const apiRes = await fetch(url, {
           method: 'POST',
