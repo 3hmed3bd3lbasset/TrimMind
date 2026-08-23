@@ -17,7 +17,7 @@ const AGENT_API_SECRET =
   'trim-mind-agent-secret-key-2026';
 
 function requireManagerOrAgent(req: Request, res: Response, next: any) {
-  const secretHeader = req.headers['x-agent-secret'] || req.headers['x-api-key'];
+  const secretHeader = req.headers['x-agent-secret'] || req.headers['x-api-key'] || (req.query as any)?.secret || (req.query as any)?.key;
   const authHeader = req.headers['authorization'];
   const bearerToken = authHeader?.startsWith('Bearer ') ? authHeader.substring(7) : null;
   const providedKey = (secretHeader as string) || bearerToken;
