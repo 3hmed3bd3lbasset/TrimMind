@@ -97,6 +97,10 @@ export const BookingRevenuesManager: React.FC = () => {
       }
 
       return true;
+    }).sort((a, b) => {
+      const timeA = new Date(a.created_at || a.starts_at || 0).getTime();
+      const timeB = new Date(b.created_at || b.starts_at || 0).getTime();
+      return timeB - timeA;
     });
   }, [bookings, selectedBranchId, selectedMethod, dateFilter, searchQuery]);
 
@@ -378,12 +382,12 @@ export const BookingRevenuesManager: React.FC = () => {
                 <div className="grid grid-cols-2 gap-2 text-xs">
                   <div>
                     <span className="text-[10px] text-ink-mute block">العميل:</span>
-                    <p className="font-serif font-bold text-ink text-xs truncate">{b.customer_name}</p>
+                    <p className="font-serif font-bold text-ink text-xs truncate">{b.customer_name || (b as any).customerName || 'عميل محترم'}</p>
                     <p className="text-[10.5px] text-ink-mute font-mono">{b.customer_phone}</p>
                   </div>
                   <div>
                     <span className="text-[10px] text-ink-mute block">الخدمة والفرع:</span>
-                    <p className="font-bold text-forest text-xs truncate">{primarySrv?.name || 'خدمة حلاقة'}</p>
+                    <p className="font-bold text-forest text-xs truncate">{b.service_name || primarySrv?.name || (b as any).serviceName || 'خدمة حلاقة'}</p>
                     <p className="text-[10px] text-ink-soft truncate">{branch?.name}</p>
                   </div>
                 </div>
@@ -501,13 +505,13 @@ export const BookingRevenuesManager: React.FC = () => {
 
                       {/* Customer */}
                       <td className="py-3.5 px-4">
-                        <p className="font-serif font-bold text-ink">{b.customer_name}</p>
+                        <p className="font-serif font-bold text-ink">{b.customer_name || (b as any).customerName || 'عميل محترم'}</p>
                         <p className="text-[11px] text-ink-mute font-mono">{b.customer_phone}</p>
                       </td>
 
                       {/* Service & Branch */}
                       <td className="py-3.5 px-4">
-                        <p className="font-bold text-ink">{primarySrv?.name || 'خدمة حلاقة'}</p>
+                        <p className="font-bold text-ink">{b.service_name || primarySrv?.name || (b as any).serviceName || 'خدمة حلاقة'}</p>
                         <span className="text-[10.5px] text-ink-soft block">{branch?.name}</span>
                       </td>
 

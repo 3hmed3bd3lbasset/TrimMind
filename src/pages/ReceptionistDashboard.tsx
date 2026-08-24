@@ -105,12 +105,13 @@ export default function ReceptionistDashboard() {
             return {
               id: b.id || b.bookingId,
               customer_id: b.customer_id || 'usr-remote',
-              customer_name: b.customer_name || b.customerName || 'عميل الصالون',
+              customer_name: b.customer_name || b.customerName || 'عميل محترم',
               customer_phone: b.customer_phone || b.customerPhone || '',
               branch_id: b.branch_id || b.branchId || branchId,
               barber_id: b.barber_id || b.barberId || null,
               chair_id: b.chair_id || b.chairId || null,
-              service_id: b.service_id || b.serviceId || 'srv-haircut',
+              service_id: b.service_id || b.serviceId || matchedSrv?.id || 'srv-haircut',
+              service_name: b.service_name || b.serviceName || matchedSrv?.name,
               booking_type: b.booking_type || 'normal',
               status: b.status || 'pending_review',
               starts_at: b.starts_at || b.startsAt || new Date().toISOString(),
@@ -133,7 +134,11 @@ export default function ReceptionistDashboard() {
           const merged = [
             ...remoteBookings,
             ...currentLocal.filter((l) => !remoteBookings.some((r) => r.id === l.id)),
-          ];
+          ].sort((a, b) => {
+            const timeA = new Date(a.created_at || a.starts_at || 0).getTime();
+            const timeB = new Date(b.created_at || b.starts_at || 0).getTime();
+            return timeB - timeA;
+          });
           useSalonStore.setState({ bookings: merged });
         }
       } catch (err) {}

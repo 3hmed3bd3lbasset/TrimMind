@@ -63,14 +63,20 @@ export const BookingsTable: React.FC<BookingsTableProps> = ({ branchId }) => {
       !b.branch_id
   );
 
-  const filteredBookings = branchBookings.filter((b) => {
-    const matchesStatus = filterStatus === 'all' || b.status === filterStatus;
-    const matchesSearch =
-      b.id.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      b.customer_name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      b.customer_phone.includes(searchQuery);
-    return matchesStatus && matchesSearch;
-  });
+  const filteredBookings = branchBookings
+    .filter((b) => {
+      const matchesStatus = filterStatus === 'all' || b.status === filterStatus;
+      const matchesSearch =
+        b.id.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        (b.customer_name || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
+        (b.customer_phone || '').includes(searchQuery);
+      return matchesStatus && matchesSearch;
+    })
+    .sort((a, b) => {
+      const timeA = new Date(a.created_at || a.starts_at || 0).getTime();
+      const timeB = new Date(b.created_at || b.starts_at || 0).getTime();
+      return timeB - timeA;
+    });
 
   const handleStatusChange = (bookingId: string, newStatus: BookingStatus) => {
     transitionBookingStatus(bookingId, newStatus, `تغيير الحالة يدوياً إلى ${newStatus}`);
@@ -249,7 +255,7 @@ export const BookingsTable: React.FC<BookingsTableProps> = ({ branchId }) => {
               {/* Service & Total Box */}
               <div className="p-2.5 bg-paper-warm/80 rounded-xl border border-border flex items-center justify-between">
                 <div>
-                  <p className="font-bold text-ink text-xs">{primarySrv?.name || (b as any).service_name || (b as any).serviceName || 'قص شعر كلاسيكي'}</p>
+                  <p className="font-bold text-ink text-xs">{b.service_name || primarySrv?.name || (b as any).serviceName || 'قص وتصفيف كلاسيكي'}</p>
                   {b.custom_line_items && b.custom_line_items.length > 0 ? (
                     <p className="text-[10px] text-forest font-semibold">
                       {b.custom_line_items.length} بنود مخصصة بالفاتورة
@@ -374,7 +380,7 @@ export const BookingsTable: React.FC<BookingsTableProps> = ({ branchId }) => {
 
                     <td className="py-3.5 px-4 max-w-xs">
                       <div>
-                        <p className="font-bold text-ink">{primarySrv?.name || (b as any).service_name || (b as any).serviceName || 'قص شعر كلاسيكي'}</p>
+                        <p className="font-bold text-ink">{b.service_name || primarySrv?.name || (b as any).serviceName || 'قص وتصفيف كلاسيكي'}</p>
                         {b.ai_brief ? (
                           <p className="text-[10.5px] text-emerald-800 bg-emerald-50/80 p-1.5 rounded-lg border border-emerald-200/60 mt-1 line-clamp-2" title={b.ai_brief}>
                             💡 {b.ai_brief}

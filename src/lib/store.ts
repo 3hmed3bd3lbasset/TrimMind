@@ -933,6 +933,24 @@ export const useSalonStore = create<SalonStore>()(
         };
 
         set({ bookings: updatedBookings, auditLogs: [newLog, ...auditLogs] });
+        broadcastEvent('SYNC_STATE');
+
+        // Persist update to backend server immediately
+        const primaryService = services.find((s) => s.id === (payload.serviceId || target.service_id));
+        fetch(`/api/bookings/${encodeURIComponent(bookingId)}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            serviceId: payload.serviceId || target.service_id,
+            serviceName: primaryService?.name,
+            additionalServiceIds: addIds,
+            servicePrice: newServicePrice + additionalServicesTotal,
+            totalAmount: newTotal,
+            discount: discount,
+            notes: payload.notes !== undefined ? payload.notes : target.notes,
+            items: currentItems,
+          }),
+        }).catch((err) => console.warn('Failed to persist booking update to server:', err?.message));
       },
 
       addBookingItem: (bookingId, productId, quantity = 1) => {

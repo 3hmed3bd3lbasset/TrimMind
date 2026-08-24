@@ -126,7 +126,147 @@ router.get('/', async (req: AuthenticatedRequest, res: Response) => {
       ...liveSyncedBookings.filter((m) => !detailed.some((d) => d && d.id === m.id) && !pBookings.some((p) => p && p.id === m.id)),
     ];
 
+    // Sort strictly from newest to oldest
+    merged.sort((a, b) => {
+      const timeA = new Date(a.created_at || a.starts_at || 0).getTime();
+      const timeB = new Date(b.created_at || b.starts_at || 0).getTime();
+      return timeB - timeA;
+    });
+
     return res.json({ success: true, data: merged });
+  } catch (error: any) {
+    return res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// PATCH /api/bookings/:id (Update Booking details, services, prices, invoice)
+router.patch('/:id', optionalAuth, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const bookingId = req.params.id;
+    const {
+      serviceId,
+      service_id,
+      serviceName,
+      service_name,
+      additionalServiceIds,
+      additional_service_ids,
+      servicePrice,
+      service_price_at_booking,
+      totalAmount,
+      total_at_booking,
+      discount,
+      discount_at_booking,
+      customerName,
+      customer_name,
+      customerPhone,
+      customer_phone,
+      barberId,
+      barber_id,
+      barberName,
+      barber_name,
+      notes,
+      status,
+      items,
+      customLineItems,
+      custom_line_items,
+    } = req.body;
+
+    const finalServiceId = serviceId || service_id;
+    const finalServiceName = serviceName || service_name;
+    const finalAdditionalIds = additionalServiceIds || additional_service_ids || [];
+    const finalTotal = Number(totalAmount !== undefined ? totalAmount : (total_at_booking !== undefined ? total_at_booking : undefined));
+    const finalDiscount = Number(discount !== undefined ? discount : (discount_at_booking !== undefined ? discount_at_booking : 0));
+    const finalCustomerName = customerName || customer_name;
+    const finalCustomerPhone = customerPhone || customer_phone;
+    const finalBarberId = barberId || barber_id;
+    const finalBarberName = barberName || barber_name;
+
+    let booking = await getBookingById(bookingId).catch(() => null);
+    if (!booking) {
+      const pBookings = getPersistentDb().bookings || [];
+      booking = pBookings.find((b) => b.id === bookingId || b.bookingId === bookingId);
+    }
+    if (!booking) {
+      booking = liveSyncedBookings.find((b) => b.id === bookingId);
+    }
+
+    const updatedTotal = !isNaN(finalTotal) ? finalTotal : (booking?.total_at_booking || 180);
+    const updatedCustName = finalCustomerName || booking?.customer_name || booking?.customerName || 'عميل محترم';
+    const updatedCustPhone = finalCustomerPhone || booking?.customer_phone || booking?.customerPhone || '';
+    const updatedSrvName = finalServiceName || booking?.service_name || booking?.serviceName;
+    const updatedBarberName = finalBarberName || booking?.barber_name || booking?.barberName;
+
+    // 1. Update in MySQL
+    await query(
+      `UPDATE bookings 
+       SET customer_name = COALESCE(?, customer_name),
+           customer_phone = COALESCE(?, customer_phone),
+           service_id = COALESCE(?, service_id),
+           service_name = COALESCE(?, service_name),
+           additional_service_ids = ?,
+           total_at_booking = ?,
+           service_price_at_booking = ?,
+           discount_at_booking = ?,
+           barber_id = COALESCE(?, barber_id),
+           barber_name = COALESCE(?, barber_name),
+           notes = COALESCE(?, notes),
+           status = COALESCE(?, status),
+           custom_line_items = ?,
+           updated_at = NOW()
+       WHERE id = ?`,
+      [
+        finalCustomerName || null,
+        finalCustomerPhone || null,
+        finalServiceId || null,
+        updatedSrvName || null,
+        JSON.stringify(finalAdditionalIds),
+        updatedTotal,
+        Number(servicePrice || service_price_at_booking || updatedTotal),
+        finalDiscount,
+        finalBarberId || null,
+        updatedBarberName || null,
+        notes || null,
+        status || null,
+        customLineItems || custom_line_items ? JSON.stringify(customLineItems || custom_line_items) : null,
+        bookingId,
+      ]
+    ).catch(() => {});
+
+    // 2. Update persistent DB
+    const updatedObj = {
+      ...(booking || {}),
+      id: bookingId,
+      customer_name: updatedCustName,
+      customerName: updatedCustName,
+      customer_phone: updatedCustPhone,
+      customerPhone: updatedCustPhone,
+      service_id: finalServiceId || booking?.service_id,
+      service_name: updatedSrvName,
+      additional_service_ids: finalAdditionalIds,
+      service_price_at_booking: Number(servicePrice || service_price_at_booking || updatedTotal),
+      total_at_booking: updatedTotal,
+      discount_at_booking: finalDiscount,
+      barber_id: finalBarberId || booking?.barber_id,
+      barber_name: updatedBarberName,
+      notes: notes !== undefined ? notes : booking?.notes,
+      status: status || booking?.status || 'confirmed',
+      custom_line_items: customLineItems || custom_line_items || booking?.custom_line_items,
+      items: items || booking?.items,
+      updated_at: new Date().toISOString(),
+    };
+
+    addOrUpdatePersistentBooking(updatedObj);
+
+    // Update in-memory liveSyncedBookings
+    const memIdx = liveSyncedBookings.findIndex((b) => b.id === bookingId);
+    if (memIdx >= 0) {
+      liveSyncedBookings[memIdx] = { ...liveSyncedBookings[memIdx], ...updatedObj };
+    }
+
+    broadcastToBranch(updatedObj.branch_id || 'branch-elhdad', 'SYNC_STATE', updatedObj);
+    broadcastGlobal('SYNC_STATE', { bookingId, updated: true });
+
+    return res.json({ success: true, message: 'تم تحديث بيانات وفاتورة الحجز بنجاح', data: updatedObj });
   } catch (error: any) {
     return res.status(500).json({ success: false, error: error.message });
   }
@@ -216,10 +356,10 @@ router.patch(
         const autoBooking: any = {
           id: req.params.id,
           bookingId: req.params.id,
-          customer_name: 'عميل الصالون',
-          customer_phone: '01285694670',
-          service_id: 'srv-haircut',
-          branch_id: 'branch-elhdad',
+          customer_name: payloadBooking?.customer_name || payloadBooking?.customerName || 'عميل محترم',
+          customer_phone: payloadBooking?.customer_phone || payloadBooking?.customerPhone || '',
+          service_id: payloadBooking?.service_id || 'srv-haircut',
+          branch_id: payloadBooking?.branch_id || 'branch-elhdad',
           status: status,
           starts_at: new Date().toISOString(),
           created_at: new Date().toISOString(),
@@ -458,11 +598,11 @@ router.patch('/:id/payment-proof', optionalAuth, async (req: AuthenticatedReques
       booking = {
         id: req.params.id,
         bookingId: req.params.id,
-        customer_name: 'عميل الصالون',
-        customer_phone: '01285694670',
-        service_name: 'قص شعر كلاسيكي',
-        barber_name: 'محمد الحداد',
-        branch_id: 'branch-elhdad',
+        customer_name: payloadBooking?.customer_name || payloadBooking?.customerName || 'عميل محترم',
+        customer_phone: payloadBooking?.customer_phone || payloadBooking?.customerPhone || '',
+        service_name: payloadBooking?.service_name || payloadBooking?.serviceName || 'خدمة صالون',
+        barber_name: payloadBooking?.barber_name || payloadBooking?.barberName || 'محمد الحداد',
+        branch_id: payloadBooking?.branch_id || payloadBooking?.branchId || 'branch-elhdad',
         status: nextBookingStatus,
       };
       liveSyncedBookings.unshift(booking);
