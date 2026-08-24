@@ -2,12 +2,12 @@ import crypto from 'crypto';
 import jwt from 'jsonwebtoken';
 import { v4 as uuidv4 } from 'uuid';
 import { query } from '../config/database.js';
+import { JWT_SECRET } from '../config/jwt.js';
 
 // ============================================================================
 // Enterprise Dual-Token & Session Management Engine (HS256 Rotation & Anti-Theft)
 // ============================================================================
 
-const JWT_SECRET = process.env.JWT_SECRET || 'super_secret_jwt_key_for_elite_salon_platform_development_123456789';
 const ACCESS_TOKEN_EXPIRY = '15m'; // Strict 15-Minute Short-Lived Access Token
 const REFRESH_TOKEN_EXPIRY_DAYS = 30; // 30-Day Absolute Session Expiry
 const GRACE_PERIOD_MS = 5000; // 5-Second Grace Period for Concurrent Requests

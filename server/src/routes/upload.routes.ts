@@ -20,7 +20,18 @@ const upload = multer({
   },
 });
 
-// POST /api/upload (Enterprise Upload with Magic Bytes Inspection & EXIF Stripping)
+/**
+ * PUBLIC UPLOAD ENDPOINT ARCHITECTURAL RATIONALE:
+ * This endpoint is intentionally accessible to unauthenticated guests to allow customers to upload
+ * payment transfer screenshots (InstaPay / Vodafone Cash) during the public booking workflow.
+ *
+ * HARDENED DEFENSE LAYERS:
+ * 1. Distributed Rate Limiter: uploadLimiter (Prevents DoS / flood attacks).
+ * 2. In-Memory Buffering (Zero disk write before validation).
+ * 3. Deep Magic Bytes Header Inspection (Blocks WebShells, Polyglots, SVG XSS, and executable binaries).
+ * 4. Automatic EXIF / GPS location metadata stripping.
+ * 5. Deterministic random UUID filename generation (Blocks Path Traversal & overwrite attacks).
+ */
 router.post('/', uploadLimiter, upload.single('file'), (req, res: Response) => {
   try {
     if (!req.file || !req.file.buffer) {

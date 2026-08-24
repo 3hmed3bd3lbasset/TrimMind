@@ -1,6 +1,7 @@
 import { Request, Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
 import { query } from '../config/database.js';
+import { JWT_SECRET } from '../config/jwt.js';
 
 // ============================================================================
 // Two-Layer Authorization (Role + Ownership/Anti-IDOR) & Default-Deny Security
@@ -21,8 +22,6 @@ export interface AuthUser {
 export interface AuthenticatedRequest extends Request {
   user?: AuthUser;
 }
-
-const JWT_SECRET = process.env.JWT_SECRET || 'super_secret_jwt_key_for_elite_salon_platform_development_123456789';
 
 /**
  * Core Authentication Guard: Verifies short-lived Access Token
@@ -176,11 +175,6 @@ export function requireRoles(...roles: Array<'customer' | 'receptionist' | 'mana
 // ============================================================================
 // LAYER 2: Resource Ownership Guard (Fine-Grained / ناعم / Anti-IDOR Defense)
 // ============================================================================
-/**
- * In any handler modifying or deleting a resource, fetches the resource from DB
- * and compares resource.ownerId with req.user.id.
- * Never trusts the ID in the URL parameter.
- */
 export function requireResourceOwnership(
   fetchOwnerId: (req: AuthenticatedRequest) => Promise<string | null | undefined>
 ) {
@@ -239,9 +233,9 @@ export function requireBranchAccess(req: AuthenticatedRequest, res: Response, ne
 }
 
 // ============================================================================
-// DEFAULT-DENY Security Middleware Architecture
+// DEFAULT-DENY Security Middleware Architecture (Explicit Whitelist Only)
 // ============================================================================
-const PUBLIC_WHITELIST = [
+const PUBLIC_EXACT_PATHS = new Set([
   // Authentication & Health
   '/api/auth/login',
   '/api/auth/refresh',
@@ -251,40 +245,41 @@ const PUBLIC_WHITELIST = [
   '/api/services',
   '/api/barbers',
   '/api/branches',
-  '/api/queue/board',
   '/api/chairs',
-  // Public Booking Creation & Payment Proof
-  '/api/bookings',
-  '/api/bookings/public',
-  '/api/waitlist',
+  '/api/queue/board',
+  '/api/bookings/track',
+  '/api/upload',
   '/api/sync/bootstrap',
   '/api/sync/backup',
-];
+  '/api/ai/chat',
+]);
 
 export function defaultDenyAuthMiddleware(req: AuthenticatedRequest, res: Response, next: NextFunction) {
-  const reqPath = req.path.toLowerCase();
+  const reqPath = req.path.toLowerCase().replace(/\/+$/, ''); // normalize trailing slashes
+  const method = req.method.toUpperCase();
 
-  // Allow static files, uploads, and non-api routes
+  // Allow non-API assets
   if (!reqPath.startsWith('/api') || reqPath.startsWith('/uploads')) {
     return next();
   }
 
-  // Check explicit public whitelist
-  const isWhitelisted = PUBLIC_WHITELIST.some((whitePath) => {
-    return reqPath === whitePath || reqPath.startsWith(whitePath + '/');
-  });
+  // 1. Check exact public whitelist
+  if (PUBLIC_EXACT_PATHS.has(reqPath)) {
+    return optionalAuth(req, res, next);
+  }
 
-  // Public Booking Tracking by Token/ID or payment proof upload
+  // 2. Allow specific public customer operations on bookings
   if (
-    isWhitelisted ||
-    (reqPath.startsWith('/api/bookings') && req.method === 'POST') ||
-    (reqPath.startsWith('/api/bookings') && reqPath.includes('/payment-proof')) ||
-    (reqPath.startsWith('/api/bookings') && reqPath.includes('/rate')) ||
-    (reqPath.startsWith('/api/waitlist') && req.method === 'POST')
+    (reqPath === '/api/bookings' && method === 'POST') || // Public booking creation form
+    (reqPath === '/api/waitlist' && method === 'POST') || // Public waitlist entry
+    (reqPath.startsWith('/api/bookings/') && reqPath.endsWith('/payment-proof') && method === 'POST') ||
+    (reqPath.startsWith('/api/bookings/') && reqPath.endsWith('/rate') && method === 'POST') ||
+    (reqPath.startsWith('/api/bookings/') && reqPath.endsWith('/cancel') && method === 'POST') ||
+    (reqPath.startsWith('/api/agent-tools') || reqPath.startsWith('/api/whatsapp')) // Managed by requireAgentAuth
   ) {
     return optionalAuth(req, res, next);
   }
 
-  // Default-Deny: Enforce strict authentication on all other endpoints
+  // 3. Default-Deny: Block any other endpoint (including GET /api/bookings) unless authenticated
   return requireAuth(req, res, next);
 }

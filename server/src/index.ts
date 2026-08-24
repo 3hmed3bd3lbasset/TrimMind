@@ -19,7 +19,7 @@ import { initSocketIO } from './socket/realtime.js';
 import { initCleanupCron } from './services/cleanup.service.js';
 import { ipJailGuard, honeypotRouter } from './middleware/honeypot.js';
 import { verifyLedgerIntegrity } from './services/financialLedger.service.js';
-import { requireAuth, requireRoles } from './middleware/auth.js';
+import { requireAuth, requireRoles, defaultDenyAuthMiddleware } from './middleware/auth.js';
 
 // Route handlers
 import authRoutes from './routes/auth.routes.js';
@@ -78,7 +78,12 @@ app.use(honeypotRouter);
 app.use('/api', apiLimiter);
 
 // ============================================================================
-// 5. Static Uploads Serving (Protected against Directory Traversal)
+// 5. Global Default-Deny Authorization Guard (All endpoints denied unless whitelisted)
+// ============================================================================
+app.use('/api', defaultDenyAuthMiddleware);
+
+// ============================================================================
+// 6. Static Uploads Serving (Protected against Directory Traversal)
 // ============================================================================
 const uploadsPath = getUploadDir();
 app.use('/uploads/whatsapp_auth', (_req, res) => {
@@ -87,7 +92,7 @@ app.use('/uploads/whatsapp_auth', (_req, res) => {
 app.use('/uploads', express.static(uploadsPath));
 
 // ============================================================================
-// 6. Application API Routes
+// 7. Application API Routes
 // ============================================================================
 app.use('/api/auth', authRoutes);
 app.use('/api/bookings', bookingsRoutes);

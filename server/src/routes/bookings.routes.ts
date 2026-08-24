@@ -10,7 +10,7 @@ import {
   rateBookingSchema,
 } from '../validators/booking.schema.js';
 import { bookingLimiter } from '../middleware/rateLimiter.js';
-import { optionalAuth, AuthenticatedRequest } from '../middleware/auth.js';
+import { optionalAuth, requireAuth, requireRoles, AuthenticatedRequest } from '../middleware/auth.js';
 import { broadcastToBranch, broadcastGlobal } from '../socket/realtime.js';
 import {
   getPersistentDb,
@@ -80,8 +80,8 @@ router.get('/track', async (req, res: Response) => {
   }
 });
 
-// GET /api/bookings (Staff & Live Sync view)
-router.get('/', async (req: AuthenticatedRequest, res: Response) => {
+// GET /api/bookings (Staff & Live Sync view - STRICT AUTHENTICATION REQUIRED)
+router.get('/', requireAuth, requireRoles('manager', 'receptionist', 'barber'), async (req: AuthenticatedRequest, res: Response) => {
   try {
     const branchId = (req.query.branchId as string) || req.user?.branch_id;
     const date = req.query.date as string;
@@ -139,8 +139,8 @@ router.get('/', async (req: AuthenticatedRequest, res: Response) => {
   }
 });
 
-// PATCH /api/bookings/:id (Update Booking details, services, prices, invoice)
-router.patch('/:id', optionalAuth, async (req: AuthenticatedRequest, res: Response) => {
+// PATCH /api/bookings/:id (Update Booking details, services, prices, invoice - Staff only)
+router.patch('/:id', requireAuth, requireRoles('manager', 'receptionist', 'barber'), async (req: AuthenticatedRequest, res: Response) => {
   try {
     const bookingId = req.params.id;
     const {
@@ -322,10 +322,11 @@ router.post('/:id/cancel', validateBody(cancelBookingSchema), async (req: Authen
   }
 });
 
-// PATCH /api/bookings/:id/status (Staff status change & WhatsApp Dispatch)
+// PATCH /api/bookings/:id/status (Staff status change & WhatsApp Dispatch - Staff only)
 router.patch(
   '/:id/status',
-  optionalAuth,
+  requireAuth,
+  requireRoles('manager', 'receptionist', 'barber'),
   validateBody(updateBookingStatusSchema),
   async (req: AuthenticatedRequest, res: Response) => {
     try {

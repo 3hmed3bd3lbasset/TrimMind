@@ -12,25 +12,42 @@ import { JoinWaitlistUseCase } from '../usecases/waitlist/JoinWaitlistUseCase.js
 import { ClaimWaitlistOfferUseCase } from '../usecases/waitlist/ClaimWaitlistOfferUseCase.js';
 import { FindRecallCandidatesUseCase } from '../usecases/recall/FindRecallCandidatesUseCase.js';
 
+import crypto from 'crypto';
+import { AGENT_API_SECRET } from '../config/jwt.js';
+
 const router = Router();
 
-// 1. Security & Authentication Middleware for Agent Tools
-const AGENT_API_SECRET =
-  process.env.AGENT_API_SECRET ||
-  process.env.WHATSAPP_AGENT_SECRET ||
-  'trim-mind-agent-secret-key-2026';
-
+// 1. Security & Authentication Middleware for Agent Tools (Constant-Time Verification)
 function requireAgentAuth(req: Request, res: Response, next: NextFunction): void {
   const secretHeader = req.headers['x-agent-secret'] || req.headers['x-api-key'];
   const authHeader = req.headers['authorization'];
   const bearerToken = authHeader?.startsWith('Bearer ') ? authHeader.substring(7) : null;
 
-  const providedKey = (secretHeader as string) || bearerToken;
+  const providedKey = ((secretHeader as string) || bearerToken || '').trim();
 
-  if (!providedKey || providedKey !== AGENT_API_SECRET) {
+  if (!providedKey) {
     res.status(401).json({
       success: false,
-      error: 'Unauthorized access to Agent Tools API. Valid secret token required in x-agent-secret or Authorization header.',
+      error: 'Unauthorized access to Agent Tools API. Secret token required.',
+    });
+    return;
+  }
+
+  try {
+    const providedBuffer = Buffer.from(providedKey);
+    const expectedBuffer = Buffer.from(AGENT_API_SECRET);
+
+    if (providedBuffer.length !== expectedBuffer.length || !crypto.timingSafeEqual(providedBuffer, expectedBuffer)) {
+      res.status(401).json({
+        success: false,
+        error: 'Invalid secret token for Agent Tools API.',
+      });
+      return;
+    }
+  } catch {
+    res.status(401).json({
+      success: false,
+      error: 'Authentication failed for Agent Tools API.',
     });
     return;
   }

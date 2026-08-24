@@ -1,8 +1,9 @@
 import jwt from 'jsonwebtoken';
 import { ITokenService, UserTokenPayload } from '../../domain/gateways/ITokenService.js';
+import { JWT_SECRET } from '../../config/jwt.js';
 
 export class JwtTokenService implements ITokenService {
-  private readonly secret = process.env.JWT_SECRET || 'super_secret_jwt_key_for_elite_salon_platform_development_123456789';
+  private readonly secret = JWT_SECRET;
   private readonly expiresIn = '15m'; // Strict 15-Minute Short-Lived Access Token
 
   public generateToken(payload: UserTokenPayload): string {
