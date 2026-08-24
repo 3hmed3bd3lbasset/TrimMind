@@ -1082,153 +1082,32 @@ https://trimmind.up.railway.app/track?q=${createdId}
   }
 
   // -------------------------------------------------------------------------
-  // 3. CAPTURE REAL ARABIC NAME IF PROVIDED
+  // 3. GEMINI FLASH CONVERSATIONAL AI ENGINE (Primary Intelligent Brain)
   // -------------------------------------------------------------------------
-  const detectedName = extractNameFromText(userMessage, pushName);
-  if (detectedName) {
-    session.customerName = detectedName;
-    bookingSessions.set(sessionKey, session);
-  }
+  const servicesListStr = liveCtx.services.map((s) => `• ${s.name}: ${s.price} جنيه`).join('\n');
+  const barbersListStr = liveCtx.barbers.map((b) => `• ${b.name}`).join('\n');
+  const chairsListStr = liveCtx.chairs.map((c) => `• ${c.name}`).join('، ');
 
-  // -------------------------------------------------------------------------
-  // 4. CUSTOM BUNDLE DETECTION (Does NOT compute arbitrary math prices)
-  // -------------------------------------------------------------------------
-  const customBundle = extractCustomBundleFromText(userMessage, liveCtx.services);
-  if (customBundle) {
-    session.customItems = customBundle.items;
-    session.serviceName = customBundle.bundleTitle;
-    session.serviceId = customBundle.primaryServiceId;
-    session.isCustom = true;
-    if (!session.bookingType) {
-      session.bookingType = 'normal';
-      session.depositAmount = deposits.normal;
-    }
-    bookingSessions.set(sessionKey, session);
-  }
-
-  // -------------------------------------------------------------------------
-  // 5. SESSION SELECTION & CATALOG DISPLAY WITH CUSTOMIZATION QUESTION
-  // -------------------------------------------------------------------------
-  const isFirstMessage = !session.greeted;
-  session.greeted = true;
-  bookingSessions.set(sessionKey, session);
-
-  // A) Customer Chose VIP Session
-  if (
-    textLower === 'vip' ||
-    textLower === 'ملكيه' ||
-    textLower === 'ملكية' ||
-    textLower === 'في اي بي' ||
-    textLower === '2' ||
-    textLower === 'جلسة vip'
-  ) {
-    session.bookingType = 'vip';
-    session.depositAmount = deposits.vip;
-    session.step = 'choosing_service';
-    bookingSessions.set(sessionKey, session);
-
-    const barbersList = liveCtx.barbers.map((b) => `• ${b.name}`).join('، ');
-
-    replyText = `أحلى اختيار يا باشا! 👑 تم اختيار *الجلسة الـ VIP الملكية* (عربون ${deposits.vip} ج).
-
-✂️ *كباتن الصالون المتاحين:* (${barbersList}).
-
-👑 *باقات الـ VIP الملكية الفاخرة:*
-• *Royal VIP Experience:* (قص شعر + تظبيط لحية ملكي + تنظيف بشرة عميق + حمام كريم) - 480 ج
-• *Gentleman VIP Package:* (قص شعر وتصفيف + علاج لحية + ماسك ذهبي وكولاجين) - 650 ج
-• *Executive VIP Full Care:* (جلسة ملكية شاملة + مساج للوجه وفروة الرأس) - 900 ج
-
-✨ *هل إحدى باقات الـ VIP مناسبة لحضرتك؟ ولا تحب تخصص باقة على ذوقك مع الكابتن المفضل؟*`;
-  }
-  // B) Customer Chose Normal Session
-  else if (
-    textLower === 'عادية' ||
-    textLower === 'عاديه' ||
-    textLower === 'العادي' ||
-    textLower === '1' ||
-    textLower === 'جلسة عادية'
-  ) {
-    session.bookingType = 'normal';
-    session.depositAmount = deposits.normal;
-    session.step = 'choosing_service';
-    bookingSessions.set(sessionKey, session);
-
-    replyText = `تمام يا باشا! تم اختيار *الجلسة العادية* 💈 (عربون ${deposits.normal} ج).
-
-📋 *قائمة خدمات وباقات الجلسة العادية المتاحة:*
-• *قص شعر كلاسيكي (Classic Haircut):* 180 ج
-• *تحديد وتظبيط لحية:* 100 ج
-• *تنظيف بشرة وماسك بخار:* 240 ج
-• *باقة صالون العادية الشاملة:* 380 ج
-
-✨ *هل إحدى هذه الخدمات أو الباقات مناسبة لحضرتك؟ ولا تحب تخصص باقة على ذوقك؟*`;
-  }
-  // C) Customer specified a custom bundle / service AND provided real name -> Prompt Deposit Only!
-  else if (session.serviceName && session.customerName && !session.receiptSubmitted) {
-    const defaultBarber = liveCtx.barbers[0]?.name || 'محمد الحداد';
-    const assignedBarber = session.barberName || (session.bookingType === 'vip' ? defaultBarber : 'كابتن متاح');
-    session.barberName = assignedBarber;
-    const depVal = session.depositAmount || (session.bookingType === 'vip' ? deposits.vip : deposits.normal);
-
-    replyText = `تمام يا أستاذ *${session.customerName}* 🌟
-سجلت لحضرتك: *${session.serviceName}* مع *${session.barberName}*.
-
-لتثبيت موعدك وتجهيز الكرسي، برجاء تحويل العربون (*${depVal} جنيه*) عبر:
-📱 *فودافون كاش / إنستاباي:* \`${liveCtx.paymentAccounts.instapay}\`
-
-💡 *علماً بأن إجمالي سعر الفاتورة النهائي سيتم تحديده وإبلاغ حضرتك به في رسالة القبول الرسمية من قبل موظف الاستقبال فور اعتماد حجزك!*
-
-📸 *ابعت صورة إيصال التحويل (اسكرين شوت) هنا فوراً* لاعتماد حجزك وإصدار الفاتورة الرسمية! ✨`;
-  }
-  // D) If services/custom bundle chosen but Name is missing -> Ask for Name & Phone!
-  else if (session.serviceName && !session.customerName) {
-    replyText = `تمام يا فندم 👌 سجلت لحضرتك:
-*${session.serviceName}*${session.barberName ? ' مع ' + session.barberName : ''}.
-
-أتشرف باسم حضرتك الكريم ورقم الموبايل لتسجيل وتثبيت الحجز باسمك؟ 💈`;
-  }
-  // E) If asking about difference
-  else if (textLower.includes('ايه الفرق') || textLower.includes('إيه الفرق') || textLower.includes('الفرق بين')) {
-    replyText = `يا هلا يا باشا! الفرق باختصار:
-1️⃣ **الجلسة العادية (عربون ${deposits.normal} ج):** بتحدد اليوم والنظام بيعين لك دور وساعة متاحة تلقائياً.
-2️⃣ **الجلسة الـ VIP (عربون ${deposits.vip} ج):** بتختار كابتن الحلاقة المفضل وميعادك بالدقيقة بدون انتظار.
-
-تحب تختار العادية ولا VIP؟ ✨`;
-  }
-  // F) First greeting
-  else if (isFirstMessage || textLower.includes('احجز') || textLower.includes('حجز') || textLower.includes('احلق') || textLower.includes('سلام') || textLower.includes('مرحبا')) {
-    replyText = `يا هلا بأستاذنا الفاضل نورت صالون الحداد VIP 🌟💈
-تحت أمرك يا غالي، تحب تحجز جلسة عادية ولا VIP ملكية مع كابتن محدد وميعاد بالساعة؟ ✨`;
-  }
-
-  // -------------------------------------------------------------------------
-  // 6. FALLBACK TO GEMINI FLASH AI (Dynamic Prompt with Live MySQL Data & Concise Tone)
-  // -------------------------------------------------------------------------
-  if (!replyText) {
-    const servicesListStr = liveCtx.services.map((s) => `• ${s.name}: ${s.price} جنيه`).join('\n');
-    const barbersListStr = liveCtx.barbers.map((b) => `• ${b.name}`).join('\n');
-
-    let currentBookingContext = '';
-    if (session.receiptSubmitted || session.bookingId) {
-      currentBookingContext = `
+  let currentBookingContext = '';
+  if (session.receiptSubmitted || session.bookingId) {
+    currentBookingContext = `
 # ⚠️ تنبيه فائق الأهمية عن حالة العميل الحالي:
-- العميل الحالي (${session.customerName || 'المميز'}) **قام بإرسال صورة إيصال التحويل بالفعل** وتم تسجيل حجزه برقم (#${session.bookingId || 'مسجل'}).
+- العميل الحالي (${session.customerName || 'المميز'}) **قام بإرسال صورة إيصال التحويل بالفعل** وتم تسجيل طلب حجزه برقم (#${session.bookingId || 'مسجل'}).
 - الكابتن: **${session.barberName || 'كابتن الصالون'}**.
 - نوع الجلسة: **${session.bookingType === 'vip' ? 'جلسة VIP ملكية' : 'جلسة عادية'}**.
-- الخدمة المختارة: **${session.serviceName || 'الخدمة المختارة'}**.
+- الخدمة/الباقة المختارة: **${session.serviceName || 'الخدمة المختارة'}**.
 - الحجز والإيصال حالياً قيد المراجعة والاعتماد لدى موظف الاستقبال.
 - ❌ **ممنوع منعاً باتاً** أن تطلب منه إرسال الإيصال مرة أخرى!`;
-    } else if (session.serviceName) {
-      currentBookingContext = `
+  } else if (session.serviceName) {
+    currentBookingContext = `
 # سياق الحجز الحالي:
-- العميل اختار: ${session.serviceName} (${session.servicePrice} جنيه).
-- الكابتن: ${session.barberName || 'كابتن الصالون'}.
-- العربون المطلوب: ${session.depositAmount || 50} جنيه.`;
-    }
+- الخدمة/الباقة المطلوبة: ${session.serviceName}.
+- الكابتن المخصص: ${session.barberName || 'كابتن متاح'}.
+- العربون المطلوب: ${session.depositAmount || 50} جنيه.
+- ملاحظة الفاتورة: إجمالي سعر الفاتورة يحدده موظف الاستقبال في رسالة الاعتماد الرسمية.`;
+  }
 
-    const chairsListStr = liveCtx.chairs.map((c) => `• ${c.name}`).join('، ');
-
-    const systemInstruction = `# WhatsApp AI Booking Assistant — System Prompt
+  const systemInstruction = `# WhatsApp AI Booking Assistant — System Prompt
 
 ## 1. ROLE & IDENTITY
 أنت مساعد واتساب ذكي واحترافي لخدمة عملاء وحجوزات صالون (${liveCtx.salonName}).
@@ -1288,13 +1167,12 @@ ${currentBookingContext}`;
           body: JSON.stringify(payload),
         });
 
-        if (res.ok) {
-          const data = (await res.json()) as any;
-          replyText = data?.candidates?.[0]?.content?.parts?.[0]?.text || '';
-        }
-      } catch (e: any) {
-        logDebug('GEMINI_CALL_ERROR', { model, error: e.message });
+      if (res.ok) {
+        const data = (await res.json()) as any;
+        replyText = data?.candidates?.[0]?.content?.parts?.[0]?.text || '';
       }
+    } catch (e: any) {
+      logDebug('GEMINI_CALL_ERROR', { model, error: e.message });
     }
   }
 
