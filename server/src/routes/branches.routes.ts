@@ -5,16 +5,31 @@ import { requireAuth, requireRoles } from '../middleware/auth.js';
 import { validateBody } from '../middleware/validate.js';
 import { branchSchema } from '../validators/common.schema.js';
 import { broadcastGlobal } from '../socket/realtime.js';
+import { getPersistentDb } from '../services/persistentStorage.service.js';
 
 const router = Router();
 
-// GET /api/branches (Public list)
+// GET /api/branches (Public list with resilient fallback)
 router.get('/', async (_req, res: Response) => {
   try {
-    const branches = await query<any[]>('SELECT * FROM branches ORDER BY created_at ASC');
+    let branches = await query<any[]>('SELECT * FROM branches ORDER BY created_at ASC').catch(() => []);
+    if (!branches || branches.length === 0) {
+      branches = getPersistentDb().branches || [
+        {
+          id: 'branch-elhdad',
+          name: 'الحداد - ELHDAD',
+          address: 'سقيل - مركز اوسيم',
+          phone: '01285694670',
+          opening_time: '10:00',
+          closing_time: '23:30',
+          is_active: 1,
+        },
+      ];
+    }
     return res.json({ success: true, data: branches });
   } catch (error: any) {
-    return res.status(500).json({ success: false, error: error.message });
+    const branches = getPersistentDb().branches || [];
+    return res.json({ success: true, data: branches });
   }
 });
 
@@ -59,7 +74,7 @@ router.patch('/:id', requireAuth, requireRoles('manager'), async (req, res: Resp
 
     const updated = await query<any[]>('SELECT * FROM branches WHERE id = ?', [req.params.id]);
     broadcastGlobal('SYNC_STATE');
-    return res.json({ success: true, message: 'تم تحديث بيانات الفرع', data: updated[0] });
+    return res.json({ success: true, message: 'تم تحديث الفرع', data: updated[0] });
   } catch (error: any) {
     return res.status(500).json({ success: false, error: error.message });
   }
@@ -70,7 +85,7 @@ router.delete('/:id', requireAuth, requireRoles('manager'), async (req, res: Res
   try {
     await query('DELETE FROM branches WHERE id = ?', [req.params.id]);
     broadcastGlobal('SYNC_STATE');
-    return res.json({ success: true, message: 'تم حذف الفرع بنجاح' });
+    return res.json({ success: true, message: 'تم حذف الفرع' });
   } catch (error: any) {
     return res.status(500).json({ success: false, error: error.message });
   }
