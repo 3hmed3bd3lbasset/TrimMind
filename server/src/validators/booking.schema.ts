@@ -43,6 +43,11 @@ export const createBookingSchema = z.object({
       amount: z.number().positive(),
     })
     .optional(),
+  source: z.enum(['web', 'whatsapp']).optional(),
+  aiBrief: z.string().optional(),
+  confidenceScore: z.number().optional(),
+  needsHumanAttention: z.boolean().optional(),
+  customLineItems: z.array(z.any()).optional(),
 });
 
 export const cancelBookingSchema = z.object({
