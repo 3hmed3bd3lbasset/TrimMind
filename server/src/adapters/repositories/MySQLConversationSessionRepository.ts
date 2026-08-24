@@ -74,6 +74,13 @@ export class MySQLConversationSessionRepository implements IConversationSessionR
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
       `);
     } catch {}
+
+    try {
+      await query('ALTER TABLE conversation_messages ADD COLUMN whatsapp_message_id VARCHAR(128) NULL AFTER session_id');
+    } catch {}
+    try {
+      await query('ALTER TABLE conversation_messages ADD UNIQUE KEY uq_cm_wa_msg (whatsapp_message_id)');
+    } catch {}
   }
 
   public async getOrCreate(customerPhone: string, remoteJid?: string): Promise<ConversationSession> {
@@ -218,6 +225,19 @@ export class MySQLConversationSessionRepository implements IConversationSessionR
     await this.ensureTable();
     const messageId = `cm-${uuidv4()}`;
     const intentJson = message.extractedIntent ? JSON.stringify(message.extractedIntent) : null;
+
+    // 1. Explicit duplicate check by whatsappMessageId
+    if (message.whatsappMessageId) {
+      try {
+        const existing = await query<any[]>(
+          'SELECT id FROM conversation_messages WHERE whatsapp_message_id = ? LIMIT 1',
+          [message.whatsappMessageId]
+        );
+        if (existing && existing.length > 0) {
+          return { isDuplicate: true, messageId: message.whatsappMessageId };
+        }
+      } catch {}
+    }
 
     try {
       await query(
