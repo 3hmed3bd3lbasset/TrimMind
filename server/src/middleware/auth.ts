@@ -2,6 +2,10 @@ import { Request, Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
 import { query } from '../config/database.js';
 
+// ============================================================================
+// Two-Layer Authorization (Role + Ownership/Anti-IDOR) & Default-Deny Security
+// ============================================================================
+
 export interface AuthUser {
   id: string;
   full_name: string;
@@ -18,18 +22,23 @@ export interface AuthenticatedRequest extends Request {
   user?: AuthUser;
 }
 
-const JWT_SECRET = process.env.JWT_SECRET || 'fallback_dev_secret_only_change_in_prod_123456789';
+const JWT_SECRET = process.env.JWT_SECRET || 'super_secret_jwt_key_for_elite_salon_platform_development_123456789';
 
+/**
+ * Core Authentication Guard: Verifies short-lived Access Token
+ * Fixed HS256 algorithm enforcement, strictly rejects alg:none
+ */
 export async function requireAuth(req: AuthenticatedRequest, res: Response, next: NextFunction) {
   try {
     let token: string | undefined;
 
-    // Check Authorization header
+    // 1. Check Authorization header
     const authHeader = req.headers.authorization;
     if (authHeader && authHeader.startsWith('Bearer ')) {
       token = authHeader.split(' ')[1];
-    } else if (req.cookies && req.cookies.auth_token) {
-      token = req.cookies.auth_token;
+    } else if (req.cookies) {
+      // 2. Fallback to HttpOnly Cookie
+      token = req.cookies.access_token || req.cookies.auth_token;
     }
 
     if (!token) {
@@ -39,18 +48,22 @@ export async function requireAuth(req: AuthenticatedRequest, res: Response, next
       });
     }
 
-    // Verify token
-    const decoded = jwt.verify(token, JWT_SECRET) as any;
-    if (!decoded || !decoded.id) {
+    // Strict validation with explicit HS256 allow-list (blocks alg:none attacks)
+    const decoded = jwt.verify(token, JWT_SECRET, {
+      algorithms: ['HS256'],
+    }) as any;
+
+    const userId = decoded.sub || decoded.id;
+    if (!decoded || !userId) {
       return res.status(401).json({
         success: false,
         error: 'جلسة الدخول غير صالحة أو منتهية',
       });
     }
 
-    // Lookup user in DB to ensure not deleted or disabled
+    // Verify user is still active in database
     const users = await query<any[]>('SELECT * FROM profiles WHERE id = ? AND is_active = 1 LIMIT 1', [
-      decoded.id,
+      userId,
     ]);
 
     if (!users || users.length === 0) {
@@ -70,33 +83,47 @@ export async function requireAuth(req: AuthenticatedRequest, res: Response, next
       is_super_admin: Boolean(u.is_super_admin),
       branch_id: u.branch_id,
       barber_id: u.barber_id,
-      assigned_branch_ids: typeof u.assigned_branch_ids === 'string' ? JSON.parse(u.assigned_branch_ids || '[]') : u.assigned_branch_ids,
+      assigned_branch_ids:
+        typeof u.assigned_branch_ids === 'string'
+          ? JSON.parse(u.assigned_branch_ids || '[]')
+          : u.assigned_branch_ids || [],
     };
 
     next();
   } catch (error: any) {
     if (error.name === 'TokenExpiredError') {
-      return res.status(401).json({ success: false, error: 'انتهت صلاحية الجلسة، يرجى إعادة تسجيل الدخول' });
+      return res.status(401).json({
+        success: false,
+        error: 'انتهت صلاحية الجلسة، يرجى تجديد التوكن أو إعادة تسجيل الدخول',
+        code: 'TOKEN_EXPIRED',
+      });
     }
-    return res.status(401).json({ success: false, error: 'رمز الدخول غير صالح' });
+    return res.status(401).json({
+      success: false,
+      error: 'رمز الدخول غير صالح',
+    });
   }
 }
 
-export async function optionalAuth(req: AuthenticatedRequest, res: Response, next: NextFunction) {
+/**
+ * Optional Auth helper for public-facing endpoints with enhanced context
+ */
+export async function optionalAuth(req: AuthenticatedRequest, _res: Response, next: NextFunction) {
   try {
     let token: string | undefined;
     const authHeader = req.headers.authorization;
     if (authHeader && authHeader.startsWith('Bearer ')) {
       token = authHeader.split(' ')[1];
-    } else if (req.cookies && req.cookies.auth_token) {
-      token = req.cookies.auth_token;
+    } else if (req.cookies) {
+      token = req.cookies.access_token || req.cookies.auth_token;
     }
 
     if (token) {
-      const decoded = jwt.verify(token, JWT_SECRET) as any;
-      if (decoded && decoded.id) {
+      const decoded = jwt.verify(token, JWT_SECRET, { algorithms: ['HS256'] }) as any;
+      const userId = decoded?.sub || decoded?.id;
+      if (userId) {
         const users = await query<any[]>('SELECT * FROM profiles WHERE id = ? AND is_active = 1 LIMIT 1', [
-          decoded.id,
+          userId,
         ]);
         if (users && users.length > 0) {
           const u = users[0];
@@ -109,7 +136,10 @@ export async function optionalAuth(req: AuthenticatedRequest, res: Response, nex
             is_super_admin: Boolean(u.is_super_admin),
             branch_id: u.branch_id,
             barber_id: u.barber_id,
-            assigned_branch_ids: typeof u.assigned_branch_ids === 'string' ? JSON.parse(u.assigned_branch_ids || '[]') : u.assigned_branch_ids,
+            assigned_branch_ids:
+              typeof u.assigned_branch_ids === 'string'
+                ? JSON.parse(u.assigned_branch_ids || '[]')
+                : u.assigned_branch_ids || [],
           };
         }
       }
@@ -118,22 +148,24 @@ export async function optionalAuth(req: AuthenticatedRequest, res: Response, nex
   next();
 }
 
-// Role-Based Access Control (RBAC) Guard
+// ============================================================================
+// LAYER 1: Role-Based Authorization Guard (Coarse-Grained / خشن)
+// ============================================================================
 export function requireRoles(...roles: Array<'customer' | 'receptionist' | 'manager' | 'barber'>) {
   return (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
     if (!req.user) {
       return res.status(401).json({ success: false, error: 'يرجى تسجيل الدخول' });
     }
 
-    // Super Admin has universal access
-    if (req.user.is_super_admin) {
+    // Super Admin & Manager have universal management bypass
+    if (req.user.is_super_admin || (roles.includes('manager') && req.user.role === 'manager')) {
       return next();
     }
 
     if (!roles.includes(req.user.role)) {
       return res.status(403).json({
         success: false,
-        error: 'عذراً، ليس لديك الصلاحيات الكافية للقيام بهذا الإجراء',
+        error: 'غير مصرح: ليس لديك الصلاحية الكافية لتنفيذ هذا الإجراء (403 Forbidden)',
       });
     }
 
@@ -141,13 +173,55 @@ export function requireRoles(...roles: Array<'customer' | 'receptionist' | 'mana
   };
 }
 
-// Branch access guard (Prevents IDOR across branches)
+// ============================================================================
+// LAYER 2: Resource Ownership Guard (Fine-Grained / ناعم / Anti-IDOR Defense)
+// ============================================================================
+/**
+ * In any handler modifying or deleting a resource, fetches the resource from DB
+ * and compares resource.ownerId with req.user.id.
+ * Never trusts the ID in the URL parameter.
+ */
+export function requireResourceOwnership(
+  fetchOwnerId: (req: AuthenticatedRequest) => Promise<string | null | undefined>
+) {
+  return async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+    if (!req.user) {
+      return res.status(401).json({ success: false, error: 'يرجى تسجيل الدخول أولاً' });
+    }
+
+    // Admins and Managers have global management authority
+    if (req.user.is_super_admin || req.user.role === 'manager') {
+      return next();
+    }
+
+    try {
+      const ownerId = await fetchOwnerId(req);
+      if (!ownerId) {
+        return res.status(404).json({ success: false, error: 'المورد المطلوب غير موجود' });
+      }
+
+      if (ownerId !== req.user.id && ownerId !== req.user.barber_id) {
+        return res.status(403).json({
+          success: false,
+          error: 'غير مصرح: لا تملك حق الوصول أو التعديل على هذا المورد (Anti-IDOR Protection)',
+        });
+      }
+
+      next();
+    } catch (err: any) {
+      return res.status(500).json({ success: false, error: 'خطأ أثناء التحقق من ملكية المورد' });
+    }
+  };
+}
+
+// ============================================================================
+// Branch Isolation Guard (Multi-Tenant Isolation)
+// ============================================================================
 export function requireBranchAccess(req: AuthenticatedRequest, res: Response, next: NextFunction) {
   if (!req.user) {
     return res.status(401).json({ success: false, error: 'يرجى تسجيل الدخول' });
   }
 
-  // Super admin can access all branches
   if (req.user.is_super_admin || req.user.role === 'manager') {
     return next();
   }
@@ -162,4 +236,55 @@ export function requireBranchAccess(req: AuthenticatedRequest, res: Response, ne
   }
 
   next();
+}
+
+// ============================================================================
+// DEFAULT-DENY Security Middleware Architecture
+// ============================================================================
+const PUBLIC_WHITELIST = [
+  // Authentication & Health
+  '/api/auth/login',
+  '/api/auth/refresh',
+  '/api/health',
+  '/api/debug-logs',
+  // Public Catalog & Availability
+  '/api/services',
+  '/api/barbers',
+  '/api/branches',
+  '/api/queue/board',
+  '/api/chairs',
+  // Public Booking Creation & Payment Proof
+  '/api/bookings',
+  '/api/bookings/public',
+  '/api/waitlist',
+  '/api/sync/bootstrap',
+  '/api/sync/backup',
+];
+
+export function defaultDenyAuthMiddleware(req: AuthenticatedRequest, res: Response, next: NextFunction) {
+  const reqPath = req.path.toLowerCase();
+
+  // Allow static files, uploads, and non-api routes
+  if (!reqPath.startsWith('/api') || reqPath.startsWith('/uploads')) {
+    return next();
+  }
+
+  // Check explicit public whitelist
+  const isWhitelisted = PUBLIC_WHITELIST.some((whitePath) => {
+    return reqPath === whitePath || reqPath.startsWith(whitePath + '/');
+  });
+
+  // Public Booking Tracking by Token/ID or payment proof upload
+  if (
+    isWhitelisted ||
+    (reqPath.startsWith('/api/bookings') && req.method === 'POST') ||
+    (reqPath.startsWith('/api/bookings') && reqPath.includes('/payment-proof')) ||
+    (reqPath.startsWith('/api/bookings') && reqPath.includes('/rate')) ||
+    (reqPath.startsWith('/api/waitlist') && req.method === 'POST')
+  ) {
+    return optionalAuth(req, res, next);
+  }
+
+  // Default-Deny: Enforce strict authentication on all other endpoints
+  return requireAuth(req, res, next);
 }

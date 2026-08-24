@@ -12,13 +12,24 @@ import {
   setRateLimitHeaders,
   logRateLimitSecurityEvent,
 } from '../services/accountProtection.service.js';
-import { requireAuth, requireRoles, AuthenticatedRequest } from '../middleware/auth.js';
+import {
+  createSession,
+  rotateRefreshToken,
+  logoutSession,
+} from '../services/session.service.js';
+import {
+  requireAuth,
+  requireRoles,
+  requireResourceOwnership,
+  AuthenticatedRequest,
+} from '../middleware/auth.js';
 
 const router = Router();
 
-// POST /api/auth/login (Dual-Key Redis Rate Limited, Pre-Flight Protected, & Bcrypt Authenticated)
+// POST /api/auth/login (Dual-Key Redis Rate Limited, Pre-Flight Protected, & Dual-Token Rotation)
 router.post('/login', validateBody(loginSchema), async (req, res: Response) => {
   const clientIp = getClientIp(req);
+  const userAgent = req.headers['user-agent'] || 'unknown';
   const { identifier, password } = req.body;
 
   try {
@@ -26,8 +37,8 @@ router.post('/login', validateBody(loginSchema), async (req, res: Response) => {
     const preFlight = await checkAccountProtectionPreFlight(clientIp, identifier);
     if (!preFlight.allowed) {
       const retryAfter = preFlight.retryAfterSeconds || 900;
-      setRateLimitHeaders(res, preFlight.limit || 5, 0, (preFlight.resetMs || retryAfter * 1000));
-      
+      setRateLimitHeaders(res, preFlight.limit || 5, 0, preFlight.resetMs || retryAfter * 1000);
+
       // Async Security Audit Log
       logRateLimitSecurityEvent(clientIp, identifier, preFlight.reason || 'account_or_ip_rate_limited', retryAfter).catch(() => {});
 
@@ -68,21 +79,102 @@ router.post('/login', validateBody(loginSchema), async (req, res: Response) => {
     await recordSuccessfulAuth(clientIp, identifier);
     setRateLimitHeaders(res, 5, 5, 900000);
 
-    // Set HTTP-only secure cookie
-    res.cookie('auth_token', result.token, {
+    // 5. Generate Dual-Token Session (15-min Access Token + 30-day Refresh Token Rotation Family)
+    const sessionTokens = await createSession(
+      result.user.id,
+      {
+        sub: result.user.id,
+        role: result.user.role,
+        email: result.user.email,
+        branch_id: result.user.branch_id,
+        barber_id: result.user.barber_id,
+      },
+      clientIp,
+      userAgent
+    );
+
+    // Set Refresh Token in HttpOnly, Secure, SameSite=Strict Cookie locked to /api/auth
+    res.cookie('refresh_token', sessionTokens.refreshToken, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'strict',
+      path: '/api/auth',
+      maxAge: 30 * 24 * 60 * 60 * 1000, // 30 days
+    });
+
+    // Also set short-lived Access Token in Cookie for web client backwards compatibility
+    res.cookie('auth_token', sessionTokens.accessToken, {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
       sameSite: 'lax',
-      maxAge: 24 * 60 * 60 * 1000,
+      maxAge: 15 * 60 * 1000, // 15 minutes
     });
 
     return res.json({
       success: true,
-      data: result,
+      data: {
+        token: sessionTokens.accessToken,
+        accessToken: sessionTokens.accessToken,
+        expiresIn: sessionTokens.expiresIn,
+        user: result.user,
+      },
     });
   } catch (error: any) {
     return res.status(500).json({ success: false, error: 'حدث خطأ أثناء معالجة تسجيل الدخول' });
   }
+});
+
+// POST /api/auth/refresh (Dual-Token Rotation with 5s Grace Period & Anti-Theft Family Revocation)
+router.post('/refresh', async (req, res: Response) => {
+  const clientIp = getClientIp(req);
+  const userAgent = req.headers['user-agent'] || 'unknown';
+  const refreshToken = req.cookies?.refresh_token || req.body?.refreshToken;
+
+  if (!refreshToken) {
+    return res.status(401).json({
+      success: false,
+      error: 'رمز التحديث غير موجود، يرجى تسجيل الدخول مجدداً',
+    });
+  }
+
+  const rotationResult = await rotateRefreshToken(refreshToken, clientIp, userAgent);
+
+  if (!rotationResult.success || !rotationResult.tokens) {
+    // If theft detected or token invalid, clear cookie
+    res.clearCookie('refresh_token', { path: '/api/auth' });
+    res.clearCookie('auth_token');
+
+    return res.status(rotationResult.status || 401).json({
+      success: false,
+      error: rotationResult.error || 'فشل تجديد الجلسة',
+    });
+  }
+
+  // Set new rotated Refresh Token in HttpOnly Cookie
+  res.cookie('refresh_token', rotationResult.tokens.refreshToken, {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === 'production',
+    sameSite: 'strict',
+    path: '/api/auth',
+    maxAge: 30 * 24 * 60 * 60 * 1000,
+  });
+
+  res.cookie('auth_token', rotationResult.tokens.accessToken, {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === 'production',
+    sameSite: 'lax',
+    maxAge: 15 * 60 * 1000,
+  });
+
+  return res.json({
+    success: true,
+    data: {
+      token: rotationResult.tokens.accessToken,
+      accessToken: rotationResult.tokens.accessToken,
+      expiresIn: rotationResult.tokens.expiresIn,
+      user: rotationResult.user,
+    },
+  });
 });
 
 // GET /api/auth/me (Get current session user)
@@ -93,13 +185,23 @@ router.get('/me', requireAuth, (req: AuthenticatedRequest, res: Response) => {
   });
 });
 
-// POST /api/auth/logout
-router.post('/logout', requireAuth, (_req, res: Response) => {
+// POST /api/auth/logout (Revokes Token Family & Clears Cookies)
+router.post('/logout', async (req, res: Response) => {
+  const clientIp = getClientIp(req);
+  const refreshToken = req.cookies?.refresh_token || req.body?.refreshToken;
+
+  if (refreshToken) {
+    await logoutSession(refreshToken, clientIp);
+  }
+
+  res.clearCookie('refresh_token', { path: '/api/auth' });
   res.clearCookie('auth_token');
+  res.clearCookie('access_token');
+
   return res.json({ success: true, message: 'تم تسجيل الخروج بنجاح' });
 });
 
-// POST /api/auth/create-staff (Super Admin / Manager only)
+// POST /api/auth/create-staff (Manager only)
 router.post(
   '/create-staff',
   requireAuth,
@@ -109,7 +211,6 @@ router.post(
     try {
       const { full_name, phone, email, password, role, branch_id, barber_id, is_super_admin } = req.body;
 
-      // Check existing user
       const existing = await query<any[]>('SELECT id FROM profiles WHERE email = ? OR phone = ? LIMIT 1', [
         email,
         phone,
@@ -153,58 +254,92 @@ router.get('/profiles', requireAuth, requireRoles('manager'), async (_req, res: 
   }
 });
 
-// PATCH /api/auth/profiles/:id (Manager only)
-router.patch('/profiles/:id', requireAuth, requireRoles('manager'), async (req: AuthenticatedRequest, res: Response) => {
-  try {
-    const { full_name, phone, email, password, role, branch_id, barber_id, is_super_admin, is_active } = req.body;
-    const fields: string[] = [];
-    const values: any[] = [];
+// PATCH /api/auth/profiles/:id (Two-Layer Authorization: Role Guard + Anti-IDOR Ownership Guard)
+router.patch(
+  '/profiles/:id',
+  requireAuth,
+  requireRoles('manager', 'barber', 'receptionist'),
+  requireResourceOwnership(async (req) => {
+    // Fetch profile ID from DB directly, never trust URL param
+    const rows = await query<any[]>('SELECT id FROM profiles WHERE id = ? LIMIT 1', [req.params.id]);
+    return rows?.[0]?.id;
+  }),
+  async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const { full_name, phone, email, password, role, branch_id, barber_id, is_super_admin, is_active } = req.body;
+      const fields: string[] = [];
+      const values: any[] = [];
 
-    if (full_name !== undefined) { fields.push('full_name = ?'); values.push(full_name); }
-    if (phone !== undefined) { fields.push('phone = ?'); values.push(phone); }
-    if (email !== undefined) { fields.push('email = ?'); values.push(email); }
-    if (role !== undefined) { fields.push('role = ?'); values.push(role); }
-    if (branch_id !== undefined) { fields.push('branch_id = ?'); values.push(branch_id); }
-    if (is_super_admin !== undefined) {
-      if (!req.user?.is_super_admin) {
-        return res.status(403).json({
-          success: false,
-          error: 'تعديل صلاحية المدير العام يتطلب حساب مدير عام رئيسي حصراً',
-        });
+      // Non-managers cannot change their own role or admin status
+      if (req.user?.role !== 'manager' && !req.user?.is_super_admin) {
+        if (role !== undefined || is_super_admin !== undefined || is_active !== undefined) {
+          return res.status(403).json({
+            success: false,
+            error: 'غير مصرح: تعديل الصلاحيات والأدوار مقتصر على إدارة الصالون فقط',
+          });
+        }
       }
-      fields.push('is_super_admin = ?');
-      values.push(is_super_admin ? 1 : 0);
-    }
-    if (is_active !== undefined) { fields.push('is_active = ?'); values.push(is_active ? 1 : 0); }
-    if (password) {
-      const hash = await hashPassword(password);
-      fields.push('password_hash = ?');
-      values.push(hash);
-    }
 
-    if (fields.length > 0) {
-      values.push(req.params.id);
-      await query(`UPDATE profiles SET ${fields.join(', ')} WHERE id = ?`, values);
-    }
+      if (full_name !== undefined) { fields.push('full_name = ?'); values.push(full_name); }
+      if (phone !== undefined) { fields.push('phone = ?'); values.push(phone); }
+      if (email !== undefined) { fields.push('email = ?'); values.push(email); }
+      if (role !== undefined && (req.user?.role === 'manager' || req.user?.is_super_admin)) {
+        fields.push('role = ?');
+        values.push(role);
+      }
+      if (branch_id !== undefined && (req.user?.role === 'manager' || req.user?.is_super_admin)) {
+        fields.push('branch_id = ?');
+        values.push(branch_id);
+      }
+      if (is_super_admin !== undefined) {
+        if (!req.user?.is_super_admin) {
+          return res.status(403).json({
+            success: false,
+            error: 'تعديل صلاحية المدير العام يتطلب حساب مدير عام رئيسي حصراً',
+          });
+        }
+        fields.push('is_super_admin = ?');
+        values.push(is_super_admin ? 1 : 0);
+      }
+      if (is_active !== undefined && (req.user?.role === 'manager' || req.user?.is_super_admin)) {
+        fields.push('is_active = ?');
+        values.push(is_active ? 1 : 0);
+      }
+      if (password) {
+        const hash = await hashPassword(password);
+        fields.push('password_hash = ?');
+        values.push(hash);
+      }
 
-    const updated = await query<any[]>(
-      'SELECT id, full_name, phone, email, role, is_super_admin, branch_id, barber_id, is_active FROM profiles WHERE id = ?',
-      [req.params.id]
-    );
-    return res.json({ success: true, message: 'تم تحديث حساب الموظف بنجاح', data: updated[0] });
-  } catch (error: any) {
-    return res.status(500).json({ success: false, error: error.message });
+      if (fields.length > 0) {
+        values.push(req.params.id);
+        await query(`UPDATE profiles SET ${fields.join(', ')} WHERE id = ?`, values);
+      }
+
+      const updated = await query<any[]>(
+        'SELECT id, full_name, phone, email, role, is_super_admin, branch_id, barber_id, is_active FROM profiles WHERE id = ?',
+        [req.params.id]
+      );
+      return res.json({ success: true, message: 'تم تحديث حساب الموظف بنجاح', data: updated[0] });
+    } catch (error: any) {
+      return res.status(500).json({ success: false, error: error.message });
+    }
   }
-});
+);
 
 // DELETE /api/auth/profiles/:id (Manager only)
-router.delete('/profiles/:id', requireAuth, requireRoles('manager'), async (req: AuthenticatedRequest, res: Response) => {
-  try {
-    await query('DELETE FROM profiles WHERE id = ?', [req.params.id]);
-    return res.json({ success: true, message: 'تم حذف حساب الموظف بنجاح' });
-  } catch (error: any) {
-    return res.status(500).json({ success: false, error: error.message });
+router.delete(
+  '/profiles/:id',
+  requireAuth,
+  requireRoles('manager'),
+  async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      await query('DELETE FROM profiles WHERE id = ?', [req.params.id]);
+      return res.json({ success: true, message: 'تم حذف حساب الموظف بنجاح' });
+    } catch (error: any) {
+      return res.status(500).json({ success: false, error: error.message });
+    }
   }
-});
+);
 
 export default router;

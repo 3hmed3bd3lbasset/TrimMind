@@ -50,12 +50,40 @@ export function initCleanupCron() {
     }
   });
 
-  console.log('⏰ 2-Hour Receipt Auto-Purge Scheduled Task initialized.');
+  // Daily 3:00 AM Session & Refresh Token Garbage Collection (Purge Expired/Revoked Tokens)
+  cron.schedule('0 3 * * *', async () => {
+    try {
+      const { purgeExpiredTokens } = await import('./session.service.js');
+      await purgeExpiredTokens();
+    } catch (err: any) {
+      console.warn('⚠️ Token GC cron job error:', err.message);
+    }
+  });
+
+  console.log('⏰ 2-Hour Receipt Auto-Purge & Daily Session GC Scheduled Tasks initialized.');
 }
 
 export async function ensureInitialDbData() {
   try {
-    // 0. Ensure all upgrade tables exist in MySQL
+    // 0. Ensure refresh_tokens table for Session Management & Rotation
+    await query(`
+      CREATE TABLE IF NOT EXISTS refresh_tokens (
+        id VARCHAR(64) PRIMARY KEY,
+        user_id VARCHAR(64) NOT NULL,
+        token_hash VARCHAR(128) NOT NULL UNIQUE,
+        family_id VARCHAR(64) NOT NULL,
+        is_revoked TINYINT(1) DEFAULT 0,
+        expires_at DATETIME NOT NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        revoked_at DATETIME NULL,
+        ip_address VARCHAR(45),
+        user_agent VARCHAR(255),
+        INDEX idx_user_family (user_id, family_id),
+        INDEX idx_token_hash (token_hash),
+        INDEX idx_expires (expires_at),
+        INDEX idx_revoked (is_revoked, revoked_at)
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+    `);
     await query(`
       CREATE TABLE IF NOT EXISTS financial_records (
         id VARCHAR(64) PRIMARY KEY,
