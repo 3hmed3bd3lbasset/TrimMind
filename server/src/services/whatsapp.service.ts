@@ -122,7 +122,15 @@ export interface LiveSalonContext {
   salonName: string;
 }
 
-export async function getLiveSalonContext(): Promise<LiveSalonContext> {
+let cachedSalonContext: LiveSalonContext | null = null;
+let lastSalonContextFetchTime = 0;
+
+export async function getLiveSalonContext(forceRefresh = false): Promise<LiveSalonContext> {
+  const now = Date.now();
+  if (!forceRefresh && cachedSalonContext && now - lastSalonContextFetchTime < 60000) {
+    return cachedSalonContext;
+  }
+
   // 1. Live Services from MySQL database
   let services = await query<any[]>(
     'SELECT id, name, price, category, is_vip_only, duration_minutes as duration FROM services WHERE is_active = 1 OR is_active IS NULL ORDER BY price ASC'
@@ -197,7 +205,9 @@ export async function getLiveSalonContext(): Promise<LiveSalonContext> {
     }
   } catch {}
 
-  return { services, barbers, chairs, deposits, paymentAccounts, salonName };
+  cachedSalonContext = { services, barbers, chairs, deposits, paymentAccounts, salonName };
+  lastSalonContextFetchTime = now;
+  return cachedSalonContext;
 }
 
 function extractMessageContent(rawMsg: any) {
@@ -1150,7 +1160,13 @@ ${currentBookingContext}`;
     history.push({ role: 'user', parts: [{ text: userMessage }] });
     if (history.length > 8) history.splice(0, history.length - 8);
 
-    const candidateModels = ['gemini-flash-latest', 'gemini-2.5-flash-lite', 'gemini-flash-lite-latest'];
+    if (sock) {
+      try {
+        sock.sendPresenceUpdate('composing', remoteJid).catch(() => {});
+      } catch {}
+    }
+
+    const candidateModels = ['gemini-2.5-flash', 'gemini-1.5-flash', 'gemini-flash-latest', 'gemini-2.5-flash-lite'];
 
     for (const model of candidateModels) {
       if (replyText) break;
@@ -1163,22 +1179,27 @@ ${currentBookingContext}`;
           systemInstruction: {
             parts: [{ text: systemInstruction }],
           },
+          generationConfig: {
+            maxOutputTokens: 200,
+            temperature: 0.7,
+          },
         };
 
         const res = await fetch(url, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(payload),
+          signal: AbortSignal.timeout(3500),
         });
 
-      if (res.ok) {
-        const data = (await res.json()) as any;
-        replyText = data?.candidates?.[0]?.content?.parts?.[0]?.text || '';
+        if (res.ok) {
+          const data = (await res.json()) as any;
+          replyText = data?.candidates?.[0]?.content?.parts?.[0]?.text || '';
+        }
+      } catch (e: any) {
+        logDebug('GEMINI_CALL_ERROR', { model, error: e.message });
       }
-    } catch (e: any) {
-      logDebug('GEMINI_CALL_ERROR', { model, error: e.message });
     }
-  }
 
   if (!replyText) {
     replyText = `أهلاً بك في ${liveCtx.salonName} 💈👑\nنورتنا يا غالي! نقدر نساعدك في حجز جلسة عادية أو جلسة VIP، ومعرفة قائمة الأسعار والخدمات.\nتحب نساعدك بإيه النهارده؟`;
