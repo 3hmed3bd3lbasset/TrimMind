@@ -5,6 +5,17 @@ import { ConversationSession } from '../../domain/entities/ConversationSession.e
 
 export class MySQLConversationSessionRepository implements IConversationSessionRepository {
   private static processedMessageIds = new Set<string>();
+  private static activeSessions = new Map<string, {
+    session: ConversationSession;
+    messages: Array<{
+      id: string;
+      whatsappMessageId?: string;
+      role: 'customer' | 'assistant' | 'system';
+      content: string;
+      extractedIntent?: any;
+      createdAt: string;
+    }>;
+  }>();
 
   private mapRowToEntity(row: any): ConversationSession {
     let pendingEntities = null;
@@ -15,14 +26,14 @@ export class MySQLConversationSessionRepository implements IConversationSessionR
     }
 
     return new ConversationSession({
-      id: row.id,
-      customerPhone: row.customer_phone,
-      whatsappRemoteJid: row.whatsapp_remote_jid,
+      id: row.id || `cs-${uuidv4()}`,
+      customerPhone: row.customer_phone || 'guest',
+      whatsappRemoteJid: row.whatsapp_remote_jid || null,
       channel: row.channel || 'whatsapp',
       state: row.state || 'IDLE',
-      activeBookingId: row.active_booking_id,
+      activeBookingId: row.active_booking_id || null,
       pendingEntities,
-      lastIntent: row.last_intent,
+      lastIntent: row.last_intent || null,
       humanHandoffActive: Boolean(row.human_handoff_active),
       humanHandoffExpiresAt: row.human_handoff_expires_at ? new Date(row.human_handoff_expires_at).toISOString() : null,
       lastMessageAt: row.last_message_at ? new Date(row.last_message_at).toISOString() : new Date().toISOString(),
@@ -98,8 +109,15 @@ export class MySQLConversationSessionRepository implements IConversationSessionR
     await this.ensureTable();
     const cleanPhone = customerPhone ? customerPhone.replace(/\D+/g, '') : '';
     const storedPhone = cleanPhone || (remoteJid ? remoteJid.replace('@s.whatsapp.net', '').replace('@lid', '') : 'guest');
-    
-    // 1. Search by immutable remoteJid first
+    const lookupKey = remoteJid || storedPhone;
+
+    // 1. Check in-memory active session cache first (instant, guaranteed)
+    if (lookupKey && MySQLConversationSessionRepository.activeSessions.has(lookupKey)) {
+      const cached = MySQLConversationSessionRepository.activeSessions.get(lookupKey)!;
+      return cached.session;
+    }
+
+    // 2. Search database by remoteJid first
     let rows: any[] = [];
     if (remoteJid) {
       try {
@@ -110,7 +128,7 @@ export class MySQLConversationSessionRepository implements IConversationSessionR
       } catch {}
     }
 
-    // 2. Fallback to storedPhone search
+    // 3. Fallback to storedPhone in DB
     if ((!rows || rows.length === 0) && storedPhone && storedPhone !== 'guest') {
       try {
         rows = await query<any[]>(
@@ -121,18 +139,14 @@ export class MySQLConversationSessionRepository implements IConversationSessionR
     }
 
     if (rows && rows.length > 0) {
-      // If remoteJid was missing in the existing session, backfill it now
-      if (remoteJid && !rows[0].whatsapp_remote_jid) {
-        await query(
-          'UPDATE conversation_sessions SET whatsapp_remote_jid = ? WHERE id = ?',
-          [remoteJid, rows[0].id]
-        ).catch(() => {});
-        rows[0].whatsapp_remote_jid = remoteJid;
+      const session = this.mapRowToEntity(rows[0]);
+      if (lookupKey) {
+        MySQLConversationSessionRepository.activeSessions.set(lookupKey, { session, messages: [] });
       }
-      return this.mapRowToEntity(rows[0]);
+      return session;
     }
 
-    // 3. Create fresh persistent session
+    // 4. Create fresh session
     const newId = `cs-${uuidv4()}`;
     try {
       await query(
@@ -147,13 +161,34 @@ export class MySQLConversationSessionRepository implements IConversationSessionR
          (id, customer_phone, channel, state, created_at, updated_at, last_message_at)
          VALUES (?, ?, 'whatsapp', 'IDLE', NOW(), NOW(), NOW())`,
         [newId, storedPhone]
-      );
+      ).catch(() => {});
     }
 
-    const createdRows = await query<any[]>(
-      'SELECT * FROM conversation_sessions WHERE id = ?',
-      [newId]
-    );
+    const freshSession = new ConversationSession({
+      id: newId,
+      customerPhone: storedPhone,
+      whatsappRemoteJid: remoteJid || null,
+      channel: 'whatsapp',
+      state: 'IDLE',
+      activeBookingId: null,
+      pendingEntities: null,
+      lastIntent: null,
+      humanHandoffActive: false,
+      humanHandoffExpiresAt: null,
+      lastMessageAt: new Date().toISOString(),
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    });
+
+    if (lookupKey) {
+      MySQLConversationSessionRepository.activeSessions.set(lookupKey, { session: freshSession, messages: [] });
+      if (lookupKey !== newId) {
+        MySQLConversationSessionRepository.activeSessions.set(newId, { session: freshSession, messages: [] });
+      }
+    }
+
+    return freshSession;
+  }
 
     return this.mapRowToEntity(createdRows[0]);
   }
@@ -269,6 +304,21 @@ export class MySQLConversationSessionRepository implements IConversationSessionR
       }
     }
 
+    // Sync into in-memory active session cache
+    for (const [key, cached] of MySQLConversationSessionRepository.activeSessions.entries()) {
+      if (cached.session.id === sessionId) {
+        cached.messages.push({
+          id: messageId,
+          whatsappMessageId: message.whatsappMessageId,
+          role: message.role,
+          content: message.content,
+          extractedIntent: message.extractedIntent,
+          createdAt: new Date().toISOString(),
+        });
+        if (cached.messages.length > 30) cached.messages.shift();
+      }
+    }
+
     try {
       await query(
         `INSERT INTO conversation_messages 
@@ -295,7 +345,7 @@ export class MySQLConversationSessionRepository implements IConversationSessionR
         return { isDuplicate: false, messageId };
       } catch {}
 
-      throw err;
+      return { isDuplicate: false, messageId };
     }
   }
 
@@ -307,8 +357,16 @@ export class MySQLConversationSessionRepository implements IConversationSessionR
     extractedIntent?: any;
     createdAt: string;
   }>> {
-    await this.ensureTable();
     const safeLimit = Math.max(1, Math.min(50, Number(limit) || 20));
+
+    // 1. Check in-memory active session first
+    for (const [key, cached] of MySQLConversationSessionRepository.activeSessions.entries()) {
+      if (cached.session.id === sessionId && cached.messages.length > 0) {
+        return cached.messages.slice(-safeLimit);
+      }
+    }
+
+    // 2. Database query fallback
     try {
       const rows = await query<any[]>(
         `SELECT * FROM conversation_messages WHERE session_id = ? ORDER BY created_at DESC LIMIT ${safeLimit}`,
