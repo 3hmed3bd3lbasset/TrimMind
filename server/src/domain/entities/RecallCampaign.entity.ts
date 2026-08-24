@@ -6,6 +6,8 @@ export interface RecallCandidate {
   total_visits: number;
   last_barber: string;
   last_service: string;
+  booking_type?: string;
+  is_vip?: boolean;
 }
 
 export class RecallCampaign {

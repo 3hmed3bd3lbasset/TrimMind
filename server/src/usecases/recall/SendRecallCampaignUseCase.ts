@@ -26,11 +26,27 @@ export class SendRecallCampaignUseCase {
 
     let sentCount = 0;
     for (const c of selected) {
-      const msg = customMessageTemplate
-        ? customMessageTemplate.replace('{name}', c.customer_name).replace('{barber}', c.last_barber).replace('{service}', c.last_service)
-        : `أهلاً يا ${c.customer_name || 'عزيزنا العميل'}! 💈✨\nوحشتنا في صالون TrimMind (الحداد VIP).. بقالك فترة ما شرفتناش من بعد آخر ${c.last_service} مع كابتن ${c.last_barber}!\n\nجاهزين لك دائماً بأفضل تجربة عناية وحلاقة ملكية تليق بك 👑✂️\n\n👉 احجز موعدك القادم بضغطة واحدة من هنا:\nhttps://trimmind.up.railway.app\n\nنتشرف بزيارتك دائماً! ❤️`;
+      const clientName = c.customer_name || 'عزيزنا العميل';
+      const barberName = c.last_barber || 'محمد الحداد';
+      const serviceName = c.last_service || 'قص شعر وتصفيف كلاسيكي';
 
-      await this.recallRepo.recordSend(campaignId, c.customer_phone, c.customer_name, msg);
+      let msg = customMessageTemplate || `أهلاً يا [اسم العميل]! 💈✨\nوحشتنا في صالون TrimMind (الحداد VIP).. بقالك فترة ما شرفتناش من بعد آخر [الخدمة] مع كابتن [الكابتن]!\n\nجاهزين لك دائماً بأفضل تجربة عناية وحلاقة ملكية تليق بك 👑✂️\n\n👉 احجز موعدك القادم بضغطة واحدة من هنا:\nhttps://trimmind.up.railway.app\n\nنتشرف بزيارتك دائماً! ❤️`;
+
+      msg = msg
+        .replace(/\[اسم العميل\]/g, clientName)
+        .replace(/\[العميل\]/g, clientName)
+        .replace(/\{name\}/g, clientName)
+        .replace(/\{customer_name\}/g, clientName)
+        .replace(/\[الكابتن\]/g, barberName)
+        .replace(/\[كابتن\]/g, barberName)
+        .replace(/\[الحلاق\]/g, barberName)
+        .replace(/\{barber\}/g, barberName)
+        .replace(/\[الخدمة\]/g, serviceName)
+        .replace(/\[خدمة\]/g, serviceName)
+        .replace(/\[الباقة\]/g, serviceName)
+        .replace(/\{service\}/g, serviceName);
+
+      await this.recallRepo.recordSend(campaignId, c.customer_phone, clientName, msg);
       this.notificationGateway.sendWhatsApp(c.customer_phone, msg).catch(() => {});
       sentCount++;
     }
