@@ -46,7 +46,7 @@ app.set('trust proxy', 1);
 const server = http.createServer(app);
 const PORT = process.env.PORT || 5000;
 const CLIENT_URL = process.env.CLIENT_URL || 'http://localhost:5173';
-const UPLOAD_DIR = process.env.UPLOAD_DIR || 'uploads';
+import { getUploadDir, getPersistentDb, savePersistentDb } from './services/persistentStorage.service.js';
 
 // 1. Core Security Middlewares
 app.use(helmetMiddleware);
@@ -60,11 +60,8 @@ app.use(sanitizeMiddleware);
 // 2. Global Rate Limiter
 app.use('/api', apiLimiter);
 
-// 3. Static Uploads Serving
-const uploadsPath = path.resolve(UPLOAD_DIR);
-if (!fs.existsSync(uploadsPath)) {
-  fs.mkdirSync(uploadsPath, { recursive: true });
-}
+// 3. Static Uploads Serving directly from persistent Railway Volume
+const uploadsPath = getUploadDir();
 // Block sensitive auth credentials from public static access
 app.use('/uploads/whatsapp_auth', (_req, res) => {
   res.status(403).json({ success: false, error: 'Forbidden' });
@@ -90,6 +87,25 @@ app.use('/api/whatsapp-session', whatsappSessionRoutes);
 app.use('/api/waitlist', waitlistRoutes);
 app.use('/api/recall', recallRoutes);
 app.use('/api/insights', insightsRoutes);
+
+// Persistent Sync & Bootstrap Endpoints
+app.get('/api/sync/bootstrap', (_req, res) => {
+  const db = getPersistentDb();
+  res.json({ success: true, data: db });
+});
+
+app.post('/api/sync/backup', (req, res) => {
+  try {
+    const payload = req.body;
+    if (payload && typeof payload === 'object') {
+      savePersistentDb(payload);
+      return res.json({ success: true, message: 'Persistent backup saved successfully' });
+    }
+    return res.status(400).json({ success: false, error: 'Invalid payload' });
+  } catch (err: any) {
+    return res.status(500).json({ success: false, error: err.message });
+  }
+});
 
 // Health check endpoint
 app.get('/api/health', (_req, res) => {

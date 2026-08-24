@@ -12,6 +12,10 @@ import {
 import { bookingLimiter } from '../middleware/rateLimiter.js';
 import { optionalAuth, AuthenticatedRequest } from '../middleware/auth.js';
 import { broadcastToBranch, broadcastGlobal } from '../socket/realtime.js';
+import {
+  getPersistentDb,
+  addOrUpdatePersistentBooking,
+} from '../services/persistentStorage.service.js';
 
 import { liveSyncedBookings } from './agentTools.routes.js';
 
@@ -42,7 +46,17 @@ router.get('/track', async (req, res: Response) => {
       }
     } catch {}
 
-    // 2. Search in liveSyncedBookings (in-memory created via WhatsApp)
+    // 2. Search in Persistent Volume DB
+    const persistentBookings = getPersistentDb().bookings || [];
+    const pMatches = persistentBookings.filter(
+      (b) =>
+        b.id?.toLowerCase() === cleanQuery ||
+        b.bookingId?.toLowerCase() === cleanQuery ||
+        (b.customer_phone && b.customer_phone.includes(cleanPhone)) ||
+        (b.secure_token && b.secure_token.toLowerCase() === cleanQuery)
+    );
+
+    // 3. Search in liveSyncedBookings (in-memory created via WhatsApp)
     const memMatches = liveSyncedBookings.filter(
       (b) =>
         b.id?.toLowerCase() === cleanQuery ||
@@ -51,7 +65,11 @@ router.get('/track', async (req, res: Response) => {
         (b.secure_token && b.secure_token.toLowerCase() === cleanQuery)
     );
 
-    const merged = [...detailedBookings, ...memMatches.filter((m) => !detailedBookings.some((d) => d && d.id === m.id))];
+    const merged = [
+      ...detailedBookings,
+      ...pMatches.filter((p) => !detailedBookings.some((d) => d && d.id === p.id)),
+      ...memMatches.filter((m) => !detailedBookings.some((d) => d && d.id === m.id) && !pMatches.some((p) => p && p.id === m.id)),
+    ];
 
     return res.json({
       success: true,
@@ -98,8 +116,15 @@ router.get('/', async (req: AuthenticatedRequest, res: Response) => {
       }
     } catch {}
 
-    // Merge in-memory liveSyncedBookings (created via WhatsApp)
-    const merged = [...detailed, ...liveSyncedBookings.filter((m) => !detailed.some((d) => d && d.id === m.id))];
+    // Merge persistent volume bookings
+    const pBookings = getPersistentDb().bookings || [];
+
+    // Merge in-memory liveSyncedBookings
+    const merged = [
+      ...detailed,
+      ...pBookings.filter((p) => !detailed.some((d) => d && d.id === p.id)),
+      ...liveSyncedBookings.filter((m) => !detailed.some((d) => d && d.id === m.id) && !pBookings.some((p) => p && p.id === m.id)),
+    ];
 
     return res.json({ success: true, data: merged });
   } catch (error: any) {
@@ -110,7 +135,16 @@ router.get('/', async (req: AuthenticatedRequest, res: Response) => {
 // GET /api/bookings/:id
 router.get('/:id', async (req, res: Response) => {
   try {
-    const booking = await getBookingById(req.params.id);
+    let booking: any = null;
+    try {
+      booking = await getBookingById(req.params.id);
+    } catch {}
+
+    if (!booking) {
+      const pBookings = getPersistentDb().bookings || [];
+      booking = pBookings.find((b) => b.id === req.params.id || b.bookingId === req.params.id);
+    }
+
     if (!booking) {
       return res.status(404).json({ success: false, error: 'الحجز غير موجود' });
     }
@@ -125,6 +159,7 @@ router.post('/', bookingLimiter, validateBody(createBookingSchema), async (req: 
   try {
     const ip = req.ip || req.socket.remoteAddress || '127.0.0.1';
     const booking = await createBooking(req.body, req.user, ip);
+    addOrUpdatePersistentBooking(booking);
     return res.status(201).json({
       success: true,
       message: 'تم تسجيل الحجز وتعيين رقم الدور بنجاح',

@@ -85,7 +85,15 @@ function AppLayout() {
           stateUpdates.branches = (branchesRes.value as any).data;
         }
         if (barbersRes.status === 'fulfilled' && (barbersRes.value as any)?.success && Array.isArray((barbersRes.value as any)?.data) && (barbersRes.value as any).data.length > 0) {
-          stateUpdates.barbers = (barbersRes.value as any).data;
+          const backendBarbers = (barbersRes.value as any).data;
+          const localBarbers = useSalonStore.getState().barbers || [];
+          stateUpdates.barbers = backendBarbers.map((bb: any) => {
+            const match = localBarbers.find((lb) => lb.id === bb.id);
+            return {
+              ...bb,
+              photo_url: bb.photo_url || match?.photo_url || '',
+            };
+          });
         }
         if (chairsRes.status === 'fulfilled' && (chairsRes.value as any)?.success && Array.isArray((chairsRes.value as any)?.data) && (chairsRes.value as any).data.length > 0) {
           stateUpdates.chairs = (chairsRes.value as any).data;
@@ -100,7 +108,17 @@ function AppLayout() {
           stateUpdates.settings = { ...useSalonStore.getState().settings, ...(settingsRes.value as any).data };
         }
         if (bookingsRes.status === 'fulfilled' && (bookingsRes.value as any)?.success && Array.isArray((bookingsRes.value as any)?.data)) {
-          stateUpdates.bookings = (bookingsRes.value as any).data;
+          const backendBookings = (bookingsRes.value as any).data;
+          const localBookings = useSalonStore.getState().bookings || [];
+          if (backendBookings.length > 0) {
+            stateUpdates.bookings = backendBookings;
+          } else if (localBookings.length > 0) {
+            fetch('/api/sync/backup', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ bookings: localBookings }),
+            }).catch(() => {});
+          }
         }
         if (profilesRes.status === 'fulfilled' && (profilesRes.value as any)?.success && Array.isArray((profilesRes.value as any)?.data) && (profilesRes.value as any).data.length > 0) {
           stateUpdates.profiles = (profilesRes.value as any).data;
@@ -118,12 +136,21 @@ function AppLayout() {
 
     const syncToBackend = () => {
       try {
-        const { branches, services, barbers, settings } = useSalonStore.getState();
-        if (branches.length > 0 && services.length > 0) {
-          fetch('/api/agent-tools/sync-store', {
+        const state = useSalonStore.getState();
+        if (state.branches.length > 0 && state.services.length > 0) {
+          fetch('/api/sync/backup', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ branches, services, barbers, settings }),
+            body: JSON.stringify({
+              branches: state.branches,
+              services: state.services,
+              barbers: state.barbers,
+              chairs: state.chairs,
+              products: state.products,
+              settings: state.settings,
+              bookings: state.bookings,
+              profiles: state.profiles,
+            }),
           }).catch(() => {});
         }
       } catch (e) {}
