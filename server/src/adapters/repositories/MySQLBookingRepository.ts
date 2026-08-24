@@ -89,7 +89,22 @@ export class MySQLBookingRepository implements IBookingRepository {
         assignedQueueNumber++;
       }
 
-      // 6. Validate Chair
+      // 6. Validate Barber & Chair
+      if (data.barberId && startsAtSql) {
+        const barberConflicts = await queryConn<any[]>(
+          conn,
+          `SELECT id FROM bookings 
+           WHERE barber_id = ? 
+             AND starts_at = ? 
+             AND status IN ('confirmed', 'customer_arrived', 'in_service')
+           LIMIT 1 FOR UPDATE`,
+          [data.barberId, startsAtSql]
+        );
+        if (barberConflicts && barberConflicts.length > 0) {
+          throw new Error('الكابتن المختار محجوز بالفعل في هذا الموعد المحدد.');
+        }
+      }
+
       if (data.chairId) {
         const chairRows = await queryConn<any[]>(conn, 'SELECT id, status FROM chairs WHERE id = ? FOR UPDATE', [data.chairId]);
         if (chairRows && chairRows.length > 0 && chairRows[0].status === 'offline') {

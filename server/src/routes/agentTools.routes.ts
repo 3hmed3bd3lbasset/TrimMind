@@ -6,6 +6,7 @@ import { createBooking, cancelBooking, getBookingById } from '../services/bookin
 import { getBranchQueue } from '../services/queue.service.js';
 import { broadcastToBranch, broadcastGlobal } from '../socket/realtime.js';
 import { AGENT_API_SECRET } from '../config/jwt.js';
+import { agentToolsLimiter } from '../middleware/rateLimiter.js';
 import { container } from '../index.js';
 
 const router = Router();
@@ -51,6 +52,7 @@ function requireAgentAuth(req: Request, res: Response, next: NextFunction): void
 }
 
 router.use(requireAgentAuth);
+router.use(agentToolsLimiter);
 
 // Helper function to clean and normalize Egyptian phone numbers
 function normalizePhone(phone: string): string {

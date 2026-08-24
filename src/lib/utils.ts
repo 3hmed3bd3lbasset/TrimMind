@@ -325,6 +325,14 @@ export const BOOKING_STATUS_CONFIG: Record<
     step: 0,
     description: 'جاري تحديد تفاصيل الحجز',
   },
+  custom_pricing_requested: {
+    label: 'طلب تسعير باقة ✂️',
+    bg: 'bg-amber-50',
+    text: 'text-amber-900',
+    border: 'border-amber-300',
+    step: 0.5,
+    description: 'العميل طلب باقة مخصصة بانتظار تسعير موظف الاستقبال',
+  },
   awaiting_payment: {
     label: 'بانتظار التحويل',
     bg: 'bg-terra/10',

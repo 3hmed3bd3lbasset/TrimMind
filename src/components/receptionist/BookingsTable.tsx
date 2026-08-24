@@ -40,6 +40,7 @@ export const BookingsTable: React.FC<BookingsTableProps> = ({ branchId }) => {
   const { bookings, barbers, services, products, currentUser, transitionBookingStatus, updateBookingDetails } =
     useSalonStore();
   const [filterStatus, setFilterStatus] = useState<string>('all');
+  const [filterSource, setFilterSource] = useState<'all' | 'whatsapp' | 'custom_pricing' | 'web'>('all');
   const [searchQuery, setSearchQuery] = useState('');
 
   // Modals state
@@ -83,12 +84,28 @@ export const BookingsTable: React.FC<BookingsTableProps> = ({ branchId }) => {
 
   const filteredBookings = branchBookings
     .filter((b) => {
-      const matchesStatus = filterStatus === 'all' || b.status === filterStatus;
+      const matchesStatus =
+        filterStatus === 'all'
+          ? true
+          : filterStatus === 'custom_pricing_requested'
+          ? b.status === 'custom_pricing_requested'
+          : b.status === filterStatus;
+
+      const matchesSource =
+        filterSource === 'all'
+          ? true
+          : filterSource === 'whatsapp'
+          ? b.source === 'whatsapp' || Boolean(b.ai_brief)
+          : filterSource === 'custom_pricing'
+          ? b.status === 'custom_pricing_requested' || Boolean((b as any).custom_line_items?.length)
+          : b.source !== 'whatsapp' && !b.ai_brief;
+
       const matchesSearch =
         b.id.toLowerCase().includes(searchQuery.toLowerCase()) ||
         (b.customer_name || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
         (b.customer_phone || '').includes(searchQuery);
-      return matchesStatus && matchesSearch;
+
+      return matchesStatus && matchesSource && matchesSearch;
     })
     .sort((a, b) => {
       const timeA = new Date(a.created_at || a.starts_at || 0).getTime();
@@ -98,7 +115,7 @@ export const BookingsTable: React.FC<BookingsTableProps> = ({ branchId }) => {
 
   const handleStatusChange = (bookingId: string, newStatus: BookingStatus) => {
     transitionBookingStatus(bookingId, newStatus, `تغيير الحالة يدوياً إلى ${newStatus}`);
-    toast.success(`تم تحديث حالة الحجز إلى: ${BOOKING_STATUS_CONFIG[newStatus].label} ✅`);
+    toast.success(`تم تحديث حالة الحجز إلى: ${BOOKING_STATUS_CONFIG[newStatus]?.label || newStatus} ✅`);
   };
 
   const handleToggleHandoff = async (phone: string, currentNeedsAttention: boolean) => {
@@ -136,8 +153,62 @@ export const BookingsTable: React.FC<BookingsTableProps> = ({ branchId }) => {
     setSelectedEditBooking(null);
   };
 
+  const whatsappBookingsCount = branchBookings.filter((b) => b.source === 'whatsapp' || Boolean(b.ai_brief)).length;
+  const customPricingCount = branchBookings.filter((b) => b.status === 'custom_pricing_requested').length;
+
   return (
     <div className="space-y-4 font-sans text-ink">
+
+      {/* WhatsApp Booking Hub Bar */}
+      <div className="flex flex-wrap items-center justify-between gap-2 bg-paper-warm/90 p-2.5 rounded-2xl border border-border">
+        <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar py-0.5">
+          <button
+            onClick={() => { setFilterSource('all'); }}
+            className={`px-3 py-1.5 rounded-xl font-bold text-xs transition-all ${
+              filterSource === 'all'
+                ? 'bg-forest text-paper shadow-xs'
+                : 'bg-white/80 text-ink-soft hover:bg-white'
+            }`}
+          >
+            جميع الحجوزات ({branchBookings.length})
+          </button>
+          <button
+            onClick={() => { setFilterSource('whatsapp'); }}
+            className={`px-3 py-1.5 rounded-xl font-bold text-xs flex items-center gap-1.5 transition-all ${
+              filterSource === 'whatsapp'
+                ? 'bg-emerald-700 text-white shadow-xs'
+                : 'bg-emerald-50 text-emerald-900 hover:bg-emerald-100 border border-emerald-200'
+            }`}
+          >
+            <Bot className="w-3.5 h-3.5 text-emerald-600" />
+            حجوزات واتساب AI ({whatsappBookingsCount})
+          </button>
+          <button
+            onClick={() => { setFilterSource('custom_pricing'); }}
+            className={`px-3 py-1.5 rounded-xl font-bold text-xs flex items-center gap-1.5 transition-all ${
+              filterSource === 'custom_pricing'
+                ? 'bg-amber-600 text-white shadow-xs'
+                : 'bg-amber-50 text-amber-900 hover:bg-amber-100 border border-amber-300'
+            }`}
+          >
+            <Sparkles className="w-3.5 h-3.5 text-amber-600" />
+            طلبات تسعير مخصصة ({customPricingCount})
+            {customPricingCount > 0 && (
+              <span className="w-2 h-2 rounded-full bg-rose-500 animate-ping inline-block" />
+            )}
+          </button>
+          <button
+            onClick={() => { setFilterSource('web'); }}
+            className={`px-3 py-1.5 rounded-xl font-bold text-xs transition-all ${
+              filterSource === 'web'
+                ? 'bg-blue-700 text-white shadow-xs'
+                : 'bg-blue-50 text-blue-900 hover:bg-blue-100 border border-blue-200'
+            }`}
+          >
+            المنصة الإلكترونية 🌐
+          </button>
+        </div>
+      </div>
 
       {/* Search and Filters Bar */}
       <div className="clinic-card p-4 flex flex-col sm:flex-row items-center justify-between gap-3 shadow-clinic-1 bg-white/90">
@@ -154,7 +225,7 @@ export const BookingsTable: React.FC<BookingsTableProps> = ({ branchId }) => {
 
         <div className="flex items-center gap-2 w-full sm:w-auto overflow-x-auto no-scrollbar pb-1 sm:pb-0 text-xs">
           <span className="text-ink-mute text-[11px] whitespace-nowrap">الحالة:</span>
-          {['all', 'pending_review', 'confirmed', 'customer_arrived', 'in_service', 'completed'].map(
+          {['all', 'custom_pricing_requested', 'pending_review', 'confirmed', 'customer_arrived', 'in_service', 'completed'].map(
             (st) => (
               <button
                 key={st}
@@ -167,6 +238,8 @@ export const BookingsTable: React.FC<BookingsTableProps> = ({ branchId }) => {
               >
                 {st === 'all'
                   ? 'الكل'
+                  : st === 'custom_pricing_requested'
+                  ? 'طلب تسعير ✂️'
                   : BOOKING_STATUS_CONFIG[st as BookingStatus]?.label || st}
               </button>
             )
@@ -456,7 +529,16 @@ export const BookingsTable: React.FC<BookingsTableProps> = ({ branchId }) => {
 
                     <td className="py-3.5 px-4 text-center">
                       <div className="flex items-center justify-center gap-1">
-                        {isWhatsApp && (
+                        {b.status === 'custom_pricing_requested' ? (
+                          <button
+                            onClick={() => setSelectedCustomPricingBooking(b)}
+                            className="px-2.5 py-1.5 rounded-lg bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs shadow-xs flex items-center gap-1 transition-all animate-pulse"
+                            title="تسعير باقة الواتساب المخصصة وإرسال الفاتورة للعميل"
+                          >
+                            <Sparkles className="w-3 h-3 text-amber-200" />
+                            <span>تسعير الباقة ✂️💵</span>
+                          </button>
+                        ) : isWhatsApp ? (
                           <button
                             onClick={() => setSelectedCustomPricingBooking(b)}
                             className="px-2.5 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs shadow-xs flex items-center gap-1 transition-all"
@@ -465,7 +547,7 @@ export const BookingsTable: React.FC<BookingsTableProps> = ({ branchId }) => {
                             <Sparkles className="w-3 h-3 text-amber-300" />
                             <span>تسعير 🛠️</span>
                           </button>
-                        )}
+                        ) : null}
                         <button
                           onClick={() => openEditModal(b)}
                           className="p-1.5 rounded-lg bg-paper-warm hover:bg-white text-forest border border-border"

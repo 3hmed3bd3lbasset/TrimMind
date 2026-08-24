@@ -109,3 +109,12 @@ export const aiLimiter = createFlexibleLimiter({
   keyPrefix: 'rl_ai_chat',
   errorMessage: 'تم تجاوز الحد المسموح من استفسارات المساعد الذكي. يرجى الانتظار دقيقة والمحاولة مجدداً.',
 });
+
+// 6. Agent Tools / WhatsApp Inbound Limiter (150 calls / minute per IP/Phone)
+export const agentToolsLimiter = createFlexibleLimiter({
+  points: 150,
+  duration: 60,
+  keyPrefix: 'rl_agent_tools',
+  errorMessage: 'تم تجاوز الحد المسموح لطلبات أدوات الذكاء الاصطناعي، يرجى الانتظار قليلاً.',
+});
+
