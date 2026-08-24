@@ -116,12 +116,21 @@ export class MySQLConversationSessionRepository implements IConversationSessionR
     // 3. Create fresh persistent session
     const newId = `cs-${uuidv4()}`;
     const storedPhone = cleanPhone || (remoteJid ? remoteJid.replace('@s.whatsapp.net', '').replace('@lid', '') : 'guest');
-    await query(
-      `INSERT INTO conversation_sessions 
-       (id, customer_phone, whatsapp_remote_jid, channel, state, created_at, updated_at, last_message_at)
-       VALUES (?, ?, ?, 'whatsapp', 'IDLE', NOW(), NOW(), NOW())`,
-      [newId, storedPhone, remoteJid || null]
-    );
+    try {
+      await query(
+        `INSERT INTO conversation_sessions 
+         (id, customer_phone, whatsapp_remote_jid, channel, state, created_at, updated_at, last_message_at)
+         VALUES (?, ?, ?, 'whatsapp', 'IDLE', NOW(), NOW(), NOW())`,
+        [newId, storedPhone, remoteJid || null]
+      );
+    } catch {
+      await query(
+        `INSERT INTO conversation_sessions 
+         (id, customer_phone, channel, state, created_at, updated_at, last_message_at)
+         VALUES (?, ?, 'whatsapp', 'IDLE', NOW(), NOW(), NOW())`,
+        [newId, storedPhone]
+      );
+    }
 
     const createdRows = await query<any[]>(
       'SELECT * FROM conversation_sessions WHERE id = ?',
@@ -221,7 +230,7 @@ export class MySQLConversationSessionRepository implements IConversationSessionR
       await query(
         'UPDATE conversation_sessions SET last_message_at = NOW(), updated_at = NOW() WHERE id = ?',
         [sessionId]
-      );
+      ).catch(() => {});
 
       return { isDuplicate: false, messageId };
     } catch (err: any) {
@@ -229,6 +238,18 @@ export class MySQLConversationSessionRepository implements IConversationSessionR
       if (err?.code === 'ER_DUP_ENTRY' || err?.errno === 1062 || String(err?.message || '').includes('Duplicate entry')) {
         return { isDuplicate: true, messageId: message.whatsappMessageId || '' };
       }
+      
+      // Fallback insert without whatsapp_message_id column if table was from older migration
+      try {
+        await query(
+          `INSERT INTO conversation_messages 
+           (id, session_id, role, content, extracted_intent, created_at)
+           VALUES (?, ?, ?, ?, ?, NOW())`,
+          [messageId, sessionId, message.role, message.content, intentJson]
+        );
+        return { isDuplicate: false, messageId };
+      } catch {}
+
       throw err;
     }
   }
@@ -243,20 +264,24 @@ export class MySQLConversationSessionRepository implements IConversationSessionR
   }>> {
     await this.ensureTable();
     const safeLimit = Math.max(1, Math.min(50, Number(limit) || 20));
-    const rows = await query<any[]>(
-      `SELECT * FROM conversation_messages WHERE session_id = ? ORDER BY created_at DESC LIMIT ${safeLimit}`,
-      [sessionId]
-    );
+    try {
+      const rows = await query<any[]>(
+        `SELECT * FROM conversation_messages WHERE session_id = ? ORDER BY created_at DESC LIMIT ${safeLimit}`,
+        [sessionId]
+      );
 
-    if (!rows || rows.length === 0) return [];
+      if (!rows || rows.length === 0) return [];
 
-    return rows.reverse().map((r) => ({
-      id: r.id,
-      whatsappMessageId: r.whatsapp_message_id,
-      role: r.role,
-      content: r.content,
-      extractedIntent: r.extracted_intent ? (typeof r.extracted_intent === 'string' ? JSON.parse(r.extracted_intent) : r.extracted_intent) : null,
-      createdAt: new Date(r.created_at).toISOString(),
-    }));
+      return rows.reverse().map((r) => ({
+        id: r.id,
+        whatsappMessageId: r.whatsapp_message_id || null,
+        role: r.role,
+        content: r.content,
+        extractedIntent: r.extracted_intent ? (typeof r.extracted_intent === 'string' ? JSON.parse(r.extracted_intent) : r.extracted_intent) : null,
+        createdAt: new Date(r.created_at).toISOString(),
+      }));
+    } catch {
+      return [];
+    }
   }
 }
