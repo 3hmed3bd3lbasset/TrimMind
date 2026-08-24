@@ -103,7 +103,9 @@ export interface UserBookingSession {
   needsHumanAttention?: boolean;
   handoffExpiresAt?: number | null;
   greeted?: boolean;
+  isCustom?: boolean;
   customItems?: Array<{ name: string; price: number }>;
+  lastActive?: number;
   lastActiveAt?: number;
 }
 
@@ -924,50 +926,6 @@ async function handleIncomingWithAI(
     return;
   }
 
-  // If Handoff is already active and user didn't explicitly ask for the bot, do not auto-reply with bot
-  if (isHandoffActive && !textLower.includes('حجز') && !textLower.includes('بوت') && !textLower.includes('اسعار') && !textLower.includes('أسعار')) {
-    return;
-  }
-
-  // Log incoming chat analytics event
-  try {
-    await query(
-      `INSERT INTO whatsapp_analytics_logs (id, phone, event_type, metadata, created_at)
-       VALUES (?, ?, 'chat_started', ?, NOW())`,
-      [uuidv4(), senderPhone || remoteJid, JSON.stringify({ message: userMessage })]
-    );
-  } catch {}
-
-  // Multi-Entity Cumulative Parsing
-  const parsedBarber = extractBarberFromText(userMessage, liveCtx.barbers);
-  if (parsedBarber) {
-    session.barberId = parsedBarber.barberId;
-    session.barberName = parsedBarber.barberName;
-  }
-
-  const parsedDateTime = extractDateTimeFromText(userMessage);
-  if (parsedDateTime) {
-    session.dateTimeStr = parsedDateTime.fullStr;
-    if (parsedDateTime.timeStr) session.targetTime = parsedDateTime.timeStr;
-    if (parsedDateTime.dayLabel) session.targetDate = parsedDateTime.dayLabel;
-    session.dateTimeStr = parsedDateTime.fullStr;
-    session.targetDate = parsedDateTime.dayLabel;
-    (session as any).startsAtISO = parsedDateTime.targetDateISO;
-    if (parsedDateTime.hasExplicitTime) {
-      session.bookingType = 'vip';
-      session.depositAmount = deposits.vip;
-    }
-  }
-
-  const extractedName = extractNameFromText(userMessage, pushName);
-  if (extractedName && extractedName !== 'أحمد' && (!session.customerName || session.customerName === 'أحمد' || session.customerName.includes('abdelbassetmohamed'))) {
-    session.customerName = extractedName;
-  }
-
-  if (textLower.includes('نفس الرقم') || textLower.includes('على نفس الرقم') || textLower.includes('رقم الواتس')) {
-    session.customerPhone = senderPhone || '01005437633';
-  }
-
   let replyText = '';
 
   // -------------------------------------------------------------------------
@@ -999,7 +957,7 @@ async function handleIncomingWithAI(
         broadcastToBranch('branch-elhdad', 'SYNC_STATE', { bookingId: b.id, status: 'customer_arrived' });
         broadcastGlobal('SYNC_STATE', { bookingId: b.id, status: 'customer_arrived' });
 
-        replyText = `يا هلا بأستاذنا الفاضل *${b.customer_name || pushName || 'يا باشا'}*! نورت صالون الحداد VIP 🌟👑\n\n✅ تم تسجيل حضورك في السيستم بنجاح وحالتك الآن (عميل وصل بالصالون).\nاتفضل استريح في صالة الاستقبال والكابتن هيجهز الكرسي لحضرتك فوراً! 💈✨`;
+        replyText = `يا هلا بأستاذنا الفاضل *${b.customer_name || 'يا باشا'}*! نورت صالون الحداد VIP 🌟👑\n\n✅ تم تسجيل حضورك في السيستم بنجاح وحالتك الآن (عميل وصل بالصالون).\nاتفضل استريح في صالة الاستقبال والكابتن هيجهز الكرسي لحضرتك فوراً! 💈✨`;
       } else {
         replyText = `يا هلا يا باشا نورتنا! 🌟 تم تسجيل حضورك في الصالون، اتفضل ارتاح في الاستقبال وموظف الاستقبال هيخدمك فوراً 👑💈`;
       }
@@ -1007,32 +965,24 @@ async function handleIncomingWithAI(
       replyText = `يا هلا يا باشا نورت صالون الحداد VIP! 🌟 تم تسجيل حضورك، اتفضل ارتاح في الاستقبال فوراً 👑`;
     }
 
-    let targetJid = remoteJid;
-    if (senderPhone && !remoteJid.includes('@s.whatsapp.net')) {
-      let clean = senderPhone.replace(/\D+/g, '');
-      if (clean.startsWith('01')) clean = '20' + clean.substring(1);
-      targetJid = `${clean}@s.whatsapp.net`;
-    }
-    await sendWhatsAppText(targetJid, replyText);
+    await sendWhatsAppText(remoteJid, replyText);
     return;
   }
 
   // -------------------------------------------------------------------------
-  // 2. PAYMENT PROOF IMAGE SUBMISSION (Customer sends screenshot) - 100% BULLETPROOF
+  // 2. PAYMENT PROOF IMAGE SUBMISSION (Customer sends screenshot)
   // -------------------------------------------------------------------------
   if (isImage) {
-    const custName = session.customerName || (pushName && pushName.trim().length >= 2 ? pushName.trim() : 'عميل واتساب');
+    const custName = session.customerName || 'عميل محترم';
     const cleanPhone = (session.customerPhone || senderPhone || '01005437633').replace(/\D+/g, '');
     const bType = session.bookingType || 'normal';
-    const defaultSrv = liveCtx.services[0] || { id: 'srv-1', name: 'قص شعر كلاسيكي', price: 180 };
-    const sName = session.serviceName || defaultSrv.name;
-    const sPrice = session.servicePrice || defaultSrv.price;
+    const sName = session.serviceName || 'باقة مخصصة على ذوق العميل';
     const randomBarber = liveCtx.barbers[Math.floor(Math.random() * liveCtx.barbers.length)] || { id: 'barber-mohamed', name: 'محمد الحداد' };
     const bName = session.barberName || (bType === 'vip' ? (liveCtx.barbers[0]?.name || 'محمد الحداد') : randomBarber.name);
     const bId = session.barberId || (bType === 'vip' ? (liveCtx.barbers[0]?.id || 'barber-mohamed') : randomBarber.id);
     const depVal = session.depositAmount || (bType === 'vip' ? deposits.vip : deposits.normal);
-    const customLineItems = session.customItems || [{ name: sName, price: sPrice }];
-    const aiBrief = `• الباقة والخدمات: ${sName} (حوالي ${sPrice} ج.م)\n• الكابتن: ${bName}\n• نوع الجلسة: ${bType === 'vip' ? 'VIP ملكية 👑' : 'عادية 💈'}\n• الميعاد: ${session.dateTimeStr || 'اليوم'}\n• هاتف العميل: ${cleanPhone}`;
+    const customLineItems = session.customItems && session.customItems.length > 0 ? session.customItems : [{ name: sName, price: 0 }];
+    const aiBrief = `• الباقة المطلوبة: ${sName}\n• الكابتن: ${bName}\n• نوع الجلسة: ${bType === 'vip' ? 'VIP ملكية 👑' : 'عادية 💈'}\n• العربون المسدد: ${depVal} ج\n• هاتف العميل: ${cleanPhone}\n• ملاحظة: سيتم تسعير وإصدار الفاتورة الرسمية من قبل موظف الاستقبال.`;
 
     let createdId = '';
     try {
@@ -1040,10 +990,10 @@ async function handleIncomingWithAI(
         branchId: 'branch-elhdad',
         customerName: custName,
         customerPhone: cleanPhone,
-        serviceId: session.serviceId || defaultSrv.id,
+        serviceId: session.serviceId || 'srv-custom',
         serviceName: sName,
-        servicePrice: sPrice,
-        totalAmount: sPrice,
+        servicePrice: 0,
+        totalAmount: 0,
         bookingFeeAtBooking: depVal,
         barberId: bId,
         barberName: bName,
@@ -1062,29 +1012,34 @@ async function handleIncomingWithAI(
       });
       createdId = created.id;
     } catch (err: any) {
-      logDebug('CREATE_BOOKING_PRIMARY_ERROR_TRYING_FALLBACK', { error: err.message });
+      logDebug('CREATE_BOOKING_PRIMARY_ERROR_TRYING_FALLBACK', { error: err?.message || String(err) });
       const newId = `BK-${Math.floor(1000 + Math.random() * 9000)}`;
       const nowCairo = new Date(new Date().toLocaleString('en-US', { timeZone: 'Africa/Cairo' }));
       const todayStr = `${nowCairo.getFullYear()}-${String(nowCairo.getMonth() + 1).padStart(2, '0')}-${String(nowCairo.getDate()).padStart(2, '0')}`;
-      await query(
-        `INSERT INTO bookings (
-           id, customer_id, customer_name, customer_phone, branch_id, barber_id, service_id,
-           booking_type, status, starts_at, booking_date, queue_number, total_at_booking,
-           booking_fee_at_booking, source, ai_brief, confidence_score, custom_line_items, created_at, updated_at
-         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'pending_review', NOW(), ?, 1, ?, ?, 'whatsapp', ?, 95, ?, NOW(), NOW())`,
-        [
-          newId, uuidv4(), custName, cleanPhone, 'branch-elhdad', bId, session.serviceId || defaultSrv.id,
-          bType, todayStr, sPrice, depVal, aiBrief, JSON.stringify(customLineItems)
-        ]
-      );
-      await query(
-        `INSERT INTO payment_proofs (id, booking_id, image_path, payment_method, sender_phone, transferred_amount, status, submitted_at)
-         VALUES (?, ?, ?, 'instapay', ?, ?, 'pending_review', NOW())`,
-        [uuidv4(), newId, base64ImageUrl || 'data:image/placeholder', cleanPhone, depVal]
-      );
-      createdId = newId;
-      broadcastToBranch('branch-elhdad', 'BOOKING_CREATED', { id: newId, customer_name: custName, source: 'whatsapp' });
-      broadcastGlobal('SYNC_STATE', { type: 'BOOKING_CREATED', bookingId: newId });
+      try {
+        await query(
+          `INSERT INTO bookings (
+             id, customer_id, customer_name, customer_phone, branch_id, barber_id, service_id,
+             booking_type, status, starts_at, booking_date, queue_number, total_at_booking,
+             booking_fee_at_booking, source, ai_brief, confidence_score, custom_line_items, created_at, updated_at
+           ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'pending_review', NOW(), ?, 1, 0, ?, 'whatsapp', ?, 95, ?, NOW(), NOW())`,
+          [
+            newId, uuidv4(), custName, cleanPhone, 'branch-elhdad', bId, session.serviceId || 'srv-custom',
+            bType, todayStr, depVal, aiBrief, JSON.stringify(customLineItems)
+          ]
+        );
+        await query(
+          `INSERT INTO payment_proofs (id, booking_id, image_path, payment_method, sender_phone, transferred_amount, status, submitted_at)
+           VALUES (?, ?, ?, 'instapay', ?, ?, 'pending_review', NOW())`,
+          [uuidv4(), newId, base64ImageUrl || 'data:image/placeholder', cleanPhone, depVal]
+        );
+        createdId = newId;
+        broadcastToBranch('branch-elhdad', 'BOOKING_CREATED', { id: newId, customer_name: custName, source: 'whatsapp' });
+        broadcastGlobal('SYNC_STATE', { type: 'BOOKING_CREATED', bookingId: newId });
+      } catch (sqlErr: any) {
+        logDebug('SQL_FALLBACK_INSERT_ERROR', { error: sqlErr?.message });
+        createdId = newId;
+      }
     }
 
     try {
@@ -1104,45 +1059,46 @@ async function handleIncomingWithAI(
     session.bookingType = bType;
     bookingSessions.set(sessionKey, session);
 
-    replyText = `📸 *تم استلام صورة إثبات الدفع وتسجيل حجزك بنجاح!* 💈👑
+    replyText = `📸 *تم استلام صورة إثبات الدفع وتسجيل طلب حجزك بنجاح!* 💈👑
 
 يا أستاذ *${custName}*، تم إدراج حجزك في السيستم ووصل الآن لموظف الاستقبال! 🌟
 
-🧾 *بيانات الفاتورة والحجز:*
+🧾 *بيانات طلب الحجز:*
 • *رقم الحجز (Reference):* \`#${createdId}\`
 • *نوع الجلسة:* ${bType === 'vip' ? 'جلسة VIP ملكية 👑' : 'جلسة عادية 💈'}
 • *الكابتن:* ${bName} ✂️
-• *الخدمة:* ${sName}
-• *الميعاد:* ${session.dateTimeStr || 'اليوم'}
+• *الباقة والخدمات:* ${sName}
 • *العربون المسدد بالإيصال:* *${depVal} جنيه*
-• *المتبقي عند الحضور:* *${Math.max(0, sPrice - depVal)} جنيه*
 
-⏱️ *موظف الاستقبال يقوم الآن بمراجعة الإيصال واعتماد الحجز فوراً، وسيصلك إشعار القبول الرسمي خلال دقائق!*
+💡 *سيقوم موظف الاستقبال بمراجعة الإيصال وتحديد إجمالي سعر الفاتورة النهائي واعتماد الحجز وإرسال رسالة القبول الرسمية خلال دقائق!*
 
-📍 *رابط متابعة دورك المباشر في الطابور:*
+📍 *رابط متابعة حالة الحجز ودورك في الطابور:*
 https://trimmind.up.railway.app/track?q=${createdId}
 
 تنورنا يا غالي! ✨`;
 
-    let targetJid = remoteJid;
-    if (senderPhone && !remoteJid.includes('@s.whatsapp.net')) {
-      let clean = senderPhone.replace(/\D+/g, '');
-      if (clean.startsWith('01')) clean = '20' + clean.substring(1);
-      targetJid = `${clean}@s.whatsapp.net`;
-    }
-    await sendWhatsAppText(targetJid, replyText);
+    await sendWhatsAppText(remoteJid, replyText);
     return;
   }
 
   // -------------------------------------------------------------------------
-  // 3. EXPLICIT CUSTOM BUNDLE / SERVICE EXTRACTION
+  // 3. CAPTURE REAL ARABIC NAME IF PROVIDED
+  // -------------------------------------------------------------------------
+  const detectedName = extractNameFromText(userMessage, pushName);
+  if (detectedName) {
+    session.customerName = detectedName;
+    bookingSessions.set(sessionKey, session);
+  }
+
+  // -------------------------------------------------------------------------
+  // 4. CUSTOM BUNDLE DETECTION (Does NOT compute arbitrary math prices)
   // -------------------------------------------------------------------------
   const customBundle = extractCustomBundleFromText(userMessage, liveCtx.services);
   if (customBundle) {
     session.customItems = customBundle.items;
     session.serviceName = customBundle.bundleTitle;
-    session.servicePrice = customBundle.totalEstimated;
     session.serviceId = customBundle.primaryServiceId;
+    session.isCustom = true;
     if (!session.bookingType) {
       session.bookingType = 'normal';
       session.depositAmount = deposits.normal;
@@ -1151,64 +1107,87 @@ https://trimmind.up.railway.app/track?q=${createdId}
   }
 
   // -------------------------------------------------------------------------
-  // 4. NAME & PHONE INPUT CAPTURE
-  // -------------------------------------------------------------------------
-  const detectedName = extractNameFromText(userMessage, pushName);
-  if (detectedName && detectedName !== 'أحمد' && detectedName !== 'عميل واتساب' && !detectedName.includes('abdelbassetmohamed')) {
-    session.customerName = detectedName;
-    bookingSessions.set(sessionKey, session);
-  }
-
-  // -------------------------------------------------------------------------
-  // 5. NATURAL RECEPTIONIST CONVERSATION TREE
+  // 5. SESSION SELECTION & CATALOG DISPLAY WITH CUSTOMIZATION QUESTION
   // -------------------------------------------------------------------------
   const isFirstMessage = !session.greeted;
   session.greeted = true;
   bookingSessions.set(sessionKey, session);
 
-  // If customer is ready for payment (knows services & name)
-  if (session.serviceName && session.customerName && !session.receiptSubmitted) {
+  // A) Customer Chose VIP Session
+  if (
+    textLower === 'vip' ||
+    textLower === 'ملكيه' ||
+    textLower === 'ملكية' ||
+    textLower === 'في اي بي' ||
+    textLower === '2' ||
+    textLower === 'جلسة vip'
+  ) {
+    session.bookingType = 'vip';
+    session.depositAmount = deposits.vip;
+    session.step = 'choosing_service';
+    bookingSessions.set(sessionKey, session);
+
+    const barbersList = liveCtx.barbers.map((b) => `• ${b.name}`).join('، ');
+
+    replyText = `أحلى اختيار يا باشا! 👑 تم اختيار *الجلسة الـ VIP الملكية* (عربون ${deposits.vip} ج).
+
+✂️ *كباتن الصالون المتاحين:* (${barbersList}).
+
+👑 *باقات الـ VIP الملكية الفاخرة:*
+• *Royal VIP Experience:* (قص شعر + تظبيط لحية ملكي + تنظيف بشرة عميق + حمام كريم) - 480 ج
+• *Gentleman VIP Package:* (قص شعر وتصفيف + علاج لحية + ماسك ذهبي وكولاجين) - 650 ج
+• *Executive VIP Full Care:* (جلسة ملكية شاملة + مساج للوجه وفروة الرأس) - 900 ج
+
+✨ *هل إحدى باقات الـ VIP مناسبة لحضرتك؟ ولا تحب تخصص باقة على ذوقك مع الكابتن المفضل؟*`;
+  }
+  // B) Customer Chose Normal Session
+  else if (
+    textLower === 'عادية' ||
+    textLower === 'عاديه' ||
+    textLower === 'العادي' ||
+    textLower === '1' ||
+    textLower === 'جلسة عادية'
+  ) {
+    session.bookingType = 'normal';
+    session.depositAmount = deposits.normal;
+    session.step = 'choosing_service';
+    bookingSessions.set(sessionKey, session);
+
+    replyText = `تمام يا باشا! تم اختيار *الجلسة العادية* 💈 (عربون ${deposits.normal} ج).
+
+📋 *قائمة خدمات وباقات الجلسة العادية المتاحة:*
+• *قص شعر كلاسيكي (Classic Haircut):* 180 ج
+• *تحديد وتظبيط لحية:* 100 ج
+• *تنظيف بشرة وماسك بخار:* 240 ج
+• *باقة صالون العادية الشاملة:* 380 ج
+
+✨ *هل إحدى هذه الخدمات أو الباقات مناسبة لحضرتك؟ ولا تحب تخصص باقة على ذوقك؟*`;
+  }
+  // C) Customer specified a custom bundle / service AND provided real name -> Prompt Deposit Only!
+  else if (session.serviceName && session.customerName && !session.receiptSubmitted) {
     const defaultBarber = liveCtx.barbers[0]?.name || 'محمد الحداد';
     const assignedBarber = session.barberName || (session.bookingType === 'vip' ? defaultBarber : 'كابتن متاح');
     session.barberName = assignedBarber;
     const depVal = session.depositAmount || (session.bookingType === 'vip' ? deposits.vip : deposits.normal);
 
     replyText = `تمام يا أستاذ *${session.customerName}* 🌟
-سجلت لحضرتك: *${session.serviceName}* (حوالي *${session.servicePrice} جنيه*) مع *${session.barberName}* ${session.dateTimeStr ? 'الساعة ' + session.dateTimeStr : ''}.
+سجلت لحضرتك: *${session.serviceName}* مع *${session.barberName}*.
 
 لتثبيت موعدك وتجهيز الكرسي، برجاء تحويل العربون (*${depVal} جنيه*) عبر:
 📱 *فودافون كاش / إنستاباي:* \`${liveCtx.paymentAccounts.instapay}\`
 
+💡 *علماً بأن إجمالي سعر الفاتورة النهائي سيتم تحديده وإبلاغ حضرتك به في رسالة القبول الرسمية من قبل موظف الاستقبال فور اعتماد حجزك!*
+
 📸 *ابعت صورة إيصال التحويل (اسكرين شوت) هنا فوراً* لاعتماد حجزك وإصدار الفاتورة الرسمية! ✨`;
   }
-  // If services chosen but name missing
+  // D) If services/custom bundle chosen but Name is missing -> Ask for Name & Phone!
   else if (session.serviceName && !session.customerName) {
-    replyText = `تمام يا باشا 👌 سجلت لحضرتك: *${session.serviceName}* (حوالي *${session.servicePrice} جنيه*)${session.barberName ? ' مع ' + session.barberName : ''}${session.dateTimeStr ? ' الساعة ' + session.dateTimeStr : ''}.
+    replyText = `تمام يا فندم 👌 سجلت لحضرتك:
+*${session.serviceName}*${session.barberName ? ' مع ' + session.barberName : ''}.
 
-أتشرف باسم حضرتك الكريم ورقم الموبايل لتثبيت الحجز باسمك؟ 💈`;
+أتشرف باسم حضرتك الكريم ورقم الموبايل لتسجيل وتثبيت الحجز باسمك؟ 💈`;
   }
-  // If customer requested VIP session
-  else if (textLower === 'vip' || textLower === 'ملكيه' || textLower === 'ملكية' || textLower === 'في اي بي' || textLower === '2' || textLower === 'جلسة vip') {
-    session.bookingType = 'vip';
-    session.depositAmount = deposits.vip;
-    bookingSessions.set(sessionKey, session);
-    const barbersList = liveCtx.barbers.map((b) => `• *${b.name}*`).join('، ');
-
-    replyText = `أحلى اختيار يا باشا! 👑 تم اختيار **الجلسة الـ VIP الملكية** (عربون ${deposits.vip} ج).
-كباتن الصالون المتاحين: (${barbersList}).
-
-قولي تحب تختار كابتن مين، وإيه الخدمات أو الباقة المطلوبة، والميعاد المناسب لحضرتك؟ ✨`;
-  }
-  // If customer requested Normal session
-  else if (textLower === 'عادية' || textLower === 'عاديه' || textLower === 'العادي' || textLower === '1' || textLower === 'جلسة عادية') {
-    session.bookingType = 'normal';
-    session.depositAmount = deposits.normal;
-    bookingSessions.set(sessionKey, session);
-
-    replyText = `تمام يا باشا! تم اختيار **الجلسة العادية** 💈 (عربون ${deposits.normal} ج).
-قولي تحب نعملك إيه النهارده (قص شعر، تظبيط لحية، تنظيف بشرة...)؟ ✨`;
-  }
-  // If asking about the difference
+  // E) If asking about difference
   else if (textLower.includes('ايه الفرق') || textLower.includes('إيه الفرق') || textLower.includes('الفرق بين')) {
     replyText = `يا هلا يا باشا! الفرق باختصار:
 1️⃣ **الجلسة العادية (عربون ${deposits.normal} ج):** بتحدد اليوم والنظام بيعين لك دور وساعة متاحة تلقائياً.
@@ -1216,7 +1195,7 @@ https://trimmind.up.railway.app/track?q=${createdId}
 
 تحب تختار العادية ولا VIP؟ ✨`;
   }
-  // If completely first greeting / general intent
+  // F) First greeting
   else if (isFirstMessage || textLower.includes('احجز') || textLower.includes('حجز') || textLower.includes('احلق') || textLower.includes('سلام') || textLower.includes('مرحبا')) {
     replyText = `يا هلا بأستاذنا الفاضل نورت صالون الحداد VIP 🌟💈
 تحت أمرك يا غالي، تحب تحجز جلسة عادية ولا VIP ملكية مع كابتن محدد وميعاد بالساعة؟ ✨`;
