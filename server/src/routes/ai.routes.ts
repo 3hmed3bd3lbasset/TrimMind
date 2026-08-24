@@ -30,18 +30,28 @@ router.post('/chat', aiLimiter, optionalAuth, async (req: AuthenticatedRequest, 
       text,
     } = req.body;
 
-    // 1. Instant Idempotency Gate (Blocks duplicate message processing instantly)
+    // 1. Instant Idempotency Gate (DB & Memory backed across all server instances)
     if (messageId) {
       const msgIdStr = String(messageId).trim();
       if (processedMessageIds.has(msgIdStr)) {
-        console.log(`[AI_CHAT_DEDUP] Duplicate messageId blocked: ${msgIdStr}`);
+        console.log(`[AI_CHAT_DEDUP] Memory duplicate blocked: ${msgIdStr}`);
         res.json({ success: true, text: '', isDuplicate: true });
         return;
       }
-      processedMessageIds.add(msgIdStr);
-      if (processedMessageIds.size > 10000) {
-        const oldest = processedMessageIds.values().next().value;
-        if (oldest) processedMessageIds.delete(oldest);
+
+      try {
+        await query(
+          'INSERT INTO webhook_events (id, source, event_type, processed_at) VALUES (?, ?, ?, NOW())',
+          [msgIdStr, 'whatsapp_chat', 'customer_message']
+        );
+        processedMessageIds.add(msgIdStr);
+      } catch (dbErr: any) {
+        if (dbErr?.code === 'ER_DUP_ENTRY' || dbErr?.errno === 1062 || String(dbErr?.message || '').includes('Duplicate entry') || String(dbErr?.message || '').includes('ER_DUP_ENTRY')) {
+          console.log(`[AI_CHAT_DEDUP] DB duplicate blocked: ${msgIdStr}`);
+          processedMessageIds.add(msgIdStr);
+          res.json({ success: true, text: '', isDuplicate: true });
+          return;
+        }
       }
     }
 
