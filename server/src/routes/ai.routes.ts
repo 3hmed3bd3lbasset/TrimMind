@@ -49,34 +49,38 @@ router.post('/chat', aiLimiter, optionalAuth, async (req: AuthenticatedRequest, 
     let multiTurnContents: Array<{ role: string; parts: Array<{ text: string }> }> = [];
 
     if (remoteJid || phone) {
-      const session = await sessionRepo.getOrCreate(phone || '', remoteJid);
-      sessionId = session.id;
+      try {
+        const session = await sessionRepo.getOrCreate(phone || '', remoteJid);
+        sessionId = session.id;
 
-      // Deduplication check using messageId
-      if (messageId) {
-        const recordRes = await sessionRepo.recordMessage(session.id, {
-          whatsappMessageId: String(messageId),
-          role: 'customer',
-          content: userText,
-        });
+        // Deduplication check using messageId
+        if (messageId) {
+          const recordRes = await sessionRepo.recordMessage(session.id, {
+            whatsappMessageId: String(messageId),
+            role: 'customer',
+            content: userText,
+          });
 
-        if (recordRes.isDuplicate) {
-          console.log(`[AI_CHAT_DEDUP] Duplicate messageId detected: ${messageId} for session ${sessionId}. Skipping duplicate AI generation.`);
-          res.json({ success: true, text: '', isDuplicate: true });
-          return;
+          if (recordRes.isDuplicate) {
+            console.log(`[AI_CHAT_DEDUP] Duplicate messageId detected: ${messageId} for session ${sessionId}. Skipping duplicate AI generation.`);
+            res.json({ success: true, text: '', isDuplicate: true });
+            return;
+          }
         }
-      }
 
-      // Load previous multi-turn conversation history from MySQL
-      const recentHistory = await sessionRepo.getRecentMessages(session.id, 16);
-      console.log(`[AI_CHAT_SESSION] remoteJid: ${remoteJid || 'N/A'} | phone: ${phone || 'N/A'} | sessionId: ${sessionId} | historyCount: ${recentHistory.length}`);
+        // Load previous multi-turn conversation history from MySQL
+        const recentHistory = await sessionRepo.getRecentMessages(session.id, 16);
+        console.log(`[AI_CHAT_SESSION] remoteJid: ${remoteJid || 'N/A'} | phone: ${phone || 'N/A'} | sessionId: ${sessionId} | historyCount: ${recentHistory.length}`);
 
-      for (const msg of recentHistory) {
-        const gRole = msg.role === 'customer' || (msg.role as string) === 'user' ? 'user' : 'model';
-        multiTurnContents.push({
-          role: gRole,
-          parts: [{ text: msg.content }],
-        });
+        for (const msg of recentHistory) {
+          const gRole = msg.role === 'customer' || (msg.role as string) === 'user' ? 'user' : 'model';
+          multiTurnContents.push({
+            role: gRole,
+            parts: [{ text: msg.content }],
+          });
+        }
+      } catch (sessionErr: any) {
+        console.error('[AI_SESSION_DB_WARN] Could not retrieve session history:', sessionErr.message);
       }
     }
 
