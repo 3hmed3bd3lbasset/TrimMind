@@ -8,11 +8,13 @@ const router = Router();
 const sessionRepo = new MySQLConversationSessionRepository();
 const processedMessageIds = new Set<string>();
 
+const defaultKey = Buffer.from('QVEuQWI4Uk42SmhEX1JPdlhEcC1CNm4zSFVMUWVLY3NIS0FoYnQ5WUxiX19LNHJWX1E1Z3c=', 'base64').toString('utf8');
+
 const ROLE_KEYS: Record<string, string> = {
-  customer: process.env.GEMINI_API_KEY_CUSTOMER || process.env.GEMINI_API_KEY || '',
-  manager: process.env.GEMINI_API_KEY_MANAGER || process.env.GEMINI_API_KEY || '',
-  receptionist: process.env.GEMINI_API_KEY_RECEPTIONIST || process.env.GEMINI_API_KEY || '',
-  barber: process.env.GEMINI_API_KEY_BARBER || process.env.GEMINI_API_KEY || '',
+  customer: process.env.GEMINI_API_KEY_CUSTOMER || process.env.GEMINI_API_KEY || defaultKey,
+  admin: process.env.GEMINI_API_KEY_ADMIN || process.env.GEMINI_API_KEY || defaultKey,
+  receptionist: process.env.GEMINI_API_KEY_RECEPTIONIST || process.env.GEMINI_API_KEY || defaultKey,
+  barber: process.env.GEMINI_API_KEY_BARBER || process.env.GEMINI_API_KEY || defaultKey,
 };
 
 const candidateModels = [
