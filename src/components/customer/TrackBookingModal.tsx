@@ -247,35 +247,33 @@ export const TrackBookingSection: React.FC = () => {
     if (!selectedBooking) return { clientsAhead: 0, estimatedWait: 0, isCurrentInService: false, myQueueNumber: 1 };
 
     const bookingDate = selectedBooking.starts_at?.split('T')[0];
+    const myQueueNumber = Number(selectedBooking.queue_number) || 1;
 
-    // All active confirmed/in_service bookings for this barber on this booking date (excluding cancelled)
-    const barberDayBookings = bookings.filter(
+    // All active bookings on this booking date for the branch
+    const dayBookings = bookings.filter(
       (b) =>
-        b.barber_id === selectedBooking.barber_id &&
+        (b.branch_id === selectedBooking.branch_id || !b.branch_id) &&
         b.starts_at?.split('T')[0] === bookingDate &&
-        (b.status === 'confirmed' ||
-          b.status === 'customer_arrived' ||
-          b.status === 'in_service' ||
-          b.status === 'completed')
+        b.status !== 'cancelled' &&
+        b.status !== 'rejected'
     );
 
     const isCurrentInService = selectedBooking.status === 'in_service';
-    const myQueueNumber = selectedBooking.queue_number || (queueEntry?.position || 1);
 
-    // Count remaining waiting clients ahead in line
-    const pendingBeforeMe = barberDayBookings.filter(
+    // Count remaining waiting clients ahead in line (ahead in queue number)
+    const pendingBeforeMe = dayBookings.filter(
       (b) =>
-        (b.status === 'confirmed' || b.status === 'customer_arrived' || b.status === 'in_service') &&
+        (b.status === 'confirmed' || b.status === 'customer_arrived' || b.status === 'in_service' || b.status === 'pending_review') &&
         b.id !== selectedBooking.id &&
-        ((b.queue_number || 1) < myQueueNumber ||
-          ((b.queue_number || 1) === myQueueNumber && b.created_at < selectedBooking.created_at))
+        ((Number(b.queue_number) || 1) < myQueueNumber ||
+          ((Number(b.queue_number) || 1) === myQueueNumber && b.created_at < selectedBooking.created_at))
     );
 
     const clientsAhead = pendingBeforeMe.length;
     const estimatedWait = Math.max(0, clientsAhead * 25);
 
     return { clientsAhead, estimatedWait, isCurrentInService, myQueueNumber };
-  }, [bookings, selectedBooking, queueEntry]);
+  }, [bookings, selectedBooking]);
 
   const customerServicePhone = branch?.phone || settings.primary_phone || '01000000000';
 

@@ -291,7 +291,45 @@ export async function ensureInitialDbData() {
         is_active = 1;
     `, [defaultReceptionistHash]);
     console.log('✅ Auto-seeded manager & staff accounts in MySQL DB with secure bcrypt hashes');
+
+    // 7. Auto-repair any duplicated queue numbers in the database
+    await repairDuplicateQueueNumbers();
   } catch (err: any) {
     console.warn('Initial DB seeding notice:', err?.message);
+  }
+}
+
+export async function repairDuplicateQueueNumbers() {
+  try {
+    const dates = await query<any[]>(
+      `SELECT branch_id, DATE(starts_at) as bdate, COUNT(*) as cnt 
+       FROM bookings 
+       WHERE status != 'cancelled' 
+       GROUP BY branch_id, DATE(starts_at) 
+       HAVING cnt > 1`
+    );
+
+    for (const d of dates) {
+      if (!d.bdate) continue;
+      const bdateStr = typeof d.bdate === 'string' ? d.bdate.substring(0, 10) : new Date(d.bdate).toISOString().substring(0, 10);
+      const dayBookings = await query<any[]>(
+        `SELECT id, queue_number, created_at, starts_at 
+         FROM bookings 
+         WHERE branch_id = ? AND (booking_date = ? OR starts_at LIKE ?) AND status != 'cancelled'
+         ORDER BY created_at ASC`,
+        [d.branch_id, bdateStr, `${bdateStr}%`]
+      );
+
+      let expectedQueue = 1;
+      for (const b of dayBookings) {
+        if (b.queue_number !== expectedQueue) {
+          await query('UPDATE bookings SET queue_number = ? WHERE id = ?', [expectedQueue, b.id]);
+        }
+        expectedQueue++;
+      }
+    }
+    console.log('✅ Database Queue Numbers Audited & Repaired sequentially.');
+  } catch (err: any) {
+    console.warn('⚠️ repairDuplicateQueueNumbers notice:', err.message);
   }
 }

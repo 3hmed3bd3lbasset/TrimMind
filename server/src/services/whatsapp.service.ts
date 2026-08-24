@@ -980,182 +980,53 @@ async function handleIncomingWithAI(
   }
 
   // -------------------------------------------------------------------------
-  // 2. PAYMENT PROOF IMAGE SUBMISSION (Customer sends screenshot)
+  // 2. PAYMENT PROOF IMAGE SUBMISSION / IMAGE MESSAGE (Guide to Web Platform)
   // -------------------------------------------------------------------------
   if (isImage) {
-    const custName = session.customerName || 'عميل محترم';
-    const cleanPhone = (session.customerPhone || senderPhone || '01005437633').replace(/\D+/g, '');
-    const bType = session.bookingType || 'normal';
-    const sName = session.serviceName || 'باقة مخصصة على ذوق العميل';
-    const randomBarber = liveCtx.barbers[Math.floor(Math.random() * liveCtx.barbers.length)] || { id: 'barber-mohamed', name: 'محمد الحداد' };
-    const bName = session.barberName || (bType === 'vip' ? (liveCtx.barbers[0]?.name || 'محمد الحداد') : randomBarber.name);
-    const bId = session.barberId || (bType === 'vip' ? (liveCtx.barbers[0]?.id || 'barber-mohamed') : randomBarber.id);
-    const depVal = session.depositAmount || (bType === 'vip' ? deposits.vip : deposits.normal);
-    const customLineItems = session.customItems && session.customItems.length > 0 ? session.customItems : [{ name: sName, price: 0 }];
-    const aiBrief = `• الباقة المطلوبة: ${sName}\n• الكابتن: ${bName}\n• نوع الجلسة: ${bType === 'vip' ? 'VIP ملكية 👑' : 'عادية 💈'}\n• العربون المسدد: ${depVal} ج\n• هاتف العميل: ${cleanPhone}\n• ملاحظة: سيتم تسعير وإصدار الفاتورة الرسمية من قبل موظف الاستقبال.`;
-
-    let createdId = '';
-    try {
-      const created = await createBooking({
-        branchId: 'branch-elhdad',
-        customerName: custName,
-        customerPhone: cleanPhone,
-        serviceId: session.serviceId || 'srv-custom',
-        serviceName: sName,
-        servicePrice: 0,
-        totalAmount: 0,
-        bookingFeeAtBooking: depVal,
-        barberId: bId,
-        barberName: bName,
-        bookingType: bType,
-        source: 'whatsapp',
-        aiBrief,
-        confidenceScore: 95,
-        customLineItems,
-        paymentProof: {
-          imagePath: base64ImageUrl || 'data:image/placeholder',
-          paymentMethod: 'instapay',
-          senderPhone: cleanPhone,
-          amount: depVal,
-        },
-        startsAt: (session as any).startsAtISO || new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString(),
-      });
-      createdId = created.id;
-    } catch (err: any) {
-      logDebug('CREATE_BOOKING_PRIMARY_ERROR_TRYING_FALLBACK', { error: err?.message || String(err) });
-      const newId = `BK-${Math.floor(1000 + Math.random() * 9000)}`;
-      const nowCairo = new Date(new Date().toLocaleString('en-US', { timeZone: 'Africa/Cairo' }));
-      const todayStr = `${nowCairo.getFullYear()}-${String(nowCairo.getMonth() + 1).padStart(2, '0')}-${String(nowCairo.getDate()).padStart(2, '0')}`;
-      try {
-        await query(
-          `INSERT INTO bookings (
-             id, customer_id, customer_name, customer_phone, branch_id, barber_id, service_id,
-             booking_type, status, starts_at, booking_date, queue_number, total_at_booking,
-             booking_fee_at_booking, source, ai_brief, confidence_score, custom_line_items, created_at, updated_at
-           ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'pending_review', NOW(), ?, 1, 0, ?, 'whatsapp', ?, 95, ?, NOW(), NOW())`,
-          [
-            newId, uuidv4(), custName, cleanPhone, 'branch-elhdad', bId, session.serviceId || 'srv-custom',
-            bType, todayStr, depVal, aiBrief, JSON.stringify(customLineItems)
-          ]
-        );
-        await query(
-          `INSERT INTO payment_proofs (id, booking_id, image_path, payment_method, sender_phone, transferred_amount, status, submitted_at)
-           VALUES (?, ?, ?, 'instapay', ?, ?, 'pending_review', NOW())`,
-          [uuidv4(), newId, base64ImageUrl || 'data:image/placeholder', cleanPhone, depVal]
-        );
-        createdId = newId;
-        broadcastToBranch('branch-elhdad', 'BOOKING_CREATED', { id: newId, customer_name: custName, source: 'whatsapp' });
-        broadcastGlobal('SYNC_STATE', { type: 'BOOKING_CREATED', bookingId: newId });
-      } catch (sqlErr: any) {
-        logDebug('SQL_FALLBACK_INSERT_ERROR', { error: sqlErr?.message });
-        createdId = newId;
-      }
-    }
-
-    try {
-      await query(
-        `INSERT INTO whatsapp_analytics_logs (id, phone, event_type, booking_id, amount, metadata, created_at)
-         VALUES (?, ?, 'booking_created', ?, ?, ?, NOW())`,
-        [uuidv4(), senderPhone || remoteJid, createdId, depVal, JSON.stringify({ sName, bName, bType })]
-      );
-    } catch {}
-
-    session.bookingId = createdId;
-    session.receiptSubmitted = true;
-    session.step = 'proof_submitted';
-    session.customerName = custName;
-    session.barberName = bName;
-    session.serviceName = sName;
-    session.bookingType = bType;
-    bookingSessions.set(sessionKey, session);
-
-    replyText = `📸 *تم استلام صورة إثبات الدفع وتسجيل طلب حجزك بنجاح!* 💈👑
-
-يا أستاذ *${custName}*، تم إدراج حجزك في السيستم ووصل الآن لموظف الاستقبال! 🌟
-
-🧾 *بيانات طلب الحجز:*
-• *رقم الحجز (Reference):* \`#${createdId}\`
-• *نوع الجلسة:* ${bType === 'vip' ? 'جلسة VIP ملكية 👑' : 'جلسة عادية 💈'}
-• *الكابتن:* ${bName} ✂️
-• *الباقة والخدمات:* ${sName}
-• *العربون المسدد بالإيصال:* *${depVal} جنيه*
-
-💡 *سيقوم موظف الاستقبال بمراجعة الإيصال وتحديد إجمالي سعر الفاتورة النهائي واعتماد الحجز وإرسال رسالة القبول الرسمية خلال دقائق!*
-
-📍 *رابط متابعة حالة الحجز ودورك في الطابور:*
-https://trimmind.up.railway.app/track?q=${createdId}
-
-تنورنا يا غالي! ✨`;
-
+    replyText = `يا هلا بأستاذنا الفاضل نورت صالون الحداد VIP 🌟👑\n\nلتأكيد وتثبيت حجزك واختيار الكابتن والميعاد ومعرفة رقم دورك بالدقيقة في الطابور المباشر، يرجى إتمام الحجز عبر منصتنا الرسمية:\n👉 https://trimmind.up.railway.app\n\nتنورنا يا غالي وفي انتظارك دائماً! 💈✨`;
     await sendWhatsAppText(remoteJid, replyText);
     return;
   }
 
   // -------------------------------------------------------------------------
-  // 3. GEMINI FLASH CONVERSATIONAL AI ENGINE (Primary Intelligent Brain)
+  // 3. GEMINI FLASH CONVERSATIONAL AI CONCIERGE & LIVE GUIDE ENGINE
   // -------------------------------------------------------------------------
   const servicesListStr = liveCtx.services.map((s) => `• ${s.name}: ${s.price} جنيه`).join('\n');
   const barbersListStr = liveCtx.barbers.map((b) => `• ${b.name}`).join('\n');
   const chairsListStr = liveCtx.chairs.map((c) => `• ${c.name}`).join('، ');
 
-  let currentBookingContext = '';
-  if (session.receiptSubmitted || session.bookingId) {
-    currentBookingContext = `
-# ⚠️ تنبيه فائق الأهمية عن حالة العميل الحالي:
-- العميل الحالي (${session.customerName || 'المميز'}) **قام بإرسال صورة إيصال التحويل بالفعل** وتم تسجيل طلب حجزه برقم (#${session.bookingId || 'مسجل'}).
-- الكابتن: **${session.barberName || 'كابتن الصالون'}**.
-- نوع الجلسة: **${session.bookingType === 'vip' ? 'جلسة VIP ملكية' : 'جلسة عادية'}**.
-- الخدمة/الباقة المختارة: **${session.serviceName || 'الخدمة المختارة'}**.
-- الحجز والإيصال حالياً قيد المراجعة والاعتماد لدى موظف الاستقبال.
-- ❌ **ممنوع منعاً باتاً** أن تطلب منه إرسال الإيصال مرة أخرى!`;
-  } else if (session.serviceName) {
-    currentBookingContext = `
-# سياق الحجز الحالي:
-- الخدمة/الباقة المطلوبة: ${session.serviceName}.
-- الكابتن المخصص: ${session.barberName || 'كابتن متاح'}.
-- العربون المطلوب: ${session.depositAmount || 50} جنيه.
-- ملاحظة الفاتورة: إجمالي سعر الفاتورة يحدده موظف الاستقبال في رسالة الاعتماد الرسمية.`;
-  }
-
-  const systemInstruction = `# WhatsApp AI Booking Assistant — System Prompt
+  const systemInstruction = `# WhatsApp AI Booking Concierge & Live Guide — System Prompt
 
 ## 1. ROLE & IDENTITY
-أنت مساعد واتساب ذكي واحترافي لخدمة عملاء وحجوزات صالون (${liveCtx.salonName}).
-أنت لست مجرد Bot لخطوات ثابتة؛ بل تتصرف كمساعد محادثة ذكي ومحترف:
+أنت مساعد واتساب ذكي واحترافي لخدمة عملاء واستشارات صالون (${liveCtx.salonName}).
+أنت لست مجرد Bot لخطوات ثابتة؛ بل تتصرف كمرشد ومستشار محادثة ذكي ومحترف (مثل ChatGPT / Gemini):
 - تفهم اللغة الطبيعية واللهجة المصرية بطلاقة وبشكل عفوي وودود.
-- تفهم الرسائل القصيرة والأخطاء الإملائية والرسائل المتتالية.
-- تفهم نية العميل (Intent) وسياق الحوار دون تكرار أو الدخول في Loops.
-- تتذكر سياق المحادثة ولا تطلب إعادة معلومات قالها العميل بالفعل.
+- تفهم الأسئلة، النصائح، الأخطاء الإملائية، والرسائل المتتالية.
+- ❌ **لا تنشئ حجوزات مباشرة في الشات؛ بل توجه العميل للرابط الرسمي للصالون للحجز وتثبيت الدور:** (https://trimmind.up.railway.app).
+- تشجع العميل بحماس وتخبره أن المواعيد متاحة اليوم ويقدر يحجز موعده ودوره بالدقيقة من الرابط المباشر.
+- تجيب عن كافة استفسارات العميل (الأسعار، تفاصيل الخدمات، الباقات، نصائح العناية بالشعر واللحية والبشرة، الموقع، أوقات العمل، والأسئلة العامة) بذكاء ومرونة تامة.
 
-## 2. GOLDEN RULE — DATABASE IS THE SOURCE OF TRUTH
-قاعدة البيانات الحية المرفقة أدناه هي المصدر الوحيد للحقيقة. ممنوع اختراع أو تخمين أي سعر أو خدمة أو موعد:
-- إذا سأل عن سعر خدمة، استخدم السعر المحدد في القائمة أدناه بدقة.
-- إذا طلب باقة مخصصة على ذوقه، أكد له تسجيلها وأخبره أن إجمالي الفاتورة النهائي سيحدده موظف الاستقبال في رسالة الاعتماد الرسمية، واطلب منه العربون فقط (${deposits.normal} ج للعادية أو ${deposits.vip} ج للـ VIP).
-
-## 3. LIVE DATABASE SNAPSHOT (بيانات الصالون الحالية في قاعدة البيانات):
+## 2. LIVE DATABASE SNAPSHOT (بيانات الصالون الحالية في قاعدة البيانات):
 - قائمة الخدمات والأسعار الرسمية:
 ${servicesListStr}
 - قائمة كباتن الصالون:
 ${barbersListStr}
 - كراسي الحلاقة: ${chairsListStr}
-- قيمة العربون:
+- قيمة العربون على المنصة:
   • الجلسة العادية: ${deposits.normal} جنيه
   • الجلسة الـ VIP الملكية: ${deposits.vip} جنيه
-- حسابات تحويل العربون (إنستاباي / فودافون كاش): ${liveCtx.paymentAccounts.instapay}
+- رابط الحجز المباشر: https://trimmind.up.railway.app
 
-## 4. CONVERSATIONAL RULES & NATURAL STYLE (تطابق الأسلوب الطبيعي مثل ChatGPT / Claude / Gemini):
+## 3. CONVERSATIONAL RULES & NATURAL STYLE (تطابق الأسلوب الطبيعي مثل ChatGPT / Claude / Gemini):
 1. **رد بنفس أسلوب ولغة العميل وطريقته تماماً وبشكل عفوي:**
    - إذا حياك العميل ("سلام عليكوا" / "مساء الخير" / "صباح الفل") -> رد عليه بالتحية المناسبة بنفس الأسلوب المصري البسيط والودود ("وعليكم السلام يا باشا", "صباح الفل يا غالي").
-   - إذا دخل العميل مباشرة في سؤاله أو طلبه ("بكام القص؟" / "عايز احجز") -> أجب عن سؤاله وطلبه مباشرة وفوراً دون أي ديباجة ترحيب طويلة أو متكلفة!
+   - إذا سأل عن الأسعار أو خدمة معينة -> أجب بالسعر الدقيق والتفاصيل من القائمة أعلاه.
+   - إذا قال "عايز احجز" أو "في ميعاد فاضي؟" أو "فاضيين امتى؟" -> أخبره بأن المواعيد متاحة اليوم وشجعه بحماس على اختيار موعده وتثبيت دوره فوراً من الرابط: https://trimmind.up.railway.app
+   - إذا سأل عن أي استشارة أو نصيحة لشعره أو بشرته أو سؤال عام -> جاوبه بذكاء ولباقة وروح مصرية مرحة وراقية.
    - ❌ **ممنوع منعاً باتاً تكرار الترحيب الرسمي بالصالون في كل رسالة**.
    - ❌ **ممنوع الرد كأنك روبوت مبرمج أو إرسال رسائل مكررة**.
 2. **الرد بإيجاز وسرعة وذكاء:** سطرين إلى 3 سطور فقط كحد أقصى بلهجة مصرية محترمة وراقية.
-3. **تتبع سياق الحوار بذكاء:** افهم الضمائر والكلمات السياقية ("دي", "الكلاسيك", "اختارته", "بكرة", "لا خلاص") دون إعادة طلب معلومات قالها العميل بالفعل.
-4. **تخصيص الباقات:** إذا طلب العميل باقة على ذوقه، اقبلها واذكر خدماته التي كتبها بنفسه بالضبط، واطلب منه العربون فقط موضحاً أن موظف الاستقبال سيحدد سعر الفاتورة النهائي في رسالة الاعتماد.
-5. **التحويل البشري:** إذا طلب العميل التحدث مع موظف بشري ("عايز اكلم حد", "خدمة العملاء"), رحب بطلبه وحوله فوراً.
-6. **إيصالات الدفع:** إذا أرسل العميل صورة إيصال التحويل، طمئنه بأنها قيد المراجعة والاعتماد لدى موظف الاستقبال ولا تطلب منه التحويل مرة أخرى.
-
-${currentBookingContext}`;
+3. **التحويل البشري:** إذا طلب العميل التحدث مع موظف بشري ("عايز اكلم حد", "خدمة العملاء"), رحب بطلبه وحوله فوراً.`;
 
     history.push({ role: 'user', parts: [{ text: userMessage }] });
     if (history.length > 8) history.splice(0, history.length - 8);

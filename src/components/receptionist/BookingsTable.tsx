@@ -39,7 +39,6 @@ export const BookingsTable: React.FC<BookingsTableProps> = ({ branchId }) => {
   const { bookings, barbers, services, products, currentUser, transitionBookingStatus, updateBookingDetails } =
     useSalonStore();
   const [filterStatus, setFilterStatus] = useState<string>('all');
-  const [sourceTab, setSourceTab] = useState<'all' | 'whatsapp' | 'web'>('all');
   const [searchQuery, setSearchQuery] = useState('');
 
   // Modals state
@@ -64,22 +63,13 @@ export const BookingsTable: React.FC<BookingsTableProps> = ({ branchId }) => {
       !b.branch_id
   );
 
-  const whatsappCount = branchBookings.filter((b) => b.source === 'whatsapp' || Boolean(b.ai_brief)).length;
-  const webCount = branchBookings.filter((b) => b.source !== 'whatsapp' && !b.ai_brief).length;
-  const handoffCount = branchBookings.filter((b) => Boolean(b.needs_human_attention)).length;
-
   const filteredBookings = branchBookings.filter((b) => {
-    const isWhatsApp = b.source === 'whatsapp' || Boolean(b.ai_brief);
-    const matchesSource =
-      sourceTab === 'all' ||
-      (sourceTab === 'whatsapp' && isWhatsApp) ||
-      (sourceTab === 'web' && !isWhatsApp);
     const matchesStatus = filterStatus === 'all' || b.status === filterStatus;
     const matchesSearch =
       b.id.toLowerCase().includes(searchQuery.toLowerCase()) ||
       b.customer_name.toLowerCase().includes(searchQuery.toLowerCase()) ||
       b.customer_phone.includes(searchQuery);
-    return matchesSource && matchesStatus && matchesSearch;
+    return matchesStatus && matchesSearch;
   });
 
   const handleStatusChange = (bookingId: string, newStatus: BookingStatus) => {
@@ -124,93 +114,6 @@ export const BookingsTable: React.FC<BookingsTableProps> = ({ branchId }) => {
 
   return (
     <div className="space-y-4 font-sans text-ink">
-      {/* Top Source Tabs (WhatsApp Concierge vs Web Platform) */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-        <button
-          onClick={() => setSourceTab('all')}
-          className={`p-3.5 rounded-2xl border transition-all text-right flex items-center justify-between shadow-xs ${
-            sourceTab === 'all'
-              ? 'bg-forest text-white border-forest shadow-md'
-              : 'bg-white/90 text-ink border-border hover:bg-paper-warm'
-          }`}
-        >
-          <div className="flex items-center gap-2.5">
-            <span className="p-2 rounded-xl bg-white/10">
-              <Receipt className="w-4 h-4" />
-            </span>
-            <div>
-              <p className="font-bold text-xs">كافة الحجوزات</p>
-              <p className={`text-[10.5px] ${sourceTab === 'all' ? 'text-white/80' : 'text-ink-mute'}`}>
-                إجمالي حجوزات الفرع
-              </p>
-            </div>
-          </div>
-          <span className={`font-mono font-bold text-sm px-2.5 py-1 rounded-full ${
-            sourceTab === 'all' ? 'bg-white/20 text-white' : 'bg-paper-warm text-ink'
-          }`}>
-            {branchBookings.length}
-          </span>
-        </button>
-
-        <button
-          onClick={() => setSourceTab('whatsapp')}
-          className={`p-3.5 rounded-2xl border transition-all text-right flex items-center justify-between shadow-xs ${
-            sourceTab === 'whatsapp'
-              ? 'bg-emerald-900 text-white border-emerald-500 shadow-md shadow-emerald-950/30'
-              : 'bg-white/90 text-ink border-emerald-500/30 hover:bg-emerald-50/50'
-          }`}
-        >
-          <div className="flex items-center gap-2.5">
-            <span className={`p-2 rounded-xl ${sourceTab === 'whatsapp' ? 'bg-emerald-500/30 text-emerald-300' : 'bg-emerald-500/10 text-emerald-600'}`}>
-              <MessageSquare className="w-4 h-4" />
-            </span>
-            <div>
-              <div className="flex items-center gap-1.5">
-                <p className="font-bold text-xs">حجوزات الواتساب الذكية 🟢</p>
-                {handoffCount > 0 && (
-                  <span className="animate-pulse px-1.5 py-0.5 rounded-full bg-rose-500 text-white text-[9px] font-bold">
-                    {handoffCount} تدخل
-                  </span>
-                )}
-              </div>
-              <p className={`text-[10.5px] ${sourceTab === 'whatsapp' ? 'text-emerald-200' : 'text-emerald-700'}`}>
-                تخصيص وتسعير مرن فوري
-              </p>
-            </div>
-          </div>
-          <span className={`font-mono font-bold text-sm px-2.5 py-1 rounded-full ${
-            sourceTab === 'whatsapp' ? 'bg-emerald-500/30 text-white' : 'bg-emerald-50 text-emerald-700 font-bold border border-emerald-200'
-          }`}>
-            {whatsappCount}
-          </span>
-        </button>
-
-        <button
-          onClick={() => setSourceTab('web')}
-          className={`p-3.5 rounded-2xl border transition-all text-right flex items-center justify-between shadow-xs ${
-            sourceTab === 'web'
-              ? 'bg-blue-900 text-white border-blue-500 shadow-md'
-              : 'bg-white/90 text-ink border-border hover:bg-paper-warm'
-          }`}
-        >
-          <div className="flex items-center gap-2.5">
-            <span className={`p-2 rounded-xl ${sourceTab === 'web' ? 'bg-blue-500/30 text-blue-300' : 'bg-blue-500/10 text-blue-600'}`}>
-              <Receipt className="w-4 h-4" />
-            </span>
-            <div>
-              <p className="font-bold text-xs">حجوزات المنصة 🌐</p>
-              <p className={`text-[10.5px] ${sourceTab === 'web' ? 'text-blue-200' : 'text-ink-mute'}`}>
-                حجوزات الموقع الذاتية
-              </p>
-            </div>
-          </div>
-          <span className={`font-mono font-bold text-sm px-2.5 py-1 rounded-full ${
-            sourceTab === 'web' ? 'bg-blue-500/30 text-white' : 'bg-paper-warm text-ink'
-          }`}>
-            {webCount}
-          </span>
-        </button>
-      </div>
 
       {/* Search and Filters Bar */}
       <div className="clinic-card p-4 flex flex-col sm:flex-row items-center justify-between gap-3 shadow-clinic-1 bg-white/90">
