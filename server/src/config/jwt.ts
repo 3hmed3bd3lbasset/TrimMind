@@ -21,7 +21,7 @@ if (rawJwtSecret && rawJwtSecret.trim() !== '') {
 
 const DEFAULT_AGENT_SECRET = 'trim-mind-agent-secret-key-2026';
 const rawAgentSecret = process.env.AGENT_API_SECRET || process.env.WHATSAPP_AGENT_SECRET || DEFAULT_AGENT_SECRET;
-derivedAgentSecret = rawAgentSecret.trim();
+const derivedAgentSecret: string = rawAgentSecret.trim();
 
 export const JWT_SECRET: string = derivedJwtSecret;
 export const AGENT_API_SECRET: string = derivedAgentSecret;
