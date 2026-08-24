@@ -4,6 +4,8 @@ import { IConversationSessionRepository } from '../../domain/repositories/IConve
 import { ConversationSession } from '../../domain/entities/ConversationSession.entity.js';
 
 export class MySQLConversationSessionRepository implements IConversationSessionRepository {
+  private static processedMessageIds = new Set<string>();
+
   private mapRowToEntity(row: any): ConversationSession {
     let pendingEntities = null;
     if (row.pending_entities) {
@@ -235,8 +237,17 @@ export class MySQLConversationSessionRepository implements IConversationSessionR
     const messageId = `cm-${uuidv4()}`;
     const intentJson = message.extractedIntent ? JSON.stringify(message.extractedIntent) : null;
 
-    // 1. Idempotency Gate via webhook_events & conversation_messages
+    // 1. Idempotency Gate via in-memory Set & webhook_events DB
     if (message.whatsappMessageId) {
+      if (MySQLConversationSessionRepository.processedMessageIds.has(message.whatsappMessageId)) {
+        return { isDuplicate: true, messageId: message.whatsappMessageId };
+      }
+      MySQLConversationSessionRepository.processedMessageIds.add(message.whatsappMessageId);
+      if (MySQLConversationSessionRepository.processedMessageIds.size > 10000) {
+        const first = MySQLConversationSessionRepository.processedMessageIds.values().next().value;
+        if (first) MySQLConversationSessionRepository.processedMessageIds.delete(first);
+      }
+
       try {
         const existingEvent = await query<any[]>(
           'SELECT id FROM webhook_events WHERE id = ? LIMIT 1',
