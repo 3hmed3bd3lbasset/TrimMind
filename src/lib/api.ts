@@ -61,11 +61,11 @@ export const api = {
   trackBooking: (queryStr: string) => apiClient.get('/bookings/track', { params: { q: queryStr } }),
   cancelBooking: (id: string, reason?: string) =>
     apiClient.post(`/bookings/${id}/cancel`, { reason }),
-  updateBookingStatus: (id: string, status: string, note?: string) =>
-    apiClient.patch(`/bookings/${id}/status`, { status, note }),
+  updateBookingStatus: (id: string, status: string, note?: string, booking?: any) =>
+    apiClient.patch(`/bookings/${id}/status`, { status, note, booking }),
   rateBooking: (id: string, ratingData: any) => apiClient.post(`/bookings/${id}/rate`, ratingData),
-  reviewPaymentProof: (id: string, status: string, reason?: string) =>
-    apiClient.patch(`/bookings/${id}/payment-proof`, { status, reason }),
+  reviewPaymentProof: (id: string, status: string, reason?: string, booking?: any) =>
+    apiClient.patch(`/bookings/${id}/payment-proof`, { status, reason, booking }),
   customizeAndDispatchBooking: (id: string, data: any) =>
     apiClient.post(`/bookings/${id}/customize-and-dispatch`, data),
   toggleHumanHandoff: (phone: string, enable: boolean) =>

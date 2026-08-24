@@ -70,6 +70,7 @@ export const updateBookingStatusSchema = z.object({
     'no_show',
   ]),
   note: z.string().max(300).optional(),
+  booking: z.any().optional(),
 });
 
 export const rateBookingSchema = z.object({

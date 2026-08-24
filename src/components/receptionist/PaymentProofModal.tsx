@@ -61,6 +61,7 @@ export const PaymentProofModal: React.FC<PaymentProofModalProps> = ({
         body: JSON.stringify({
           status: 'confirmed',
           note: 'تم قبول الإيصال وتأكيد الحجز بنجاح',
+          booking: booking,
         }),
       });
     } catch (err) {
@@ -79,6 +80,7 @@ export const PaymentProofModal: React.FC<PaymentProofModalProps> = ({
         body: JSON.stringify({
           status: 'rejected',
           note: rejectionReason,
+          booking: booking,
         }),
       });
     } catch (err) {

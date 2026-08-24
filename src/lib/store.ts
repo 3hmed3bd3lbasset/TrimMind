@@ -602,7 +602,7 @@ export const useSalonStore = create<SalonStore>()(
         });
 
         // Dispatch authoritative server review
-        api.reviewPaymentProof(bookingId, status, reason).catch((err) => {
+        api.reviewPaymentProof(bookingId, status, reason, targetBooking).catch((err) => {
           console.warn('Server review sync note:', err?.message || err);
         });
       },
@@ -710,7 +710,7 @@ export const useSalonStore = create<SalonStore>()(
         broadcastEvent('SYNC_STATE');
 
         // Dispatch authoritative status update to backend
-        api.updateBookingStatus(bookingId, toStatus, note).catch((err) => {
+        api.updateBookingStatus(bookingId, toStatus, note, targetBooking || found).catch((err) => {
           console.warn('Server status sync note:', err?.message || err);
         });
       },

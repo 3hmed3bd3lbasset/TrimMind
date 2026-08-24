@@ -189,24 +189,35 @@ router.patch(
   validateBody(updateBookingStatusSchema),
   async (req: AuthenticatedRequest, res: Response) => {
     try {
-      const { status, note } = req.body;
+      const { status, note, booking: payloadBooking } = req.body;
       let booking: any = null;
       try {
         booking = await getBookingById(req.params.id);
       } catch (err) {
         console.warn('getBookingById error in status patch:', err);
       }
-      const targetLive = liveSyncedBookings.find((b) => b.id === req.params.id);
 
+      if (!booking) {
+        const pBookings = getPersistentDb().bookings || [];
+        booking = pBookings.find((b) => b.id === req.params.id || b.bookingId === req.params.id);
+      }
+
+      const targetLive = liveSyncedBookings.find((b) => b.id === req.params.id);
       if (targetLive) {
         targetLive.status = status;
         if (!booking) booking = targetLive;
-      } else if (!booking) {
+      }
+
+      if (payloadBooking) {
+        booking = booking ? { ...booking, ...payloadBooking } : payloadBooking;
+      }
+
+      if (!booking) {
         const autoBooking: any = {
           id: req.params.id,
           bookingId: req.params.id,
           customer_name: 'عميل الصالون',
-          customer_phone: '01005437633',
+          customer_phone: '01285694670',
           service_id: 'srv-haircut',
           branch_id: 'branch-elhdad',
           status: status,
@@ -216,6 +227,9 @@ router.patch(
         liveSyncedBookings.unshift(autoBooking);
         booking = autoBooking;
       }
+
+      booking.status = status;
+      addOrUpdatePersistentBooking(booking);
 
       await query('UPDATE bookings SET status = ?, updated_at = NOW() WHERE id = ?', [status, req.params.id]).catch(() => {});
 
@@ -418,7 +432,7 @@ router.post('/:id/rate', validateBody(rateBookingSchema), async (req, res: Respo
 // PATCH /api/bookings/:id/payment-proof (Review Payment Proof - Staff Only)
 router.patch('/:id/payment-proof', optionalAuth, async (req: AuthenticatedRequest, res: Response) => {
   try {
-    const { status, reason } = req.body;
+    const { status, reason, booking: payloadBooking } = req.body;
     const nextBookingStatus = status === 'approved' ? 'confirmed' : 'rejected';
     const reviewedAt = new Date().toISOString();
 
@@ -428,14 +442,16 @@ router.patch('/:id/payment-proof', optionalAuth, async (req: AuthenticatedReques
     } catch {}
 
     if (!booking) {
-      booking = liveSyncedBookings.find((b) => b.id === req.params.id);
+      const pBookings = getPersistentDb().bookings || [];
+      booking = pBookings.find((b) => b.id === req.params.id || b.bookingId === req.params.id);
     }
 
     if (!booking) {
-      const directRows = await query<any[]>('SELECT * FROM bookings WHERE id = ? LIMIT 1', [req.params.id]).catch(() => []);
-      if (directRows && directRows.length > 0) {
-        booking = directRows[0];
-      }
+      booking = liveSyncedBookings.find((b) => b.id === req.params.id || b.bookingId === req.params.id);
+    }
+
+    if (payloadBooking) {
+      booking = booking ? { ...booking, ...payloadBooking } : payloadBooking;
     }
 
     if (!booking) {
@@ -443,7 +459,7 @@ router.patch('/:id/payment-proof', optionalAuth, async (req: AuthenticatedReques
         id: req.params.id,
         bookingId: req.params.id,
         customer_name: 'عميل الصالون',
-        customer_phone: '01005437633',
+        customer_phone: '01285694670',
         service_name: 'قص شعر كلاسيكي',
         barber_name: 'محمد الحداد',
         branch_id: 'branch-elhdad',
@@ -451,6 +467,9 @@ router.patch('/:id/payment-proof', optionalAuth, async (req: AuthenticatedReques
       };
       liveSyncedBookings.unshift(booking);
     }
+
+    booking.status = nextBookingStatus;
+    addOrUpdatePersistentBooking(booking);
 
     const targetLive = liveSyncedBookings.find((b) => b.id === req.params.id);
     if (targetLive) {
