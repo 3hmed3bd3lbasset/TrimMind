@@ -75,22 +75,45 @@ export class MySQLConversationSessionRepository implements IConversationSessionR
 
   public async getOrCreate(customerPhone: string, remoteJid?: string): Promise<ConversationSession> {
     await this.ensureTable();
-    const cleanPhone = customerPhone.replace(/\D+/g, '');
-    const rows = await query<any[]>(
-      'SELECT * FROM conversation_sessions WHERE customer_phone = ? ORDER BY created_at DESC LIMIT 1',
-      [cleanPhone]
-    );
+    const cleanPhone = customerPhone ? customerPhone.replace(/\D+/g, '') : '';
+    
+    // 1. Search by immutable remoteJid first (supports @lid, international, and standard JIDs)
+    let rows: any[] = [];
+    if (remoteJid) {
+      rows = await query<any[]>(
+        'SELECT * FROM conversation_sessions WHERE whatsapp_remote_jid = ? ORDER BY created_at DESC LIMIT 1',
+        [remoteJid]
+      );
+    }
+
+    // 2. Fallback to clean phone search if not matched by remoteJid
+    if ((!rows || rows.length === 0) && cleanPhone) {
+      rows = await query<any[]>(
+        'SELECT * FROM conversation_sessions WHERE customer_phone = ? ORDER BY created_at DESC LIMIT 1',
+        [cleanPhone]
+      );
+    }
 
     if (rows && rows.length > 0) {
+      // If remoteJid was missing in the existing session, backfill it now
+      if (remoteJid && !rows[0].whatsapp_remote_jid) {
+        await query(
+          'UPDATE conversation_sessions SET whatsapp_remote_jid = ? WHERE id = ?',
+          [remoteJid, rows[0].id]
+        ).catch(() => {});
+        rows[0].whatsapp_remote_jid = remoteJid;
+      }
       return this.mapRowToEntity(rows[0]);
     }
 
+    // 3. Create fresh persistent session
     const newId = `cs-${uuidv4()}`;
+    const storedPhone = cleanPhone || (remoteJid ? remoteJid.replace('@s.whatsapp.net', '').replace('@lid', '') : 'guest');
     await query(
       `INSERT INTO conversation_sessions 
        (id, customer_phone, whatsapp_remote_jid, channel, state, created_at, updated_at, last_message_at)
        VALUES (?, ?, ?, 'whatsapp', 'IDLE', NOW(), NOW(), NOW())`,
-      [newId, cleanPhone, remoteJid || null]
+      [newId, storedPhone, remoteJid || null]
     );
 
     const createdRows = await query<any[]>(

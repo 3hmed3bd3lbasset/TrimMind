@@ -2,8 +2,10 @@ import { Router, Request, Response } from 'express';
 import { query } from '../config/database.js';
 import { optionalAuth, AuthenticatedRequest } from '../middleware/auth.js';
 import { aiLimiter } from '../middleware/rateLimiter.js';
+import { MySQLConversationSessionRepository } from '../adapters/repositories/MySQLConversationSessionRepository.js';
 
 const router = Router();
+const sessionRepo = new MySQLConversationSessionRepository();
 
 const ROLE_KEYS: Record<string, string> = {
   customer: process.env.GEMINI_API_KEY_CUSTOMER || process.env.GEMINI_API_KEY || '',
@@ -16,17 +18,81 @@ const candidateModels = ['gemini-flash-latest', 'gemini-2.5-flash-lite', 'gemini
 
 router.post('/chat', aiLimiter, optionalAuth, async (req: AuthenticatedRequest, res: Response): Promise<void> => {
   try {
-    const { contents, systemInstruction: clientSystemInstruction, customContext } = req.body;
+    const {
+      contents,
+      systemInstruction: clientSystemInstruction,
+      customContext,
+      messageId,
+      remoteJid,
+      phone,
+      pushName,
+      text,
+    } = req.body;
 
     const effectiveRole = req.user ? req.user.role : 'customer';
     const apiKey = ROLE_KEYS[effectiveRole] || ROLE_KEYS.customer;
 
-    if (!contents || !Array.isArray(contents) || contents.length === 0) {
-      res.status(400).json({ success: false, error: 'Contents array is required' });
+    // Extract user raw text
+    let userText = (text || '').trim();
+    if (!userText && Array.isArray(contents) && contents.length > 0) {
+      const lastItem = contents[contents.length - 1];
+      userText = lastItem?.parts?.[0]?.text || '';
+    }
+
+    if (!userText && (!contents || contents.length === 0)) {
+      res.status(400).json({ success: false, error: 'Text or contents array is required' });
       return;
     }
 
-    // 1. Fetch Real-Time Live Salon Context from MySQL Database
+    // 1. Session Persistence & Idempotency Gate (DB-backed)
+    let sessionId: string | null = null;
+    let multiTurnContents: Array<{ role: string; parts: Array<{ text: string }> }> = [];
+
+    if (remoteJid || phone) {
+      const session = await sessionRepo.getOrCreate(phone || '', remoteJid);
+      sessionId = session.id;
+
+      // Deduplication check using messageId
+      if (messageId) {
+        const recordRes = await sessionRepo.recordMessage(session.id, {
+          whatsappMessageId: String(messageId),
+          role: 'customer',
+          content: userText,
+        });
+
+        if (recordRes.isDuplicate) {
+          console.log(`[AI_CHAT_DEDUP] Duplicate messageId detected: ${messageId} for session ${sessionId}. Skipping duplicate AI generation.`);
+          res.json({ success: true, text: '', isDuplicate: true });
+          return;
+        }
+      }
+
+      // Load previous multi-turn conversation history from MySQL
+      const recentHistory = await sessionRepo.getRecentMessages(session.id, 16);
+      console.log(`[AI_CHAT_SESSION] remoteJid: ${remoteJid || 'N/A'} | phone: ${phone || 'N/A'} | sessionId: ${sessionId} | historyCount: ${recentHistory.length}`);
+
+      for (const msg of recentHistory) {
+        const gRole = msg.role === 'customer' || (msg.role as string) === 'user' ? 'user' : 'model';
+        multiTurnContents.push({
+          role: gRole,
+          parts: [{ text: msg.content }],
+        });
+      }
+    }
+
+    // If multiTurnContents was built from DB, use it; otherwise fallback to request contents
+    let finalContents = multiTurnContents.length > 0 ? multiTurnContents : (contents || []);
+    if (finalContents.length === 0 && userText) {
+      finalContents = [{ role: 'user', parts: [{ text: userText }] }];
+    }
+
+    // Ensure the current user text is at the end of finalContents
+    const lastPartText = finalContents[finalContents.length - 1]?.parts?.[0]?.text || '';
+    if (lastPartText !== userText && userText) {
+      finalContents.push({ role: 'user', parts: [{ text: userText }] });
+    }
+
+    // 2. Fetch Real-Time Live Salon Context from MySQL Database
     let liveServices = await query<any[]>(
       'SELECT id, name, price, duration_minutes, category, description, is_vip_only FROM services WHERE is_active = 1 OR is_active IS NULL ORDER BY price ASC'
     ).catch(() => []);
@@ -75,9 +141,16 @@ router.post('/chat', aiLimiter, optionalAuth, async (req: AuthenticatedRequest, 
       }
     } catch {}
 
-    // 2. Compose Authoritative System Instruction
+    // 3. Compose Authoritative System Instruction with Multi-turn Continuity Rules
+    const customerNameSnippet = pushName ? `اسم العميل: (${pushName})` : '';
     const serverSystemInstruction = `أنت المساعد الذكي الرسمي لصالون TrimMind VIP.
 أسلوبك: راقي، مهذب، سريع، ومفيد باللهجة المصرية الراقية والفصحى السلسة.
+${customerNameSnippet}
+
+🧠 قواعد استمرارية المحادثة والسياق (Multi-turn Context):
+- أنت في محادثة مستمرة ومباشرة مع العميل.
+- راجع سجل الرسائل السابقة بدقة. إذا كان العميل يرد على سؤالك السابق (مثل: اختيار كابتن، تحديد موعد، اختيار خدمة، أو قال "أي واحد" أو "تمام") ⬅️ تابع الحوار من النقطة الحالية فوراً وسجل اختياره، وممنوع منعاً باتاً إعادة التحية الكاملة ("أهلاً بحضرتك...") أو إعادة عرض الكتالوج بالكامل إلا إذا طلب العميل صراحة "عايز الكتالوج" أو "الأسعار إيه".
+- كن سريعاً ومختصراً ومباشراً وودوداً.
 
 ⚠️ قاعدة حاسمة وصارمة للعملة ومبالغ العربون:
 - جميع الأسعار بالجنيه المصري (ج.م / جنيه) فقط لا غير! وممنوع منعاً باتاً ذكر أي عملة أخرى.
@@ -92,8 +165,6 @@ ${servicesCatalogStr}
 ✂️ طاقم الكباتن الحلاقين:
 ${barbersListStr}
 
-- عند طلب العميل "افتح الكتالوج" أو السؤال عن الخدمات أو الأسعار، اعرض له فوراً الكتالوج الحقيقي أعلاه بأسعاره الدقيقة بالجنيه المصري (ج.م).
-
 ${clientSystemInstruction || ''}
 ${customContext ? `\nسياق إضافي: ${String(customContext).slice(0, 500)}` : ''}`;
 
@@ -105,7 +176,7 @@ ${customContext ? `\nسياق إضافي: ${String(customContext).slice(0, 500)}
         const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
 
         const payload: any = {
-          contents,
+          contents: finalContents,
           systemInstruction: {
             parts: [{ text: serverSystemInstruction }],
           },
@@ -135,7 +206,17 @@ ${customContext ? `\nسياق إضافي: ${String(customContext).slice(0, 500)}
       responseText = `أهلاً بك في صالون **TrimMind VIP**! 💈👑\n\nإليك كتالوج خدماتنا وباقاتنا الرسمية المتاحة:\n\n${firstFew}\n\nيسعدنا حجز موعدك واختيار الكابتن المفضل لحضرتك في أي وقت! ✨`;
     }
 
-    res.json({ success: true, text: responseText });
+    // 4. Save Assistant Response in Persistent MySQL History
+    if (sessionId && responseText) {
+      await sessionRepo.recordMessage(sessionId, {
+        role: 'assistant',
+        content: responseText,
+      }).catch((saveErr: any) => {
+        console.warn('[AI_CHAT_SAVE_WARN] Could not save assistant message:', saveErr.message);
+      });
+    }
+
+    res.json({ success: true, text: responseText, isDuplicate: false });
   } catch (err: any) {
     console.error('AI chat endpoint error:', err);
     res.status(500).json({ success: false, error: err.message || 'Internal server error' });

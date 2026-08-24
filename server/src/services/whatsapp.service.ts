@@ -423,6 +423,12 @@ export async function initWhatsApp(): Promise<WhatsAppState> {
     sock.ev.on('messages.upsert', async (m: any) => {
       logDebug('MESSAGES_UPSERT_EVENT', { type: m.type, count: m.messages?.length });
 
+      // 1. Strictly process only 'notify' events to prevent duplicate processing on append / update
+      if (m.type !== 'notify') {
+        logDebug('SKIPPED_NON_NOTIFY_EVENT', { type: m.type });
+        return;
+      }
+
       for (const msg of m.messages || []) {
         if (!msg || !msg.message) continue;
 
@@ -439,6 +445,23 @@ export async function initWhatsApp(): Promise<WhatsAppState> {
         if (isFromMe) {
           logDebug('SKIPPED_FROM_ME', { remoteJid });
           continue;
+        }
+
+        // 2. Persistent Webhook Idempotency Check (DB Gate)
+        if (msgId) {
+          try {
+            const existing = await query<any[]>('SELECT id FROM webhook_events WHERE id = ? LIMIT 1', [msgId]);
+            if (existing && existing.length > 0) {
+              logDebug('SKIPPED_DUPLICATE_MESSAGE_ID', { msgId });
+              continue;
+            }
+            await query(
+              'INSERT IGNORE INTO webhook_events (id, source, event_type, processed_at) VALUES (?, ?, ?, NOW())',
+              [msgId, 'whatsapp_baileys', 'messages.upsert']
+            );
+          } catch (dbErr: any) {
+            logDebug('WEBHOOK_EVENTS_CHECK_WARN', { error: dbErr.message });
+          }
         }
 
         const { text, isImage } = extractMessageContent(msg.message);

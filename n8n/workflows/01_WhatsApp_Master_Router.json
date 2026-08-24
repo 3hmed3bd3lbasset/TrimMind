@@ -1,5 +1,16 @@
 {
+  "id": "3pYK2pNf9ymIxL4U",
   "name": "01 - WhatsApp Master Router (Evolution API + n8n)",
+  "description": null,
+  "active": true,
+  "activeVersionId": "3712e845-d01a-4f72-9df9-c9ba612f1ca8",
+  "createdAt": "2026-08-24T00:31:05.517Z",
+  "updatedAt": "2026-08-24T21:00:18.079Z",
+  "isArchived": false,
+  "versionId": "3712e845-d01a-4f72-9df9-c9ba612f1ca8",
+  "versionCounter": 4,
+  "sourceWorkflowId": null,
+  "triggerCount": 1,
   "nodes": [
     {
       "parameters": {
@@ -19,7 +30,7 @@
     },
     {
       "parameters": {
-        "jsCode": "const body = $json.body || $json;\nconst data = body.data || {};\nconst key = data.key || {};\nconst messageId = key.id || data.id || body.id;\nconst fromMe = key.fromMe || body.fromMe;\nconst remoteJid = key.remoteJid || data.remoteJid || body.remoteJid || '';\nconst pushName = data.pushName || body.pushName || 'عميل الصالون';\n\nif (fromMe) {\n  return [];\n}\n\nlet cleanPhone = body.senderPhone || data.senderPhone || '';\nif (!cleanPhone) {\n  const candidate = key.remoteJidAlt || key.participant || data.participant || remoteJid;\n  cleanPhone = candidate.replace('@s.whatsapp.net', '').replace('@c.us', '').replace('@lid', '').replace(/[^0-9]/g, '');\n  if (cleanPhone.startsWith('20') && cleanPhone.length === 12) {\n    cleanPhone = '0' + cleanPhone.substring(2);\n  }\n}\n\n// If cleanPhone is a LID (not starting with 01 or length != 11), clear it so AI asks for phone\nif (!cleanPhone.startsWith('01') || cleanPhone.length !== 11) {\n  cleanPhone = '';\n}\n\nconst message = data.message || body.message || {};\nconst isImage = Boolean(message.imageMessage || body.isImage || body.imageUrl || data.imageUrl);\nconst imageUrl = body.imageUrl || data.imageUrl || data.mediaUrl || body.mediaUrl || null;\n\nconst textMessage = message.conversation || \n                    message.extendedTextMessage?.text || \n                    message.imageMessage?.caption || \n                    message.documentMessage?.caption || \n                    body.text || '';\n\nif (!textMessage.trim() && !isImage) {\n  return [];\n}\n\nconst staticData = $getWorkflowStaticData('global');\nstaticData.seenTextKeys = staticData.seenTextKeys || {};\nstaticData.lastImageTime = staticData.lastImageTime || {};\n\nconst now = Date.now();\nconst textKey = (textMessage || 'img_placeholder').trim().toLowerCase();\n\nif (isImage) {\n  staticData.lastImageTime[cleanPhone || remoteJid] = now;\n} else if (staticData.lastImageTime[cleanPhone || remoteJid] && (now - staticData.lastImageTime[cleanPhone || remoteJid] < 8000)) {\n  return [];\n}\n\nif (textKey && staticData.seenTextKeys[textKey]) {\n  const lastTime = staticData.seenTextKeys[textKey];\n  if (now - lastTime < 6000) {\n    return [];\n  }\n}\nif (textKey) {\n  staticData.seenTextKeys[textKey] = now;\n}\n\nreturn [{\n  json: {\n    messageId: messageId || textKey,\n    remoteJid,\n    phone: cleanPhone || remoteJid.replace('@s.whatsapp.net', '').replace('@lid', ''),\n    realPhone: cleanPhone,\n    pushName,\n    chatInput: textMessage,\n    text: textMessage,\n    input: textMessage,\n    isImage,\n    imageUrl: imageUrl,\n    mediaUrl: imageUrl,\n    rawMessage: message,\n    instance: body.instance || 'default',\n    timestamp: new Date().toISOString()\n  }\n}];"
+        "jsCode": "const body = $json.body || $json;\nconst data = body.data || {};\nconst key = data.key || body.key || {};\nconst messageId = key.id || data.id || body.id || ('msg-' + Date.now());\nconst fromMe = key.fromMe || body.fromMe;\nconst remoteJid = key.remoteJid || data.remoteJid || body.remoteJid || '';\nconst pushName = data.pushName || body.pushName || '';\n\nif (fromMe) {\n  return [];\n}\n\nconst candidate = key.remoteJidAlt || key.participant || data.participant || remoteJid;\nlet rawPhone = candidate.replace('@s.whatsapp.net', '').replace('@c.us', '').replace('@lid', '').replace(/[^0-9]/g, '');\nlet cleanPhone = rawPhone;\n\nif (cleanPhone.startsWith('20') && cleanPhone.length === 12) {\n  cleanPhone = '0' + cleanPhone.substring(2);\n}\n\nconst isStandardEgyptianPhone = cleanPhone.startsWith('01') && cleanPhone.length === 11;\nconst realPhone = isStandardEgyptianPhone ? cleanPhone : '';\n\nconst message = data.message || body.message || {};\nconst isImage = Boolean(message.imageMessage || body.isImage || body.imageUrl || data.imageUrl);\nconst imageUrl = body.imageUrl || data.imageUrl || data.mediaUrl || body.mediaUrl || null;\n\nconst textMessage = message.conversation || \n                    message.extendedTextMessage?.text || \n                    message.imageMessage?.caption || \n                    message.documentMessage?.caption || \n                    body.text || '';\n\nif (!textMessage.trim() && !isImage) {\n  return [];\n}\n\nreturn [{\n  json: {\n    messageId,\n    remoteJid,\n    phone: realPhone || rawPhone || remoteJid.replace('@s.whatsapp.net', '').replace('@lid', ''),\n    realPhone,\n    rawPhone,\n    pushName,\n    chatInput: textMessage.trim(),\n    text: textMessage.trim(),\n    input: textMessage.trim(),\n    isImage,\n    imageUrl,\n    mediaUrl: imageUrl,\n    rawMessage: message,\n    instance: body.instance || 'trimmind_salon',\n    timestamp: new Date().toISOString()\n  }\n}];"
       },
       "name": "Normalize Incoming Message",
       "type": "n8n-nodes-base.code",
@@ -52,7 +63,7 @@
     },
     {
       "parameters": {
-        "workflowId": "C4QTlfrXl6MFBd8O"
+        "workflowId": "KTyLfHnOD2SHWwdW"
       },
       "name": "Execute Payment Proof Handler",
       "type": "n8n-nodes-base.executeWorkflow",
@@ -65,35 +76,9 @@
     },
     {
       "parameters": {
-        "workflowId": "M0VosZpyELwMXaNb"
-      },
-      "name": "Execute AI Agent Orchestrator",
-      "type": "n8n-nodes-base.executeWorkflow",
-      "typeVersion": 1,
-      "position": [
-        900,
-        420
-      ],
-      "id": "0e555344-0496-4e54-ac29-f5ff57ef1a25"
-    },
-    {
-      "parameters": {
         "method": "POST",
         "url": "https://trimmind.up.railway.app/api/whatsapp-session/send",
-        "sendBody": true,
-        "bodyParameters": {
-          "parameters": [
-            {
-              "name": "to",
-              "value": "={{ $('Normalize Incoming Message').item.json.remoteJid || $('Normalize Incoming Message').item.json.phone }}"
-            },
-            {
-              "name": "text",
-              "value": "={{ $json.output || $json.replyText || $json.text }}"
-            }
-          ]
-        },
-        "options": {},
+        "authentication": "none",
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [
@@ -106,16 +91,103 @@
               "value": "application/json"
             }
           ]
-        }
+        },
+        "sendBody": true,
+        "specifyBody": "keypair",
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "to",
+              "value": "={{ $('Normalize Incoming Message').item.json.remoteJid || $('Normalize Incoming Message').item.json.phone }}"
+            },
+            {
+              "name": "text",
+              "value": "={{ $json.output || $json.replyText || $json.text }}"
+            }
+          ]
+        },
+        "options": {}
       },
       "name": "Send WhatsApp Reply via Salon Backend",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.1,
       "position": [
-        1180,
+        1300,
         300
       ],
       "id": "e3307ed1-6b7f-45a2-9436-672c8f4d03fa"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://trimmind.up.railway.app/api/ai/chat",
+        "authentication": "none",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "x-agent-secret",
+              "value": "trim-mind-agent-secret-key-2026"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{\nJSON.stringify({\n  messageId: $json.messageId,\n  remoteJid: $json.remoteJid,\n  phone: $json.realPhone || $json.phone,\n  rawPhone: $json.rawPhone,\n  pushName: $json.pushName,\n  text: $json.text\n})\n}}",
+        "options": {}
+      },
+      "name": "Execute AI Chat via Salon Backend",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [
+        880,
+        400
+      ],
+      "id": "backend-ai-chat-node"
+    },
+    {
+      "name": "Check If Response Is Valid & Not Duplicate",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        1060,
+        400
+      ],
+      "id": "check-not-duplicate-node",
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "cond-not-dup",
+              "leftValue": "={{ $json.isDuplicate }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "notEquals"
+              }
+            },
+            {
+              "id": "cond-has-text",
+              "leftValue": "={{ ($json.text || \"\").trim().length }}",
+              "rightValue": 0,
+              "operator": {
+                "type": "number",
+                "operation": "gt"
+              }
+            }
+          ],
+          "combinator": "and"
+        }
+      }
     }
   ],
   "connections": {
@@ -152,7 +224,7 @@
         ],
         [
           {
-            "node": "Execute AI Agent Orchestrator",
+            "node": "Execute AI Chat via Salon Backend",
             "type": "main",
             "index": 0
           }
@@ -170,7 +242,18 @@
         ]
       ]
     },
-    "Execute AI Agent Orchestrator": {
+    "Execute AI Chat via Salon Backend": {
+      "main": [
+        [
+          {
+            "node": "Check If Response Is Valid & Not Duplicate",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check If Response Is Valid & Not Duplicate": {
       "main": [
         [
           {
@@ -178,13 +261,289 @@
             "type": "main",
             "index": 0
           }
-        ]
+        ],
+        []
       ]
     }
   },
-  "active": true,
+  "nodeGroups": [],
   "settings": {
     "executionOrder": "v1"
   },
-  "meta": null
+  "staticData": {
+    "global": {
+      "seenTextKeys": {
+        "???? ?????": 1787604508348,
+        "???? ????? ???? ???? ????? ??????? ?????": 1787605227101,
+        "???? ????? ???? ???? ????? ??????? ???????? ?????": 1787605194355,
+        "سلام عليكم": 1787605608446,
+        "الكاتلوج": 1787605629737,
+        "عايز احجز بكرا احجزلي مع اي حلاق": 1787605875506,
+        "ام 900 جنيه": 1787605900362,
+        "اي واحد": 1787605920093
+      },
+      "lastImageTime": {}
+    }
+  },
+  "pinData": null,
+  "meta": null,
+  "tags": [],
+  "shared": [
+    {
+      "role": "workflow:owner",
+      "workflowId": "3pYK2pNf9ymIxL4U",
+      "projectId": "nrR3lLt1eXXQ2I9M",
+      "project": {
+        "id": "nrR3lLt1eXXQ2I9M",
+        "name": "Ahmed Abdel-baset <ahmedabd3lbasset55@gmail.com>",
+        "type": "personal",
+        "icon": null,
+        "description": null,
+        "customTelemetryTags": [],
+        "creatorId": "168592b6-1244-4827-9bbf-1dd2b5036903",
+        "createdAt": "2026-08-24T00:18:43.161Z",
+        "updatedAt": "2026-08-24T00:24:11.449Z"
+      },
+      "createdAt": "2026-08-24T00:31:05.519Z",
+      "updatedAt": "2026-08-24T00:31:05.519Z"
+    }
+  ],
+  "activeVersion": {
+    "versionId": "3712e845-d01a-4f72-9df9-c9ba612f1ca8",
+    "workflowId": "3pYK2pNf9ymIxL4U",
+    "nodes": [
+      {
+        "parameters": {
+          "httpMethod": "POST",
+          "path": "whatsapp-webhook",
+          "options": {}
+        },
+        "name": "Evolution API Webhook",
+        "type": "n8n-nodes-base.webhook",
+        "typeVersion": 1,
+        "position": [
+          180,
+          300
+        ],
+        "webhookId": "whatsapp-evolution-webhook",
+        "id": "225e8622-1f85-4430-95b0-bf0391644dc3"
+      },
+      {
+        "parameters": {
+          "jsCode": "const body = $json.body || $json;\nconst data = body.data || {};\nconst key = data.key || {};\nconst messageId = key.id || data.id || body.id;\nconst fromMe = key.fromMe || body.fromMe;\nconst remoteJid = key.remoteJid || data.remoteJid || body.remoteJid || '';\nconst pushName = data.pushName || body.pushName || '???? ???????';\n\nif (fromMe) {\n  return [];\n}\n\nlet cleanPhone = body.senderPhone || data.senderPhone || '';\nif (!cleanPhone) {\n  const candidate = key.remoteJidAlt || key.participant || data.participant || remoteJid;\n  cleanPhone = candidate.replace('@s.whatsapp.net', '').replace('@c.us', '').replace('@lid', '').replace(/[^0-9]/g, '');\n  if (cleanPhone.startsWith('20') && cleanPhone.length === 12) {\n    cleanPhone = '0' + cleanPhone.substring(2);\n  }\n}\n\n// If cleanPhone is a LID (not starting with 01 or length != 11), clear it so AI asks for phone\nif (!cleanPhone.startsWith('01') || cleanPhone.length !== 11) {\n  cleanPhone = '';\n}\n\nconst message = data.message || body.message || {};\nconst isImage = Boolean(message.imageMessage || body.isImage || body.imageUrl || data.imageUrl);\nconst imageUrl = body.imageUrl || data.imageUrl || data.mediaUrl || body.mediaUrl || null;\n\nconst textMessage = message.conversation || \n                    message.extendedTextMessage?.text || \n                    message.imageMessage?.caption || \n                    message.documentMessage?.caption || \n                    body.text || '';\n\nif (!textMessage.trim() && !isImage) {\n  return [];\n}\n\nconst staticData = $getWorkflowStaticData('global');\nstaticData.seenTextKeys = staticData.seenTextKeys || {};\nstaticData.lastImageTime = staticData.lastImageTime || {};\n\nconst now = Date.now();\nconst textKey = (textMessage || 'img_placeholder').trim().toLowerCase();\n\nif (isImage) {\n  staticData.lastImageTime[cleanPhone || remoteJid] = now;\n} else if (staticData.lastImageTime[cleanPhone || remoteJid] && (now - staticData.lastImageTime[cleanPhone || remoteJid] < 8000)) {\n  return [];\n}\n\nif (textKey && staticData.seenTextKeys[textKey]) {\n  const lastTime = staticData.seenTextKeys[textKey];\n  if (now - lastTime < 6000) {\n    return [];\n  }\n}\nif (textKey) {\n  staticData.seenTextKeys[textKey] = now;\n}\n\nreturn [{\n  json: {\n    messageId: messageId || textKey,\n    remoteJid,\n    phone: cleanPhone || remoteJid.replace('@s.whatsapp.net', '').replace('@lid', ''),\n    realPhone: cleanPhone,\n    pushName,\n    chatInput: textMessage,\n    text: textMessage,\n    input: textMessage,\n    isImage,\n    imageUrl: imageUrl,\n    mediaUrl: imageUrl,\n    rawMessage: message,\n    instance: body.instance || 'default',\n    timestamp: new Date().toISOString()\n  }\n}];"
+        },
+        "name": "Normalize Incoming Message",
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 2,
+        "position": [
+          400,
+          300
+        ],
+        "id": "c19c857f-d804-44ee-9595-3d91b8bd5f8f"
+      },
+      {
+        "parameters": {
+          "conditions": {
+            "boolean": [
+              {
+                "value1": "={{ $json.isImage }}",
+                "value2": true
+              }
+            ]
+          }
+        },
+        "name": "Is Payment Proof Image?",
+        "type": "n8n-nodes-base.if",
+        "typeVersion": 1,
+        "position": [
+          640,
+          300
+        ],
+        "id": "cf5e9dda-803b-4196-b29a-3dbc524d3522"
+      },
+      {
+        "parameters": {
+          "workflowId": "KTyLfHnOD2SHWwdW"
+        },
+        "name": "Execute Payment Proof Handler",
+        "type": "n8n-nodes-base.executeWorkflow",
+        "typeVersion": 1,
+        "position": [
+          900,
+          200
+        ],
+        "id": "8a4ef039-1849-45ad-93cc-0e4acb66b12f"
+      },
+      {
+        "parameters": {
+          "method": "POST",
+          "url": "https://trimmind.up.railway.app/api/whatsapp-session/send",
+          "sendBody": true,
+          "bodyParameters": {
+            "parameters": [
+              {
+                "name": "to",
+                "value": "={{ $('Normalize Incoming Message').item.json.remoteJid || $('Normalize Incoming Message').item.json.phone }}"
+              },
+              {
+                "name": "text",
+                "value": "={{ $json.output || $json.replyText || $json.text }}"
+              }
+            ]
+          },
+          "options": {},
+          "sendHeaders": true,
+          "headerParameters": {
+            "parameters": [
+              {
+                "name": "x-agent-secret",
+                "value": "trim-mind-agent-secret-key-2026"
+              },
+              {
+                "name": "Content-Type",
+                "value": "application/json"
+              }
+            ]
+          }
+        },
+        "name": "Send WhatsApp Reply via Salon Backend",
+        "type": "n8n-nodes-base.httpRequest",
+        "typeVersion": 4.1,
+        "position": [
+          1180,
+          300
+        ],
+        "id": "e3307ed1-6b7f-45a2-9436-672c8f4d03fa"
+      },
+      {
+        "parameters": {
+          "method": "POST",
+          "url": "https://trimmind.up.railway.app/api/ai/chat",
+          "authentication": "none",
+          "sendHeaders": true,
+          "headerParameters": {
+            "parameters": [
+              {
+                "name": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "name": "x-agent-secret",
+                "value": "trim-mind-agent-secret-key-2026"
+              }
+            ]
+          },
+          "sendBody": true,
+          "specifyBody": "json",
+          "jsonBody": "={{\nJSON.stringify({\n  contents: [\n    {\n      role: 'user',\n      parts: [\n        {\n          text: ($('Normalize Incoming Message').item.json.text || '').trim()\n        }\n      ]\n    }\n  ],\n  customContext: 'رقم هاتف العميل: ' + ($('Normalize Incoming Message').item.json.phone || $('Normalize Incoming Message').item.json.realPhone || '') + ' | اسم العميل: ' + ($('Normalize Incoming Message').item.json.pushName || 'العميل')\n})\n}}",
+          "options": {}
+        },
+        "name": "Execute AI Chat via Salon Backend",
+        "type": "n8n-nodes-base.httpRequest",
+        "typeVersion": 4.1,
+        "position": [
+          880,
+          400
+        ],
+        "id": "backend-ai-chat-node"
+      }
+    ],
+    "connections": {
+      "Evolution API Webhook": {
+        "main": [
+          [
+            {
+              "node": "Normalize Incoming Message",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Normalize Incoming Message": {
+        "main": [
+          [
+            {
+              "node": "Is Payment Proof Image?",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Is Payment Proof Image?": {
+        "main": [
+          [
+            {
+              "node": "Execute Payment Proof Handler",
+              "type": "main",
+              "index": 0
+            }
+          ],
+          [
+            {
+              "node": "Execute AI Chat via Salon Backend",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Execute Payment Proof Handler": {
+        "main": [
+          [
+            {
+              "node": "Send WhatsApp Reply via Salon Backend",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Execute AI Chat via Salon Backend": {
+        "main": [
+          [
+            {
+              "node": "Send WhatsApp Reply via Salon Backend",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      }
+    },
+    "nodeGroups": [],
+    "authors": "Ahmed Abdel-baset",
+    "name": null,
+    "description": null,
+    "autosaved": false,
+    "createdAt": "2026-08-24T21:00:18.080Z",
+    "updatedAt": "2026-08-24T21:00:18.080Z",
+    "workflowPublishHistory": [
+      {
+        "id": 38,
+        "workflowId": "3pYK2pNf9ymIxL4U",
+        "versionId": "3712e845-d01a-4f72-9df9-c9ba612f1ca8",
+        "event": "activated",
+        "userId": "168592b6-1244-4827-9bbf-1dd2b5036903",
+        "createdAt": "2026-08-24T21:00:18.159Z"
+      },
+      {
+        "id": 40,
+        "workflowId": "3pYK2pNf9ymIxL4U",
+        "versionId": "3712e845-d01a-4f72-9df9-c9ba612f1ca8",
+        "event": "activated",
+        "userId": "168592b6-1244-4827-9bbf-1dd2b5036903",
+        "createdAt": "2026-08-24T21:00:18.682Z"
+      },
+      {
+        "id": 39,
+        "workflowId": "3pYK2pNf9ymIxL4U",
+        "versionId": "3712e845-d01a-4f72-9df9-c9ba612f1ca8",
+        "event": "deactivated",
+        "userId": "168592b6-1244-4827-9bbf-1dd2b5036903",
+        "createdAt": "2026-08-24T21:00:18.672Z"
+      }
+    ]
+  }
 }
