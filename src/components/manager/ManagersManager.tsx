@@ -1,5 +1,6 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useSalonStore } from '../../lib/store';
+import { useBodyScrollLock } from '../../lib/useBodyScrollLock';
 import { Profile } from '../../types';
 import {
   ShieldCheck,
@@ -29,6 +30,17 @@ export const ManagersManager: React.FC = () => {
 
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingManager, setEditingManager] = useState<Profile | null>(null);
+
+  useBodyScrollLock(isModalOpen);
+
+  useEffect(() => {
+    if (!isModalOpen) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setIsModalOpen(false);
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isModalOpen]);
 
   const [fullName, setFullName] = useState('');
   const [phone, setPhone] = useState('');
@@ -284,7 +296,14 @@ export const ManagersManager: React.FC = () => {
 
       {/* Modal */}
       {isModalOpen && (
-        <div className="modal-overlay">
+        <div
+          className="modal-overlay"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) {
+              setIsModalOpen(false);
+            }
+          }}
+        >
           <div className="modal-container max-w-md p-6 sm:p-7 space-y-5">
             <div className="flex items-center justify-between border-b border-border pb-3">
               <div className="flex items-center gap-2">

@@ -1,8 +1,8 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { useDialogStore, DialogType } from '../../lib/dialogStore';
+import { useBodyScrollLock } from '../../lib/useBodyScrollLock';
 import {
   AlertTriangle,
-  AlertCircle,
   CheckCircle2,
   Info,
   X,
@@ -11,6 +11,21 @@ import {
 
 export const GlobalModalDialog: React.FC = () => {
   const { isOpen, options, confirm, cancel, closeDialog } = useDialogStore();
+
+  // 1. Lock background scrolling when global confirmation modal is active
+  useBodyScrollLock(isOpen);
+
+  // 2. Escape key to close dialog
+  useEffect(() => {
+    if (!isOpen) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        cancel();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isOpen, cancel]);
 
   if (!isOpen || !options) return null;
 
@@ -64,7 +79,14 @@ export const GlobalModalDialog: React.FC = () => {
   const { icon, iconBg, confirmBtnClass } = getIconAndColors(type);
 
   return (
-    <div className="modal-overlay font-sans text-ink">
+    <div
+      className="modal-overlay-alert font-sans text-ink"
+      onClick={(e) => {
+        if (e.target === e.currentTarget) {
+          cancel();
+        }
+      }}
+    >
       <div className="modal-container max-w-md p-6 sm:p-7 space-y-5 text-right">
         {/* Header with Custom Icon */}
         <div className="flex items-center justify-between border-b border-border pb-3.5">

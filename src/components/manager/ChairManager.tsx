@@ -1,5 +1,6 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useSalonStore } from '../../lib/store';
+import { useBodyScrollLock } from '../../lib/useBodyScrollLock';
 import { Chair, ChairMode } from '../../types';
 import { Armchair, Plus, Edit2, Trash2, Crown, Sparkles, Building2, X, Scissors } from 'lucide-react';
 import toast from 'react-hot-toast';
@@ -9,6 +10,17 @@ export const ChairManager: React.FC = () => {
   const { chairs, branches, barbers, addChair, updateChair, deleteChair } = useSalonStore();
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingChair, setEditingChair] = useState<Chair | null>(null);
+
+  useBodyScrollLock(isModalOpen);
+
+  useEffect(() => {
+    if (!isModalOpen) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setIsModalOpen(false);
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isModalOpen]);
 
   const [name, setName] = useState('');
   const [branchId, setBranchId] = useState(branches[0]?.id || '');
@@ -162,7 +174,14 @@ export const ChairManager: React.FC = () => {
 
       {/* Modal */}
       {isModalOpen && (
-        <div className="modal-overlay">
+        <div
+          className="modal-overlay"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) {
+              setIsModalOpen(false);
+            }
+          }}
+        >
           <div className="modal-container max-w-md p-6 sm:p-7 space-y-5">
             <div className="flex items-center justify-between border-b border-border pb-3">
               <div className="flex items-center gap-2">

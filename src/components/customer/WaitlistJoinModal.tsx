@@ -1,6 +1,7 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { X, Clock, User, Phone, Calendar, CheckCircle2, Sparkles } from 'lucide-react';
 import { useSalonStore } from '../../lib/store';
+import { useBodyScrollLock } from '../../lib/useBodyScrollLock';
 import { api } from '../../lib/api';
 import toast from 'react-hot-toast';
 
@@ -18,12 +19,25 @@ export const WaitlistJoinModal: React.FC<WaitlistJoinModalProps> = ({
   defaultDate,
 }) => {
   const { barbers, services, selectedBranchId } = useSalonStore();
+
+  useBodyScrollLock(isOpen);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isOpen, onClose]);
+
   const [customerName, setCustomerName] = useState('');
   const [customerPhone, setCustomerPhone] = useState('');
   const [preferredDate, setPreferredDate] = useState(defaultDate || new Date().toISOString().split('T')[0]);
   const [preferredTimeWindow, setPreferredTimeWindow] = useState('مساءً (بعد العصر)');
   const [barberId, setBarberId] = useState(defaultBarberId || '');
-  const [serviceId, setServiceId] = useState('srv-vip-executive');
+  const [serviceId, setServiceId] = useState('');
+  const [notes, setNotes] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isSuccess, setIsSuccess] = useState(false);
 
@@ -31,21 +45,22 @@ export const WaitlistJoinModal: React.FC<WaitlistJoinModalProps> = ({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!customerName.trim() || !customerPhone.trim() || !preferredDate) {
-      toast.error('يرجى ملء جميع الحقول المطلوبة');
+    if (!customerName.trim() || !customerPhone.trim()) {
+      toast.error('يرجى كتابة الاسم ورقم الهاتف للتواصل');
       return;
     }
 
-    setIsSubmitting(true);
     try {
+      setIsSubmitting(true);
       await api.joinWaitlist({
-        branchId: selectedBranchId || 'branch-elhdad',
-        barberId: barberId || undefined,
-        customerName: customerName.trim(),
-        customerPhone: customerPhone.trim(),
-        preferredDate,
-        preferredTimeWindow,
-        serviceId,
+        branch_id: selectedBranchId || 'branch-elhdad',
+        barber_id: barberId || null,
+        service_id: serviceId || null,
+        customer_name: customerName.trim(),
+        customer_phone: customerPhone.trim(),
+        preferred_date: preferredDate,
+        preferred_time_window: preferredTimeWindow,
+        notes: notes.trim() || null,
       });
 
       setIsSuccess(true);
@@ -58,8 +73,16 @@ export const WaitlistJoinModal: React.FC<WaitlistJoinModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fade-in" dir="rtl">
-      <div className="bg-paper border border-border rounded-3xl p-6 sm:p-8 max-w-lg w-full shadow-2xl relative">
+    <div
+      className="modal-overlay font-sans text-ink"
+      dir="rtl"
+      onClick={(e) => {
+        if (e.target === e.currentTarget) {
+          onClose();
+        }
+      }}
+    >
+      <div className="modal-container bg-paper border border-border rounded-3xl p-6 sm:p-8 max-w-lg w-full shadow-2xl relative">
         <button
           onClick={onClose}
           className="absolute top-5 left-5 p-2 text-ink-soft hover:text-ink bg-surface rounded-full transition-colors"

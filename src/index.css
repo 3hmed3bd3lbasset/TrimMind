@@ -156,23 +156,53 @@
   box-shadow: var(--shadow-3);
 }
 
-/* Fullscreen Modal Styles */
+/* Body Modal Open Lock */
+body.modal-open {
+  overflow: hidden !important;
+  touch-action: none;
+}
+
+/* Fullscreen Modal Styles with Strict Layering */
 .modal-overlay {
   position: fixed;
-  top: 0;
-  right: 0;
-  bottom: 0;
-  left: 0;
+  inset: 0;
   width: 100vw;
   height: 100vh;
-  z-index: 99999;
+  height: 100dvh;
+  z-index: 60;
   display: flex;
   align-items: center;
   justify-content: center;
   padding: 1rem;
-  background-color: rgba(18, 22, 19, 0.65);
+  background-color: rgba(18, 22, 19, 0.72);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
   overflow-y: auto;
   overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+  touch-action: pan-y;
+  animation: modalFadeIn 0.18s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+/* Highest-Priority Confirmation & Alert Dialog Layer */
+.modal-overlay-alert {
+  position: fixed;
+  inset: 0;
+  width: 100vw;
+  height: 100vh;
+  height: 100dvh;
+  z-index: 70;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+  background-color: rgba(18, 22, 19, 0.8);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+  touch-action: pan-y;
   animation: modalFadeIn 0.18s cubic-bezier(0.16, 1, 0.3, 1) forwards;
 }
 
@@ -182,9 +212,11 @@
   border: 1px solid var(--border-soft);
   border-radius: var(--radius-lg);
   box-shadow: var(--shadow-3);
-  max-height: calc(100vh - 2.5rem);
+  max-height: min(92vh, 92dvh);
   overflow-y: auto;
   overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+  touch-action: pan-y;
   animation: modalScaleIn 0.2s cubic-bezier(0.16, 1, 0.3, 1) forwards;
   will-change: transform, opacity;
   transform: translateZ(0);

@@ -1,5 +1,6 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useSalonStore } from '../../lib/store';
+import { useBodyScrollLock } from '../../lib/useBodyScrollLock';
 import { Booking } from '../../types';
 import { formatCurrency } from '../../lib/utils';
 import { Coffee, Plus, X, CheckCircle2 } from 'lucide-react';
@@ -16,6 +17,17 @@ export const AddOrderModal: React.FC<AddOrderModalProps> = ({ booking, isOpen, o
   const [selectedProductId, setSelectedProductId] = useState(products[0]?.id || '');
   const [quantity, setQuantity] = useState(1);
 
+  useBodyScrollLock(isOpen);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isOpen, onClose]);
+
   if (!isOpen || !booking) return null;
 
   const handleAddItem = (e: React.FormEvent) => {
@@ -27,8 +39,15 @@ export const AddOrderModal: React.FC<AddOrderModalProps> = ({ booking, isOpen, o
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-sm">
-      <div className="bg-[#121824] border border-[#233047] rounded-3xl w-full max-w-md p-6 shadow-2xl space-y-5 animate-in zoom-in-95 duration-200">
+    <div
+      className="modal-overlay font-sans text-ink"
+      onClick={(e) => {
+        if (e.target === e.currentTarget) {
+          onClose();
+        }
+      }}
+    >
+      <div className="modal-container max-w-md bg-[#121824] border border-[#233047] p-6 shadow-2xl space-y-5 text-white">
         <div className="flex items-center justify-between border-b border-slate-800 pb-3">
           <div className="flex items-center gap-2">
             <Coffee className="w-5 h-5 text-amber-400" />

@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useSalonStore } from '../../lib/store';
 import { AIMessage, UserRole } from '../../types';
+import { useBodyScrollLock } from '../../lib/useBodyScrollLock';
 import {
   processAiMessage,
   getInitialGreeting,
@@ -230,6 +231,20 @@ export const AIChatDrawer: React.FC = () => {
     }
   };
 
+  // Lock body scroll when drawer is open
+  useBodyScrollLock(isAiDrawerOpen);
+
+  useEffect(() => {
+    if (!isAiDrawerOpen) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        setAiDrawerOpen(false);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isAiDrawerOpen, setAiDrawerOpen]);
+
   const handleClearChat = () => {
     setMessages([getInitialGreeting(currentUser)]);
   };
@@ -241,7 +256,14 @@ export const AIChatDrawer: React.FC = () => {
   };
 
   return (
-    <div className="fixed inset-0 z-50 overflow-hidden bg-ink/40 backdrop-blur-sm transition-opacity">
+    <div
+      className="fixed inset-0 z-50 overflow-hidden bg-ink/50 backdrop-blur-sm transition-opacity"
+      onClick={(e) => {
+        if (e.target === e.currentTarget) {
+          setAiDrawerOpen(false);
+        }
+      }}
+    >
       <div className="absolute inset-y-0 left-0 max-w-full flex pl-0 sm:pl-10">
         <div className="w-screen max-w-md bg-paper border-r border-border shadow-clinic-3 flex flex-col justify-between">
           {/* 1. Header with Role Switch Tabs & Quota Indicator */}

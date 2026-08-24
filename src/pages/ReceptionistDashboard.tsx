@@ -1,6 +1,7 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { useSalonStore } from '../lib/store';
+import { useBodyScrollLock } from '../lib/useBodyScrollLock';
 import { ChairGrid } from '../components/receptionist/ChairGrid';
 import { QueueList } from '../components/receptionist/QueueList';
 import { BookingsTable } from '../components/receptionist/BookingsTable';
@@ -66,6 +67,17 @@ export default function ReceptionistDashboard() {
   const [kpiSearchQuery, setKpiSearchQuery] = useState('');
   const [kpiBookingFilter, setKpiBookingFilter] = useState<string>('all');
   const [selectedProofBooking, setSelectedProofBooking] = useState<Booking | null>(null);
+
+  useBodyScrollLock(!!activeKpiModal || !!selectedProofBooking);
+
+  useEffect(() => {
+    if (!activeKpiModal) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setActiveKpiModal(null);
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [activeKpiModal]);
 
   const [isWalkInModalOpen, setIsWalkInModalOpen] = useState(false);
   const [selectedChairForWalkIn, setSelectedChairForWalkIn] = useState<Chair | null>(null);
@@ -446,7 +458,14 @@ export default function ReceptionistDashboard() {
       {/* 1. MODAL: IN-SERVICE CHAIRS DETAILS (كراسي في الخدمة الآن) */}
       {/* ========================================================================= */}
       {activeKpiModal === 'in_service_chairs' && (
-        <div className="modal-overlay">
+        <div
+          className="modal-overlay"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) {
+              setActiveKpiModal(null);
+            }
+          }}
+        >
           <div className="modal-container max-w-2xl p-6 space-y-5 text-right">
             <div className="flex items-center justify-between border-b border-border pb-3.5">
               <div className="flex items-center gap-3">
@@ -570,7 +589,14 @@ export default function ReceptionistDashboard() {
       {/* 2. MODAL: PENDING RECEIPTS REVIEW (إيصالات بانتظار المراجعة) */}
       {/* ========================================================================= */}
       {activeKpiModal === 'pending_receipts' && (
-        <div className="modal-overlay">
+        <div
+          className="modal-overlay"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) {
+              setActiveKpiModal(null);
+            }
+          }}
+        >
           <div className="modal-container max-w-2xl p-6 space-y-5 text-right">
             <div className="flex items-center justify-between border-b border-border pb-3.5">
               <div className="flex items-center gap-3">
@@ -673,7 +699,14 @@ export default function ReceptionistDashboard() {
       {/* 3. MODAL: BRANCH WAITING QUEUE (طابور الانتظار بالفرع) */}
       {/* ========================================================================= */}
       {activeKpiModal === 'branch_queue' && (
-        <div className="modal-overlay">
+        <div
+          className="modal-overlay"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) {
+              setActiveKpiModal(null);
+            }
+          }}
+        >
           <div className="modal-container max-w-2xl p-6 space-y-5 text-right">
             <div className="flex items-center justify-between border-b border-border pb-3.5">
               <div className="flex items-center gap-3">
@@ -762,7 +795,14 @@ export default function ReceptionistDashboard() {
       {/* 4. MODAL: ALL BRANCH BOOKINGS (إجمالي حجوزات هذا الفرع) */}
       {/* ========================================================================= */}
       {activeKpiModal === 'branch_bookings' && (
-        <div className="modal-overlay">
+        <div
+          className="modal-overlay"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) {
+              setActiveKpiModal(null);
+            }
+          }}
+        >
           <div className="modal-container max-w-3xl p-6 space-y-5 text-right">
             <div className="flex items-center justify-between border-b border-border pb-3.5">
               <div className="flex items-center gap-3">

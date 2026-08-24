@@ -1,5 +1,6 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useSalonStore } from '../../lib/store';
+import { useBodyScrollLock } from '../../lib/useBodyScrollLock';
 import { Booking, BookingStatus } from '../../types';
 import {
   BOOKING_STATUS_CONFIG,
@@ -47,6 +48,23 @@ export const BookingsTable: React.FC<BookingsTableProps> = ({ branchId }) => {
   const [selectedInvoiceBooking, setSelectedInvoiceBooking] = useState<Booking | null>(null);
   const [selectedEditBooking, setSelectedEditBooking] = useState<Booking | null>(null);
   const [selectedCustomPricingBooking, setSelectedCustomPricingBooking] = useState<Booking | null>(null);
+
+  useBodyScrollLock(
+    !!selectedEditBooking ||
+      !!selectedProofBooking ||
+      !!selectedOrderBooking ||
+      !!selectedInvoiceBooking ||
+      !!selectedCustomPricingBooking
+  );
+
+  useEffect(() => {
+    if (!selectedEditBooking) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setSelectedEditBooking(null);
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [selectedEditBooking]);
 
   // Edit form state
   const [editServiceId, setEditServiceId] = useState('');
@@ -525,8 +543,15 @@ export const BookingsTable: React.FC<BookingsTableProps> = ({ branchId }) => {
 
       {/* EDIT MODAL */}
       {selectedEditBooking && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-ink/50 backdrop-blur-sm">
-          <div className="clinic-card w-full max-w-lg p-6 shadow-clinic-3 space-y-4 text-xs bg-white">
+        <div
+          className="modal-overlay"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) {
+              setSelectedEditBooking(null);
+            }
+          }}
+        >
+          <div className="modal-container max-w-lg p-6 shadow-clinic-3 space-y-4 text-xs bg-white">
             <div className="flex items-center justify-between border-b border-border pb-3">
               <h3 className="font-serif font-bold text-ink text-base">
                 تعديل فاتورة الحجز ({selectedEditBooking.id})

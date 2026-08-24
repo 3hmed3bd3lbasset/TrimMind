@@ -1,5 +1,6 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useSalonStore } from '../lib/store';
+import { useBodyScrollLock } from '../lib/useBodyScrollLock';
 import { Profile } from '../types';
 import {
   Scissors,
@@ -27,6 +28,17 @@ export default function AuthPage() {
   const [isForgotModalOpen, setIsForgotModalOpen] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const navigate = useNavigate();
+
+  useBodyScrollLock(isForgotModalOpen);
+
+  useEffect(() => {
+    if (!isForgotModalOpen) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setIsForgotModalOpen(false);
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isForgotModalOpen]);
 
   const superAdminPhone = settings.primary_phone || '010 1234 5678';
 
@@ -339,8 +351,15 @@ export default function AuthPage() {
 
       {/* Forgot Password Security Notice Modal */}
       {isForgotModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-ink/60 backdrop-blur-sm animate-in fade-in duration-200">
-          <div className="clinic-card w-full max-w-md p-6 sm:p-7 shadow-clinic-3 space-y-5 bg-white animate-in zoom-in-95 duration-200 text-center font-sans text-ink">
+        <div
+          className="modal-overlay"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) {
+              setIsForgotModalOpen(false);
+            }
+          }}
+        >
+          <div className="modal-container max-w-md p-6 sm:p-7 shadow-clinic-3 space-y-5 bg-white text-center font-sans text-ink">
             <div className="w-14 h-14 rounded-2xl bg-terra/15 border border-terra/30 text-terra-deep mx-auto flex items-center justify-center shadow-clinic-1">
               <Shield className="w-7 h-7" />
             </div>

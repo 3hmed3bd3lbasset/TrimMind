@@ -1,6 +1,7 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { Booking } from '../../types';
 import { useSalonStore } from '../../lib/store';
+import { useBodyScrollLock } from '../../lib/useBodyScrollLock';
 import { formatCurrency, formatDateTime } from '../../lib/utils';
 import { Printer, X, Scissors, QrCode, Sparkles } from 'lucide-react';
 
@@ -12,6 +13,17 @@ interface ThermalInvoiceProps {
 
 export const ThermalInvoice: React.FC<ThermalInvoiceProps> = ({ booking, isOpen, onClose }) => {
   const { branches, barbers, services, settings } = useSalonStore();
+
+  useBodyScrollLock(isOpen);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isOpen, onClose]);
 
   if (!isOpen || !booking) return null;
 
@@ -33,8 +45,15 @@ export const ThermalInvoice: React.FC<ThermalInvoiceProps> = ({ booking, isOpen,
   const salonTitle = settings?.salon_name || 'صالون TrimMind (الحداد VIP)';
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
-      <div className="bg-[#121824] border border-[#233047] rounded-3xl w-full max-w-lg p-6 shadow-2xl space-y-6">
+    <div
+      className="modal-overlay font-sans"
+      onClick={(e) => {
+        if (e.target === e.currentTarget) {
+          onClose();
+        }
+      }}
+    >
+      <div className="modal-container max-w-lg bg-[#121824] border border-[#233047] p-6 shadow-2xl space-y-6">
         <div className="flex items-center justify-between border-b border-slate-800 pb-3">
           <div className="flex items-center gap-2">
             <Printer className="w-5 h-5 text-amber-400" />

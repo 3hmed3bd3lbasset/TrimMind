@@ -1,5 +1,6 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { useSalonStore } from '../../lib/store';
+import { useBodyScrollLock } from '../../lib/useBodyScrollLock';
 import { Booking, BookingStatus } from '../../types';
 import {
   BOOKING_STATUS_CONFIG,
@@ -76,6 +77,17 @@ export const TrackBookingSection: React.FC = () => {
   const [searchStatus, setSearchStatus] = useState<'idle' | 'found' | 'expired' | 'not_found'>('idle');
   const [isRatingModalOpen, setIsRatingModalOpen] = useState(false);
   const [isCancelModalOpen, setIsCancelModalOpen] = useState(false);
+
+  useBodyScrollLock(isCancelModalOpen || isRatingModalOpen);
+
+  useEffect(() => {
+    if (!isCancelModalOpen) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setIsCancelModalOpen(false);
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isCancelModalOpen]);
 
   // Helper to map remote API booking to full local Booking type
   const mapRemoteBooking = (b: any): Booking => {
@@ -741,7 +753,14 @@ export const TrackBookingSection: React.FC = () => {
 
       {/* Cancellation Warning Modal (Exact Request with Centered Warning Icon) */}
       {isCancelModalOpen && selectedBooking && (
-        <div className="modal-overlay">
+        <div
+          className="modal-overlay"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) {
+              setIsCancelModalOpen(false);
+            }
+          }}
+        >
           <div className="modal-container max-w-md p-6 sm:p-8 space-y-5 text-center">
             {/* Centered Top Warning Icon */}
             <div className="w-16 h-16 rounded-full bg-amber-500/15 text-amber-700 border border-amber-500/30 flex items-center justify-center mx-auto shadow-sm">

@@ -1,5 +1,6 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useSalonStore } from '../../lib/store';
+import { useBodyScrollLock } from '../../lib/useBodyScrollLock';
 import { Service } from '../../types';
 import { formatCurrency } from '../../lib/utils';
 import { Scissors, Plus, Edit2, Trash2, Clock, Crown, X, Sparkles } from 'lucide-react';
@@ -10,6 +11,17 @@ export const ServiceManager: React.FC = () => {
   const { services, addService, updateService, deleteService } = useSalonStore();
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingService, setEditingService] = useState<Service | null>(null);
+
+  useBodyScrollLock(isModalOpen);
+
+  useEffect(() => {
+    if (!isModalOpen) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setIsModalOpen(false);
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isModalOpen]);
 
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
@@ -159,7 +171,14 @@ export const ServiceManager: React.FC = () => {
 
       {/* Add / Edit Modal */}
       {isModalOpen && (
-        <div className="modal-overlay">
+        <div
+          className="modal-overlay"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) {
+              setIsModalOpen(false);
+            }
+          }}
+        >
           <div className="modal-container max-w-md p-6 sm:p-7 space-y-5">
             <div className="flex items-center justify-between border-b border-border pb-3">
               <div className="flex items-center gap-2">

@@ -6,6 +6,7 @@ import { ServiceCard } from './ServiceCard';
 import { BarberCard } from './BarberCard';
 import confetti from 'canvas-confetti';
 import toast from 'react-hot-toast';
+import { useBodyScrollLock } from '../../lib/useBodyScrollLock';
 import {
   Building2,
   Scissors,
@@ -157,6 +158,9 @@ export const BookingWizard: React.FC = () => {
 
   // Live Cairo Time Clock & Expiration Tracker
   const [liveCairoTime, setLiveCairoTime] = useState<Date>(new Date());
+
+  // Lock background scroll when VIP modal is open
+  useBodyScrollLock(isVipPromptOpen);
 
   React.useEffect(() => {
     const timer = setInterval(() => {
@@ -1226,8 +1230,15 @@ export const BookingWizard: React.FC = () => {
 
       {/* VIP Upgrade Notice Modal */}
       {isVipPromptOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-ink/60 backdrop-blur-sm animate-in fade-in duration-200">
-          <div className="clinic-card w-full max-w-md p-6 shadow-clinic-3 space-y-5 bg-white animate-in zoom-in-95 duration-200 text-center">
+        <div
+          className="modal-overlay"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) {
+              setIsVipPromptOpen(false);
+            }
+          }}
+        >
+          <div className="modal-container max-w-md p-6 sm:p-7 shadow-clinic-3 space-y-5 bg-white text-center">
             <div className="w-14 h-14 rounded-2xl bg-terra/15 border border-terra/30 text-terra-deep mx-auto flex items-center justify-center shadow-clinic-1">
               <Crown className="w-7 h-7" />
             </div>

@@ -1,5 +1,6 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { useSalonStore } from '../lib/store';
+import { useBodyScrollLock } from '../lib/useBodyScrollLock';
 import { Barber } from '../types';
 import {
   Scissors,
@@ -63,6 +64,17 @@ export default function BarberDashboard() {
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [selectedAddServices, setSelectedAddServices] = useState<string[]>([]);
   const [selectedAddProducts, setSelectedAddProducts] = useState<{ [id: string]: number }>({});
+
+  useBodyScrollLock(isEditModalOpen);
+
+  useEffect(() => {
+    if (!isEditModalOpen) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setIsEditModalOpen(false);
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isEditModalOpen]);
   const [barberNote, setBarberNote] = useState('');
 
   // Current active barber entity
@@ -504,8 +516,15 @@ export default function BarberDashboard() {
 
       {/* 3. MODAL: EDIT SERVICES & PRODUCTS */}
       {isEditModalOpen && activeBooking && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-ink/50 backdrop-blur-sm">
-          <div className="clinic-card w-full max-w-lg p-6 shadow-clinic-3 space-y-5 text-xs bg-white">
+        <div
+          className="modal-overlay"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) {
+              setIsEditModalOpen(false);
+            }
+          }}
+        >
+          <div className="modal-container max-w-lg p-6 shadow-clinic-3 space-y-5 text-xs bg-white">
             <div className="flex items-center justify-between border-b border-border pb-3">
               <div>
                 <h3 className="font-serif font-bold text-ink text-base">تعديل الخدمات وإضافة باقات للعميل</h3>

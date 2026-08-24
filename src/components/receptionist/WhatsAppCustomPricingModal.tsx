@@ -1,5 +1,6 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Booking, Service } from '../../types';
+import { useBodyScrollLock } from '../../lib/useBodyScrollLock';
 import { formatCurrency } from '../../lib/utils';
 import { api } from '../../lib/api';
 import {
@@ -28,6 +29,16 @@ export const WhatsAppCustomPricingModal: React.FC<WhatsAppCustomPricingModalProp
   onClose,
   onSuccess,
 }) => {
+  useBodyScrollLock(true);
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [onClose]);
+
   const [selectedBarberId, setSelectedBarberId] = useState(booking.barber_id || '');
   const [selectedBarberName, setSelectedBarberName] = useState(booking.barber_name || 'محمد الحداد');
   const [customServiceName, setCustomServiceName] = useState(booking.service_name || 'باقة مخصصة VIP');
@@ -38,65 +49,83 @@ export const WhatsAppCustomPricingModal: React.FC<WhatsAppCustomPricingModalProp
     : [
         { name: booking.service_name || 'قص شعر كلاسيكي وتظبيط لحية', price: booking.total_at_booking || 220 }
       ];
-
-  const [lineItems, setLineItems] = useState<Array<{ name: string; price: number }>>(initialItems);
-  const [newItemName, setNewItemName] = useState('');
-  const [newItemPrice, setNewItemPrice] = useState<number | ''>('');
+  const [items, setItems] = useState<Array<{ name: string; price: number }>>(initialItems);
   const [discount, setDiscount] = useState<number>(booking.discount_at_booking || 0);
-  const [notes] = useState(booking.notes || '');
+  const [deposit, setDeposit] = useState<number>(booking.booking_fee_at_booking || 50);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const depositPaid = booking.payment_proof?.transferred_amount || (booking.booking_type === 'vip' ? 100 : 50);
-  const itemsSubtotal = lineItems.reduce((sum, item) => sum + (Number(item.price) || 0), 0);
-  const finalTotal = Math.max(0, itemsSubtotal - discount);
-  const remainingToPay = Math.max(0, finalTotal - depositPaid);
+  // Quick add item state
+  const [newItemName, setNewItemName] = useState('');
+  const [newItemPrice, setNewItemPrice] = useState<string>('');
 
-  const handleAddLineItem = () => {
-    if (!newItemName.trim() || newItemPrice === '' || Number(newItemPrice) <= 0) {
-      toast.error('يرجى كتابة اسم الخدمة وسعرها بشكل صحيح');
+  const subtotal = items.reduce((sum, item) => sum + (Number(item.price) || 0), 0);
+  const total = Math.max(0, subtotal - (Number(discount) || 0));
+  const remaining = Math.max(0, total - (Number(deposit) || 0));
+
+  const handleAddItem = (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    if (!newItemName.trim() || !newItemPrice || Number(newItemPrice) <= 0) {
+      toast.error('يرجى كتابة اسم البند وتحديد سعره');
       return;
     }
-    setLineItems([...lineItems, { name: newItemName.trim(), price: Number(newItemPrice) }]);
+
+    setItems([...items, { name: newItemName.trim(), price: Number(newItemPrice) }]);
     setNewItemName('');
     setNewItemPrice('');
   };
 
-  const handleAddPresetService = (srv: Service) => {
-    setLineItems([...lineItems, { name: srv.name, price: srv.price }]);
-    toast.success(`تمت إضافة ${srv.name}`);
-  };
-
-  const handleRemoveLineItem = (index: number) => {
-    setLineItems(lineItems.filter((_, i) => i !== index));
+  const handleRemoveItem = (index: number) => {
+    if (items.length <= 1) {
+      toast.error('يجب أن تحتوي الفاتورة على بند خدمة واحد على الأقل');
+      return;
+    }
+    setItems(items.filter((_, i) => i !== index));
   };
 
   const handleUpdateItemPrice = (index: number, newPrice: number) => {
-    const updated = [...lineItems];
+    const updated = [...items];
     updated[index].price = Math.max(0, newPrice);
-    setLineItems(updated);
+    setItems(updated);
   };
 
-  const handleSubmit = async () => {
-    if (lineItems.length === 0) {
-      toast.error('يرجى إضافة خدمة واحدة على الأقل في الفاتورة');
+  const handleSelectServicePreset = (service: Service) => {
+    setItems([...items, { name: service.name, price: service.price }]);
+    toast.success(`تمت إضافة ${service.name} للفاتورة`);
+  };
+
+  const handleSelectBarber = (barberId: string) => {
+    setSelectedBarberId(barberId);
+    const b = barbers.find((item) => item.id === barberId);
+    if (b) {
+      setSelectedBarberName(b.full_name || b.name || 'كابتن الحلاقة');
+    }
+  };
+
+  const handleDispatch = async () => {
+    if (items.length === 0) {
+      toast.error('يجب إضافة بنود للفاتورة أولاً');
       return;
     }
 
     setIsSubmitting(true);
     try {
       const payload = {
-        customLineItems: lineItems,
-        totalAmount: finalTotal,
-        discount: Number(discount) || 0,
-        notes,
         barberId: selectedBarberId,
         barberName: selectedBarberName,
-        serviceName: customServiceName || (lineItems.map(i => i.name).join(' + ')),
+        serviceName: customServiceName,
+        items,
+        subtotal,
+        discount,
+        totalPrice: total,
+        depositRequired: deposit,
+        remainingBalance: remaining,
       };
 
       const res: any = await api.customizeAndDispatchBooking(booking.id, payload);
-      toast.success('تم تسعير واعتماد الحجز وإرسال الفاتورة الرسمية للواتساب بنجاح! 📲✨');
-      onSuccess(res.data || { ...booking, ...payload, status: 'confirmed' });
+      toast.success('تم تسعير الحجز وإرسال الفاتورة للعميل على الواتساب بنجاح! 🚀');
+      if (onSuccess) {
+        onSuccess(res?.data || { ...booking, ...payload, status: 'confirmed' });
+      }
       onClose();
     } catch (err: any) {
       toast.error(err.message || 'حدث خطأ أثناء اعتماد الفاتورة');
@@ -106,8 +135,15 @@ export const WhatsAppCustomPricingModal: React.FC<WhatsAppCustomPricingModalProp
   };
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto">
-      <div className="bg-[#121218] border border-amber-500/30 rounded-2xl w-full max-w-2xl overflow-hidden shadow-2xl animate-in fade-in zoom-in-95 duration-200">
+    <div
+      className="modal-overlay font-sans"
+      onClick={(e) => {
+        if (e.target === e.currentTarget) {
+          onClose();
+        }
+      }}
+    >
+      <div className="modal-container max-w-2xl bg-[#121218] border border-amber-500/30 text-white shadow-2xl">
         
         {/* Header */}
         <div className="px-6 py-4 bg-gradient-to-r from-amber-950/40 via-amber-900/20 to-black border-b border-amber-500/20 flex items-center justify-between">
@@ -229,7 +265,7 @@ export const WhatsAppCustomPricingModal: React.FC<WhatsAppCustomPricingModalProp
                 <button
                   key={srv.id}
                   type="button"
-                  onClick={() => handleAddPresetService(srv)}
+                  onClick={() => handleSelectServicePreset(srv)}
                   className="text-xs px-2.5 py-1.5 rounded-lg bg-white/5 hover:bg-amber-500/20 border border-white/10 hover:border-amber-500/30 text-gray-300 hover:text-amber-300 transition-colors flex items-center gap-1.5"
                 >
                   <Plus className="w-3 h-3" />
@@ -246,7 +282,7 @@ export const WhatsAppCustomPricingModal: React.FC<WhatsAppCustomPricingModalProp
             </label>
 
             <div className="space-y-2">
-              {lineItems.map((item, index) => (
+              {items.map((item, index) => (
                 <div
                   key={index}
                   className="flex items-center gap-3 bg-black/40 border border-white/10 rounded-xl p-3"
@@ -264,7 +300,7 @@ export const WhatsAppCustomPricingModal: React.FC<WhatsAppCustomPricingModalProp
                     <span className="text-xs text-gray-400">ج.م</span>
                     <button
                       type="button"
-                      onClick={() => handleRemoveLineItem(index)}
+                      onClick={() => handleRemoveItem(index)}
                       className="p-1.5 rounded-lg text-rose-400 hover:bg-rose-500/20 transition-colors"
                     >
                       <Trash2 className="w-4 h-4" />
@@ -287,12 +323,12 @@ export const WhatsAppCustomPricingModal: React.FC<WhatsAppCustomPricingModalProp
                 type="number"
                 placeholder="السعر ج.م"
                 value={newItemPrice}
-                onChange={(e) => setNewItemPrice(e.target.value === '' ? '' : Number(e.target.value))}
+                onChange={(e) => setNewItemPrice(e.target.value)}
                 className="w-28 bg-black/40 border border-white/10 rounded-xl px-3 py-2 text-sm text-white font-mono text-center focus:border-amber-500 focus:outline-none"
               />
               <button
                 type="button"
-                onClick={handleAddLineItem}
+                onClick={handleAddItem}
                 className="px-4 py-2 bg-amber-500/20 hover:bg-amber-500/30 border border-amber-500/40 text-amber-300 rounded-xl text-sm font-semibold flex items-center gap-1.5 transition-colors"
               >
                 <Plus className="w-4 h-4" />
@@ -305,7 +341,7 @@ export const WhatsAppCustomPricingModal: React.FC<WhatsAppCustomPricingModalProp
           <div className="bg-gradient-to-br from-amber-950/30 to-black border border-amber-500/30 rounded-xl p-4 space-y-3">
             <div className="flex justify-between items-center text-xs text-gray-400">
               <span>إجمالي بنود الخدمات:</span>
-              <span className="font-mono text-sm text-white">{formatCurrency(itemsSubtotal)}</span>
+              <span className="font-mono text-sm text-white">{formatCurrency(subtotal)}</span>
             </div>
 
             <div className="flex justify-between items-center text-xs text-gray-300">
@@ -322,12 +358,12 @@ export const WhatsAppCustomPricingModal: React.FC<WhatsAppCustomPricingModalProp
 
             <div className="flex justify-between items-center text-xs text-emerald-400 border-t border-white/10 pt-2">
               <span>العربون المسدد بالإيصال (خصم فوري):</span>
-              <span className="font-mono font-bold">-{formatCurrency(depositPaid)} ✓</span>
+              <span className="font-mono font-bold">-{formatCurrency(deposit)} ✓</span>
             </div>
 
             <div className="flex justify-between items-center text-sm font-bold text-white border-t border-amber-500/20 pt-2">
               <span className="text-amber-400">المتبقي المطلوب دفعه بالصالون:</span>
-              <span className="text-lg font-mono text-amber-300">{formatCurrency(remainingToPay)}</span>
+              <span className="text-lg font-mono text-amber-300">{formatCurrency(remaining)}</span>
             </div>
           </div>
 
@@ -345,8 +381,8 @@ export const WhatsAppCustomPricingModal: React.FC<WhatsAppCustomPricingModalProp
 
           <button
             type="button"
-            disabled={isSubmitting || lineItems.length === 0}
-            onClick={handleSubmit}
+            disabled={isSubmitting || items.length === 0}
+            onClick={handleDispatch}
             className="flex-1 max-w-sm px-6 py-2.5 rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-black font-bold text-sm shadow-lg shadow-amber-500/20 flex items-center justify-center gap-2 transition-all disabled:opacity-50"
           >
             {isSubmitting ? (

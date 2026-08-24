@@ -1,5 +1,6 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useSalonStore } from '../../lib/store';
+import { useBodyScrollLock } from '../../lib/useBodyScrollLock';
 import { Star, X, CheckCircle2, MessageSquare, Scissors, Building2, Sparkles, HeartHandshake } from 'lucide-react';
 import toast from 'react-hot-toast';
 
@@ -11,6 +12,17 @@ interface RatingModalProps {
 
 export const RatingModal: React.FC<RatingModalProps> = ({ bookingId, isOpen, onClose }) => {
   const { rateBooking, bookings, barbers, branches } = useSalonStore();
+
+  useBodyScrollLock(isOpen);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isOpen, onClose]);
   
   // 3 Multi-dimensional ratings
   const [barberStars, setBarberStars] = useState<number>(5);
@@ -83,7 +95,14 @@ export const RatingModal: React.FC<RatingModalProps> = ({ bookingId, isOpen, onC
   };
 
   return (
-    <div className="modal-overlay">
+    <div
+      className="modal-overlay"
+      onClick={(e) => {
+        if (e.target === e.currentTarget) {
+          onClose();
+        }
+      }}
+    >
       <div className="modal-container max-w-lg p-6 sm:p-7 space-y-6 font-sans text-ink">
         {/* Modal Header */}
         <div className="flex items-center justify-between border-b border-border pb-3">

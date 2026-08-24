@@ -1,5 +1,6 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useSalonStore } from '../../lib/store';
+import { useBodyScrollLock } from '../../lib/useBodyScrollLock';
 import { Chair } from '../../types';
 import { formatCurrency } from '../../lib/utils';
 import { UserPlus, X, Scissors, Armchair, Phone, CheckCircle2, Sparkles, Check, DollarSign } from 'lucide-react';
@@ -20,6 +21,17 @@ export const WalkInModal: React.FC<WalkInModalProps> = ({
 }) => {
   const { services, barbers, chairs, addWalkInBooking } = useSalonStore();
 
+  useBodyScrollLock(isOpen);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isOpen, onClose]);
+
   const branchBarbers = barbers.filter((b) => b.is_active && (b.branch_id === branchId || !b.branch_id));
   const branchChairs = chairs.filter((c) => c.is_active && c.branch_id === branchId);
 
@@ -33,7 +45,7 @@ export const WalkInModal: React.FC<WalkInModalProps> = ({
   // Custom Service & Price state
   const [isCustomService, setIsCustomService] = useState(false);
   const [customServiceName, setCustomServiceName] = useState('');
-  const [customPrice, setCustomPrice] = useState<number | ''>('');
+  const [customPrice, setCustomPrice] = useState<number | ''>(250);
 
   if (!isOpen) return null;
 
@@ -44,26 +56,20 @@ export const WalkInModal: React.FC<WalkInModalProps> = ({
       return;
     }
 
-    if (isCustomService) {
-      if (!customServiceName.trim()) {
-        toast.error('يرجى كتابة الخدمة وطلبات العميل');
-        return;
-      }
-      if (!customPrice || Number(customPrice) <= 0) {
-        toast.error('يرجى تحديد السعر المطلوب للخدمة المخصصة');
-        return;
-      }
+    if (isCustomService && (!customServiceName.trim() || !customPrice || Number(customPrice) <= 0)) {
+      toast.error('يرجى إدخال اسم الخدمة والسعر المخصص بشكل صحيح');
+      return;
     }
 
-    const booking = addWalkInBooking({
-      customerName,
-      customerPhone,
+    addWalkInBooking({
       branchId,
-      barberId,
-      chairId,
+      customerName: customerName.trim(),
+      customerPhone: customerPhone.trim() || '01000000000',
       serviceId: isCustomService ? 'srv-custom' : serviceId,
+      barberId: barberId || branchBarbers[0]?.id || '',
+      chairId: chairId || branchChairs[0]?.id || '',
       serviceName: isCustomService ? customServiceName.trim() : undefined,
-      customPrice: isCustomService ? Number(customPrice) : undefined,
+      customPrice: isCustomService && typeof customPrice === 'number' ? customPrice : undefined,
       notes,
     });
 
@@ -73,8 +79,16 @@ export const WalkInModal: React.FC<WalkInModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-sm" dir="rtl">
-      <div className="bg-[#121824] border border-[#233047] rounded-3xl w-full max-w-lg p-6 shadow-2xl space-y-5 animate-in zoom-in-95 duration-200">
+    <div
+      className="modal-overlay fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-sm"
+      dir="rtl"
+      onClick={(e) => {
+        if (e.target === e.currentTarget) {
+          onClose();
+        }
+      }}
+    >
+      <div className="modal-container bg-[#121824] border border-[#233047] rounded-3xl w-full max-w-lg p-6 shadow-2xl space-y-5 animate-in zoom-in-95 duration-200">
         {/* Modal Header */}
         <div className="flex items-center justify-between border-b border-slate-800 pb-3">
           <div className="flex items-center gap-2.5">

@@ -1,5 +1,6 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useSalonStore } from '../../lib/store';
+import { useBodyScrollLock } from '../../lib/useBodyScrollLock';
 import { Booking } from '../../types';
 import {
   formatCurrency,
@@ -37,6 +38,17 @@ export const PaymentProofModal: React.FC<PaymentProofModalProps> = ({
   const { reviewPaymentProof } = useSalonStore();
   const [rejectionReason, setRejectionReason] = useState('المبلغ المحول غير مطابق لقيمة العربون المطلوبة');
   const [showRejectForm, setShowRejectForm] = useState(false);
+
+  useBodyScrollLock(isOpen);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isOpen, onClose]);
 
   if (!isOpen || !booking) return null;
 
@@ -91,7 +103,14 @@ export const PaymentProofModal: React.FC<PaymentProofModalProps> = ({
   };
 
   return (
-    <div className="modal-overlay">
+    <div
+      className="modal-overlay"
+      onClick={(e) => {
+        if (e.target === e.currentTarget) {
+          onClose();
+        }
+      }}
+    >
       <div className="modal-container max-w-2xl p-6 sm:p-7 space-y-5 font-sans text-ink">
         {/* Header */}
         <div className="flex items-center justify-between border-b border-border pb-4">
