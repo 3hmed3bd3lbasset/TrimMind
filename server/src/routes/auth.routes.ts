@@ -4,24 +4,69 @@ import { query } from '../config/database.js';
 import { authenticateStaff, hashPassword } from '../services/auth.service.js';
 import { validateBody } from '../middleware/validate.js';
 import { loginSchema, createStaffSchema } from '../validators/auth.schema.js';
-import { authLimiter } from '../middleware/rateLimiter.js';
+import {
+  getClientIp,
+  checkAccountProtectionPreFlight,
+  recordFailedAuthAttempt,
+  recordSuccessfulAuth,
+  setRateLimitHeaders,
+  logRateLimitSecurityEvent,
+} from '../services/accountProtection.service.js';
 import { requireAuth, requireRoles, AuthenticatedRequest } from '../middleware/auth.js';
 
 const router = Router();
 
-// POST /api/auth/login (Strict rate limited & bcrypt authenticated)
-router.post('/login', authLimiter, validateBody(loginSchema), async (req, res: Response) => {
-  try {
-    const { identifier, password } = req.body;
-    const ip = req.ip || req.socket.remoteAddress || '127.0.0.1';
+// POST /api/auth/login (Dual-Key Redis Rate Limited, Pre-Flight Protected, & Bcrypt Authenticated)
+router.post('/login', validateBody(loginSchema), async (req, res: Response) => {
+  const clientIp = getClientIp(req);
+  const { identifier, password } = req.body;
 
-    const result = await authenticateStaff(identifier, password, ip);
-    if (!result) {
-      return res.status(401).json({
+  try {
+    // 1. PRE-FLIGHT CHECK: Block before touching Database queries or Bcrypt CPU hashing
+    const preFlight = await checkAccountProtectionPreFlight(clientIp, identifier);
+    if (!preFlight.allowed) {
+      const retryAfter = preFlight.retryAfterSeconds || 900;
+      setRateLimitHeaders(res, preFlight.limit || 5, 0, (preFlight.resetMs || retryAfter * 1000));
+      
+      // Async Security Audit Log
+      logRateLimitSecurityEvent(clientIp, identifier, preFlight.reason || 'account_or_ip_rate_limited', retryAfter).catch(() => {});
+
+      return res.status(429).json({
         success: false,
-        error: 'بيانات الدخول غير صحيحة. يرجى التأكد من البريد أو رقم الهاتف وكلمة المرور.',
+        error: 'تم تجاوز الحد المسموح من المحاولات لحماية الحساب. يرجى المحاولة لاحقاً.',
       });
     }
+
+    // 2. AUTHENTICATE (Constant-time execution against User Enumeration)
+    const result = await authenticateStaff(identifier, password, clientIp);
+
+    // 3. HANDLE FAILED AUTHENTICATION
+    if (!result) {
+      const failState = await recordFailedAuthAttempt(clientIp, identifier);
+      setRateLimitHeaders(
+        res,
+        5,
+        failState.remainingAccountPoints,
+        (failState.retryAfterSeconds || 900) * 1000
+      );
+
+      if (failState.isBlocked) {
+        logRateLimitSecurityEvent(clientIp, identifier, 'limit_exceeded_on_failure', failState.retryAfterSeconds).catch(() => {});
+        return res.status(429).json({
+          success: false,
+          error: 'تم تجاوز الحد المسموح من المحاولات لحماية الحساب. يرجى المحاولة لاحقاً.',
+        });
+      }
+
+      return res.status(401).json({
+        success: false,
+        error: 'بيانات الدخول غير صحيحة. يرجى التأكد من البيانات المدخلة.',
+      });
+    }
+
+    // 4. HANDLE SUCCESSFUL AUTHENTICATION: Reset account limiter points immediately
+    await recordSuccessfulAuth(clientIp, identifier);
+    setRateLimitHeaders(res, 5, 5, 900000);
 
     // Set HTTP-only secure cookie
     res.cookie('auth_token', result.token, {
@@ -36,7 +81,7 @@ router.post('/login', authLimiter, validateBody(loginSchema), async (req, res: R
       data: result,
     });
   } catch (error: any) {
-    return res.status(500).json({ success: false, error: error.message || 'فشل تسجيل الدخول' });
+    return res.status(500).json({ success: false, error: 'حدث خطأ أثناء معالجة تسجيل الدخول' });
   }
 });
 

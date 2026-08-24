@@ -28,6 +28,8 @@ export class AuthenticateStaffUseCase {
   public async execute(identifier: string, plainPassword: string, ipAddress: string): Promise<AuthResult | null> {
     const user = await this.profileRepo.findByIdentifier(identifier);
     if (!user) {
+      // Constant-time execution against User Enumeration timing attacks
+      await this.passwordHasher.verify(plainPassword, '$2a$10$abcdefghijklmnopqrstuuABCDEFGHIJKLMNOPQRSTUVWXYZ012345').catch(() => {});
       await this.profileRepo.recordLoginAttempt(identifier, ipAddress);
       return null;
     }
