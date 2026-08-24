@@ -1291,7 +1291,8 @@ router.post('/payments/submit-proof', async (req: Request, res: Response) => {
     });
 
     if (!result.success) {
-      return res.status(400).json({ success: false, error: result.message });
+      console.error('[SUBMIT_PROOF_FAILED]', result);
+      return res.status(400).json({ success: false, error: result.message || 'فشل إرسال إثبات الدفع' });
     }
 
     return res.json({
@@ -1304,7 +1305,8 @@ router.post('/payments/submit-proof', async (req: Request, res: Response) => {
       },
     });
   } catch (err: any) {
-    return res.status(500).json({ success: false, error: err.message });
+    console.error('[SUBMIT_PROOF_EXCEPTION]', err);
+    return res.status(500).json({ success: false, error: err.message || err.toString() || 'Internal Server Error' });
   }
 });
 
