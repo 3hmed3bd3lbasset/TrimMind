@@ -286,16 +286,8 @@ router.patch(
 
         if (customerPhone) {
           try {
-            const { sendWhatsAppText } = await import('../services/whatsapp.service.js');
-            const clientName = booking.customer_name || booking.customerName || 'عزيزنا العميل';
-            const totalVal = booking.total_at_booking || booking.totalAmount || 180;
-            const depositVal = booking.booking_fee_at_booking || booking.depositRequired || 50;
-            const remainingVal = Math.max(0, totalVal - depositVal);
-            const barberName = booking.barber_name || booking.barberName || 'محمد الحداد';
-            const startsAtFormatted = booking.starts_at ? booking.starts_at.replace('T', ' ').substring(0, 16) : 'اليوم';
-
-            const msg = `✅ *تم قبول طلب حجزك بنجاح يا أستاذ ${clientName}!* 💈👑\nتم تأكيد واعتماد حجزك رقم \`#${booking.id}\` في صالون TrimMind (الحداد VIP)!\n\n📋 *تفاصيل الحجز المؤكد:*\n✂️ *الخدمة:* ${booking.service_name || booking.serviceName || 'قص شعر كلاسيكي'}\n💈 *الكابتن:* ${barberName}\n📅 *الميعاد:* ${startsAtFormatted}\n🔢 *رقم الدور:* رقم #${booking.queue_number || booking.queueNumber || 1} في طابور الصالون\n\n💵 *تفاصيل الفاتورة والحساب:*\n• إجمالي الفاتورة: ${totalVal} ج.م\n• العربون المسدد: ${depositVal} ج.م ✓\n• المتبقي للدفع بالصالون: *${remainingVal} ج.م*\n\n📍 *رابط متابعة دورك لحظة بلحظة:*\nhttps://trimmind.up.railway.app/track?q=${booking.id}\n\nيرجى الحضور في الميعاد المحدد، وأول ما يقرب دورك هنبعتلك تذكير فوري لتجهيز الكرسي لك! نتشرف بزيارتك 💈✨`;
-            await sendWhatsAppText(customerPhone, msg);
+            const { sendBookingConfirmationWhatsApp } = await import('../services/whatsapp.service.js');
+            await sendBookingConfirmationWhatsApp(booking);
             console.log('WA Confirmed Status sent successfully to:', customerPhone);
           } catch (e) {
             console.error('WA Confirmed Send Error:', e);
@@ -519,16 +511,8 @@ router.patch('/:id/payment-proof', optionalAuth, async (req: AuthenticatedReques
 
       if (customerPhone) {
         try {
-          const { sendWhatsAppText } = await import('../services/whatsapp.service.js');
-          const clientName = booking.customer_name || booking.customerName || 'عزيزنا العميل';
-          const totalVal = booking.total_at_booking || booking.totalAmount || 180;
-          const depositVal = booking.booking_fee_at_booking || booking.depositRequired || 50;
-          const remainingVal = Math.max(0, totalVal - depositVal);
-          const barberName = booking.barber_name || booking.barberName || 'محمد الحداد';
-          const startsAtFormatted = booking.starts_at ? booking.starts_at.replace('T', ' ').substring(0, 16) : 'اليوم';
-
-          const msg = `✅ *تم قبول طلب حجزك بنجاح يا أستاذ ${clientName}!* 💈👑\nتم تأكيد واعتماد حجزك رقم \`#${booking.id}\` في صالون TrimMind (الحداد VIP)!\n\n📋 *تفاصيل الحجز المؤكد:*\n✂️ *الخدمة:* ${booking.service_name || booking.serviceName || 'قص شعر كلاسيكي'}\n💈 *الكابتن:* ${barberName}\n📅 *الميعاد:* ${startsAtFormatted}\n🔢 *رقم الدور:* رقم #${booking.queue_number || booking.queueNumber || 1} في طابور الصالون\n\n💵 *تفاصيل الفاتورة والحساب:*\n• إجمالي الفاتورة: ${totalVal} ج.م\n• العربون المسدد: ${depositVal} ج.م ✓\n• المتبقي للدفع بالصالون: *${remainingVal} ج.م*\n\n📍 *رابط متابعة دورك لحظة بلحظة:*\nhttps://trimmind.up.railway.app/track?q=${booking.id}\n\nيرجى الحضور في الميعاد المحدد، وأول ما يقرب دورك هنبعتلك تذكير فوري لتجهيز الكرسي لك! نتشرف بزيارتك 💈✨`;
-          await sendWhatsAppText(customerPhone, msg);
+          const { sendBookingConfirmationWhatsApp } = await import('../services/whatsapp.service.js');
+          await sendBookingConfirmationWhatsApp(booking);
           console.log('WA Proof Approved message sent successfully to:', customerPhone);
         } catch (e) {
           console.error('WA Proof Send Error:', e);

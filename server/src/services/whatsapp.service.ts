@@ -1152,3 +1152,79 @@ export async function getWhatsAppAnalytics() {
     };
   }
 }
+
+// ============================================================================
+// Automated Official Booking Acceptance & Confirmation WhatsApp Dispatcher
+// ============================================================================
+export async function sendBookingConfirmationWhatsApp(booking: any): Promise<boolean> {
+  const customerPhone = booking.customer_phone || booking.customerPhone;
+  if (!customerPhone) return false;
+
+  const clientName = booking.customer_name || booking.customerName || 'عزيزنا العميل';
+  const bookingId = booking.id || booking.bookingId || 'BK-1000';
+  const queueNumber = booking.queue_number || booking.queueNumber || 1;
+  const barberName = booking.barber_name || booking.barberName || 'محمد الحداد';
+  
+  let serviceName = booking.service_name || booking.serviceName || 'قص شعر وتصفيف كلاسيكي';
+  if (booking.additional_services && Array.isArray(booking.additional_services) && booking.additional_services.length > 0) {
+    serviceName += ' + ' + booking.additional_services.map((s: any) => (typeof s === 'string' ? s : s.name)).join(' + ');
+  }
+
+  // Calculate pricing
+  const totalAmount = Number(booking.total_at_booking || booking.totalAmount || booking.service_price || 180);
+  const depositPaid = Number(booking.booking_fee_at_booking || booking.depositRequired || (booking.booking_type === 'vip' ? 100 : 50));
+  const remainingAmount = Math.max(0, totalAmount - depositPaid);
+
+  // Format date and time in Cairo Timezone
+  let formattedDateTime = 'اليوم';
+  if (booking.starts_at || booking.startsAt) {
+    try {
+      const d = new Date(booking.starts_at || booking.startsAt);
+      formattedDateTime = d.toLocaleString('ar-EG', {
+        timeZone: 'Africa/Cairo',
+        weekday: 'long',
+        month: 'short',
+        day: 'numeric',
+        hour: 'numeric',
+        minute: 'numeric',
+        hour12: true,
+      });
+    } catch {
+      formattedDateTime = (booking.starts_at || booking.startsAt).replace('T', ' ').substring(0, 16);
+    }
+  }
+
+  const branchName = booking.branch_name || 'صالون الحداد VIP - المقر الرئيسي';
+  const trackingUrl = `https://trimmind.up.railway.app/track?q=${bookingId}`;
+
+  const message = `💈👑 *صالون TrimMind (الحداد VIP)* 👑💈
+━━━━━━━━━━━━━━━━━━━━━
+🎉 *أهلاً بك يا أستاذ ${clientName}! تم قبول وتأكيد طلب حجزك بنجاح.*
+
+📋 *بيانات وتفاصيل الحجز المعتمد:*
+🔖 *رقم الحجز والتتبع:* \`#${bookingId}\`
+🔢 *رقم دورك في الطابور:* *#${queueNumber}*
+💈 *كابتن الحلاقة:* *${barberName}* ✂️
+💇‍♂️ *الباقة والخدمات:* *${serviceName}*
+📅 *الموعد المحدد:* *${formattedDateTime}*
+🏛️ *الفرع:* ${branchName}
+
+━━━━━━━━━━━━━━━━━━━━━
+💵 *تفاصيل الحساب والفاتورة:*
+• *إجمالي الفاتورة:* *${totalAmount} جنيه*
+• *العربون المسدد:* *${depositPaid} جنيه* ✓
+• *المبلغ المتبقي للدفع في الصالون:* *${remainingAmount} جنيه*
+
+━━━━━━━━━━━━━━━━━━━━━
+📍 *رابط التتبع الحي ومتابعة دورك لحظة بلحظة:*
+👉 ${trackingUrl}
+
+💡 *تنبيه:* يرجى التواجد قبل موعدك بـ 5 دقائق، وسيقوم النظام بإرسال إشعار فوري لك بمجرد اقتراب دورك وتجهيز الكرسي.
+نتشرف بزيارتك دائماً يا غالي! ✨`;
+
+  const success = await sendWhatsAppText(customerPhone, message);
+  if (success) {
+    logDebug('BOOKING_CONFIRMATION_WHATSAPP_SENT_OK', { customerPhone, bookingId, queueNumber });
+  }
+  return success;
+}
