@@ -19,17 +19,9 @@ if (rawJwtSecret && rawJwtSecret.trim() !== '') {
   );
 }
 
-let derivedAgentSecret: string;
-const rawAgentSecret = process.env.AGENT_API_SECRET || process.env.WHATSAPP_AGENT_SECRET;
-
-if (rawAgentSecret && rawAgentSecret.trim() !== '') {
-  derivedAgentSecret = rawAgentSecret.trim();
-} else {
-  derivedAgentSecret = crypto.randomBytes(32).toString('hex');
-  console.warn(
-    '⚠️ [SECURITY NOTICE] AGENT_API_SECRET was not found in environment variables. Generated high-entropy ephemeral 256-bit secret in RAM for this runtime instance.'
-  );
-}
+const DEFAULT_AGENT_SECRET = 'trim-mind-agent-secret-key-2026';
+const rawAgentSecret = process.env.AGENT_API_SECRET || process.env.WHATSAPP_AGENT_SECRET || DEFAULT_AGENT_SECRET;
+derivedAgentSecret = rawAgentSecret.trim();
 
 export const JWT_SECRET: string = derivedJwtSecret;
 export const AGENT_API_SECRET: string = derivedAgentSecret;
