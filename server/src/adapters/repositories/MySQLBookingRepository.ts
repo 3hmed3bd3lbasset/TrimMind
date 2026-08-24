@@ -206,67 +206,72 @@ export class MySQLBookingRepository implements IBookingRepository {
   }
 
   public async findById(bookingId: string): Promise<Booking | null> {
-    const rows = await query<any[]>(
-      `SELECT b.*, 
-              COALESCE(s.name, 'خدمة الصالون') as service_name, 
-              COALESCE(bar.full_name, 'كابتن الصالون') as barber_name,
-              COALESCE(br.name, 'الحداد - ELHDAD') as branch_name
-       FROM bookings b
-       LEFT JOIN services s ON b.service_id = s.id
-       LEFT JOIN barbers bar ON b.barber_id = bar.id
-       LEFT JOIN branches br ON b.branch_id = br.id
-       WHERE b.id = ? LIMIT 1`,
-      [bookingId]
-    );
-    if (!rows || rows.length === 0) return null;
-    const b = rows[0];
+    try {
+      const rows = await query<any[]>(
+        `SELECT b.*, 
+                COALESCE(s.name, 'خدمة الصالون') as service_name, 
+                COALESCE(bar.full_name, 'كابتن الصالون') as barber_name,
+                COALESCE(br.name, 'الحداد - ELHDAD') as branch_name
+         FROM bookings b
+         LEFT JOIN services s ON b.service_id = s.id
+         LEFT JOIN barbers bar ON b.barber_id = bar.id
+         LEFT JOIN branches br ON b.branch_id = br.id
+         WHERE b.id = ? LIMIT 1`,
+        [bookingId]
+      );
+      if (!rows || rows.length === 0) return null;
+      const b = rows[0];
 
-    const items = await query<any[]>('SELECT * FROM booking_items WHERE booking_id = ?', [bookingId]);
-    const proofs = await query<any[]>('SELECT * FROM payment_proofs WHERE booking_id = ? LIMIT 1', [bookingId]);
+      const items = (await query<any[]>('SELECT * FROM booking_items WHERE booking_id = ?', [bookingId]).catch(() => [])) || [];
+      const proofs = (await query<any[]>('SELECT * FROM payment_proofs WHERE booking_id = ? LIMIT 1', [bookingId]).catch(() => [])) || [];
 
-    let additionalIds: string[] = [];
-    if (b.additional_service_ids) {
-      if (Array.isArray(b.additional_service_ids)) {
-        additionalIds = b.additional_service_ids;
-      } else if (typeof b.additional_service_ids === 'string') {
-        try {
-          additionalIds = JSON.parse(b.additional_service_ids);
-        } catch {
-          additionalIds = [];
+      let additionalIds: string[] = [];
+      if (b.additional_service_ids) {
+        if (Array.isArray(b.additional_service_ids)) {
+          additionalIds = b.additional_service_ids;
+        } else if (typeof b.additional_service_ids === 'string') {
+          try {
+            additionalIds = JSON.parse(b.additional_service_ids);
+          } catch {
+            additionalIds = [];
+          }
         }
       }
-    }
 
-    return new Booking(
-      b.id,
-      b.customer_id,
-      b.customer_name,
-      b.customer_phone,
-      b.branch_id,
-      b.barber_id,
-      b.chair_id,
-      b.service_id,
-      additionalIds,
-      b.booking_type,
-      b.status,
-      b.starts_at,
-      b.ends_at,
-      b.booking_date,
-      b.queue_number,
-      Number(b.service_price_at_booking || 180),
-      Number(b.booking_fee_at_booking || 50),
-      Number(b.discount_at_booking || 0),
-      Number(b.items_total_at_booking || 0),
-      Number(b.total_at_booking || 180),
-      b.secure_token,
-      b.notes,
-      b.created_at,
-      items,
-      proofs[0] || null,
-      b.service_name,
-      b.barber_name,
-      b.branch_name
-    );
+      return new Booking(
+        b.id,
+        b.customer_id,
+        b.customer_name,
+        b.customer_phone,
+        b.branch_id,
+        b.barber_id,
+        b.chair_id,
+        b.service_id,
+        additionalIds,
+        b.booking_type,
+        b.status,
+        b.starts_at,
+        b.ends_at,
+        b.booking_date,
+        b.queue_number,
+        Number(b.service_price_at_booking || 180),
+        Number(b.booking_fee_at_booking || 50),
+        Number(b.discount_at_booking || 0),
+        Number(b.items_total_at_booking || 0),
+        Number(b.total_at_booking || 180),
+        b.secure_token,
+        b.notes,
+        b.created_at,
+        items,
+        proofs[0] || null,
+        b.service_name,
+        b.barber_name,
+        b.branch_name
+      );
+    } catch (err) {
+      console.warn('MySQLBookingRepository.findById error ignored:', err);
+      return null;
+    }
   }
 
   public async findBySecureToken(token: string): Promise<Booking | null> {

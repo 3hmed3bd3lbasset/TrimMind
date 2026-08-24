@@ -109,9 +109,10 @@ https://trimmind.up.railway.app/track?q=${booking.id}
 }
 
 export async function getBookingById(bookingId: string): Promise<any> {
-  const b = await container.bookingRepo.findById(bookingId);
-  if (!b) return null;
-  return {
+  try {
+    const b = await container.bookingRepo.findById(bookingId);
+    if (!b) return null;
+    return {
     ...b,
     id: b.id,
     bookingId: b.id,
@@ -155,6 +156,10 @@ export async function getBookingById(bookingId: string): Promise<any> {
     paymentProof: b.paymentProof,
     created_at: b.createdAt,
   };
+  } catch (err) {
+    console.warn('getBookingById error ignored:', err);
+    return null;
+  }
 }
 
 export async function cancelBooking(bookingId: string, reason?: string, actor?: any, ipAddress?: string): Promise<{ success: boolean; bookingId: string }> {
