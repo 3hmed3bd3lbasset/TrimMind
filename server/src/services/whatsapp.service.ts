@@ -1037,7 +1037,12 @@ ${barbersListStr}
       } catch {}
     }
 
-    const candidateModels = ['gemini-2.5-flash', 'gemini-1.5-flash', 'gemini-flash-latest', 'gemini-2.5-flash-lite'];
+    const candidateModels = [
+      'gemini-flash-lite-latest',
+      'gemini-3.1-flash-lite',
+      'gemini-3.5-flash-lite',
+      'gemini-flash-latest',
+    ];
 
     for (const model of candidateModels) {
       if (replyText) break;
@@ -1060,12 +1065,15 @@ ${barbersListStr}
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(payload),
-          signal: AbortSignal.timeout(3500),
+          signal: AbortSignal.timeout(6000),
         });
 
         if (res.ok) {
           const data = (await res.json()) as any;
           replyText = data?.candidates?.[0]?.content?.parts?.[0]?.text || '';
+        } else {
+          const errData = await res.json().catch(() => ({}));
+          logDebug('GEMINI_API_NON_OK', { model, status: res.status, error: errData });
         }
       } catch (e: any) {
         logDebug('GEMINI_CALL_ERROR', { model, error: e.message });
@@ -1073,7 +1081,13 @@ ${barbersListStr}
     }
 
   if (!replyText) {
-    replyText = `أهلاً بك في ${liveCtx.salonName} 💈👑\nنورتنا يا غالي! نقدر نساعدك في حجز جلسة عادية أو جلسة VIP، ومعرفة قائمة الأسعار والخدمات.\nتحب نساعدك بإيه النهارده؟`;
+    if (textLower.includes('سلام') || textLower.includes('مرحبا') || textLower.includes('ازيك') || textLower.includes('صباح') || textLower.includes('مساء')) {
+      replyText = `وعليكم السلام ورحمة الله يا غالي! 💈 نورت صالون الحداد VIP. أقدر أساعدك في إيه النهارده؟`;
+    } else if (textLower.includes('احجز') || textLower.includes('حجز') || textLower.includes('ميعاد') || textLower.includes('فاضي') || textLower.includes('عاديه') || textLower.includes('عادية') || textLower.includes('vip')) {
+      replyText = `أهلاً بك يا باشا! 💈 متاح مواعيد ممتازة اليوم في صالون TrimMind (الحداد VIP) 👑\nتقدر تختار الكابتن والميعاد وتثبت دورك فوراً وبسهولة عبر الرابط المباشر:\n👉 https://trimmind.up.railway.app\n\nولو تحب تستفسر عن أي خدمة أو باقة أنا معاك! ✨`;
+    } else {
+      replyText = `تحت أمرك يا باشا! 💈 نقدر نساعدك في معرفة الأسعار وباقات الخدمات وحجز المواعيد. تحب تسأل عن إيه؟`;
+    }
   }
 
   history.push({ role: 'model', parts: [{ text: replyText }] });
