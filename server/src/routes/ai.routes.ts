@@ -315,17 +315,36 @@ ${customContext ? `\nسياق إضافي: ${String(customContext).slice(0, 500)}
         .trim();
 
       if (isContinuingConversation) {
-        const greetingSentenceRegex = /^(أهلاً\s*ب?حضرتك|أهلاً\s*بك|أهلاً|مرحباً|يا\s*هلا\s*(بيك|بك|بحضرتك|يا\s*فندم|يا\s*بطل)?|نورتنا|منورنا\s*(دايماً)?|منور\s*صالون[^\n]*|تشرفنا\s*(دايماً)?\s*(بخدمتك)?|تحت\s*أمرك\s*(يا\s*فندم)?|ولا\s*يهمك\s*(يا\s*فندم)?|يا\s*فندم|يا\s*غالي)[^.\n!?]*(?:[.\n!?،]\s*|\s+)/i;
+        const greetingWords = [
+          'أهلاً بحضرتك', 'أهلاً بك', 'أهلاً يا', 'أهلاً',
+          'يا هلا بيك', 'يا هلا بك', 'يا هلا بحضرتك', 'يا هلا يا', 'يا هلا',
+          'مرحباً بك', 'مرحباً بحضرتك', 'مرحباً',
+          'نورتنا يا', 'نورتنا', 'نورت صالون',
+          'منورنا دايماً', 'منورنا يا', 'منورنا', 'منور صالون',
+          'تشرفنا دائماً بخدمتك', 'تشرفنا دايماً', 'تشرفنا جداً بخدمتك', 'تشرفنا',
+          'تحت أمرك يا فندم', 'تحت أمرك',
+          'ولا يهمك يا فندم', 'ولا يهمك',
+          'يا فندم', 'يا غالي'
+        ];
 
-        let iterations = 0;
-        while (greetingSentenceRegex.test(responseText) && iterations < 5) {
-          responseText = responseText.replace(greetingSentenceRegex, '').trim();
-          iterations++;
+        let changed = true;
+        let guard = 0;
+        while (changed && guard < 10) {
+          changed = false;
+          guard++;
+          for (const phrase of greetingWords) {
+            const regex = new RegExp('^' + phrase + '[^.\\n!?،]*(?:[.\\n!?،]\\s*|\\s+)', 'i');
+            if (regex.test(responseText)) {
+              responseText = responseText.replace(regex, '').trim();
+              changed = true;
+            }
+          }
+          const prefixRegex = /^(في صالون [^.\\n!?،]+[.\\n!?،\\s]*)/i;
+          if (prefixRegex.test(responseText)) {
+            responseText = responseText.replace(prefixRegex, '').trim();
+            changed = true;
+          }
         }
-
-        responseText = responseText.replace(/^في\s*صالون\s*TrimMind[^\n.!?]*[.\n!?،\s]*/i, '').trim();
-        responseText = responseText.replace(/^نورت\s*صالون[^\n.!?]*[.\n!?،\s]*/i, '').trim();
-        responseText = responseText.replace(/^تشرفنا\s*دائماً\s*بخدمتك[.\n!?،\s]*/i, '').trim();
       }
 
       responseText = responseText.replace(/\s{2,}/g, ' ').trim();
