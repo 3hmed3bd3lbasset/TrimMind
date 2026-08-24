@@ -141,12 +141,37 @@ export async function ensureInitialDbData() {
         processed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         INDEX idx_source_event (source, event_type)
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+      CREATE TABLE IF NOT EXISTS whatsapp_analytics_logs (
+        id VARCHAR(64) PRIMARY KEY,
+        phone VARCHAR(32) NOT NULL,
+        event_type ENUM('chat_started', 'intent_detected', 'booking_created', 'proof_uploaded', 'booking_confirmed', 'human_handoff_requested', 'revenue_recorded') NOT NULL,
+        booking_id VARCHAR(64),
+        metadata JSON,
+        amount DECIMAL(10, 2) DEFAULT 0,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        INDEX idx_wa_phone (phone),
+        INDEX idx_wa_event (event_type),
+        INDEX idx_wa_created (created_at)
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
     `);
 
-    // Safely add no_show_marked_at column if not present
-    try {
-      await query('ALTER TABLE bookings ADD COLUMN no_show_marked_at TIMESTAMP NULL');
-    } catch {}
+    // Safely add WhatsApp Concierge columns to bookings table
+    const safeColumns = [
+      'ALTER TABLE bookings ADD COLUMN source ENUM("web", "whatsapp") DEFAULT "web"',
+      'ALTER TABLE bookings ADD COLUMN ai_brief TEXT NULL',
+      'ALTER TABLE bookings ADD COLUMN confidence_score INT DEFAULT 90',
+      'ALTER TABLE bookings ADD COLUMN needs_human_attention BOOLEAN DEFAULT FALSE',
+      'ALTER TABLE bookings ADD COLUMN handoff_expires_at TIMESTAMP NULL',
+      'ALTER TABLE bookings ADD COLUMN custom_line_items JSON NULL',
+      'ALTER TABLE bookings ADD COLUMN no_show_marked_at TIMESTAMP NULL',
+    ];
+
+    for (const colQuery of safeColumns) {
+      try {
+        await query(colQuery);
+      } catch {}
+    }
 
     // 1. Check & Seed Branches
     const branches = await query<any[]>('SELECT id FROM branches LIMIT 1');

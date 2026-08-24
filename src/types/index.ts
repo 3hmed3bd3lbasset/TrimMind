@@ -180,8 +180,29 @@ export interface Booking {
   completed_at?: string;
   cancelled_at?: string;
   cancellation_reason?: string;
+  source?: 'web' | 'whatsapp';
+  service_name?: string;
+  barber_name?: string;
+  serviceName?: string;
+  barberName?: string;
+  ai_brief?: string;
+  confidence_score?: number;
+  needs_human_attention?: boolean;
+  handoff_expires_at?: string | null;
+  custom_line_items?: Array<{ name: string; price: number }>;
   created_at: string;
   updated_at: string;
+}
+
+export interface WhatsAppAnalyticsData {
+  totalChats: number;
+  convertedBookings: number;
+  conversionRate: number;
+  totalRevenue: number;
+  totalDeposits: number;
+  humanHandoffCount: number;
+  avgResponseTimeSeconds: number;
+  customerSatisfactionScore: number;
 }
 
 export interface BookingStatusHistory {

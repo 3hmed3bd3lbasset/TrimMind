@@ -14,6 +14,7 @@ import { AuditLogViewer } from '../components/manager/AuditLogViewer';
 import { AIInsightsPanel } from '../components/manager/AIInsightsPanel';
 import { CustomerRecallManager } from '../components/manager/CustomerRecallManager';
 import { WaitlistManager } from '../components/manager/WaitlistManager';
+import { WhatsAppROIAnalytics } from '../components/manager/WhatsAppROIAnalytics';
 import { NotificationBell } from '../components/common/NotificationBell';
 import {
   Shield,
@@ -36,12 +37,14 @@ import {
   Sliders,
   ChevronLeft,
   ArrowRight,
+  MessageSquare,
 } from 'lucide-react';
 
 export default function ManagerDashboard() {
   const { currentUser, branches } = useSalonStore();
   const [activeTab, setActiveTab] = useState<
     | 'analytics'
+    | 'whatsapp_roi'
     | 'insights'
     | 'recall'
     | 'waitlist'
@@ -77,6 +80,13 @@ export default function ManagerDashboard() {
   );
 
   const SECTIONS = [
+    {
+      id: 'whatsapp_roi',
+      label: 'عائد وتحليلات الواتساب (WhatsApp ROI)',
+      desc: 'مراقبة حية لمبيعات المساعد الذكي، ونسب التحويل والعربين المحصلة',
+      icon: MessageSquare,
+      category: 'الذكاء والتحليلات',
+    },
     {
       id: 'insights',
       label: 'تقارير وتحليلات الذكاء الاصطناعي',
@@ -389,6 +399,7 @@ export default function ManagerDashboard() {
       {/* Main Workspace Card */}
       <div className="clinic-card p-3.5 sm:p-6 shadow-clinic-2 bg-white/95">
         {activeTab === 'analytics' && <AnalyticsCharts />}
+        {activeTab === 'whatsapp_roi' && <WhatsAppROIAnalytics />}
         {activeTab === 'insights' && <AIInsightsPanel branchId={currentUser.branch_id || 'branch-elhdad'} />}
         {activeTab === 'recall' && <CustomerRecallManager branchId={currentUser.branch_id || 'branch-elhdad'} />}
         {activeTab === 'waitlist' && <WaitlistManager branchId={currentUser.branch_id || 'branch-elhdad'} />}

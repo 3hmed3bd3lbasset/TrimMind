@@ -66,7 +66,13 @@ export class Booking {
     public paymentProof: PaymentProof | null = null,
     public serviceName?: string,
     public barberName?: string,
-    public branchName?: string
+    public branchName?: string,
+    public source: 'web' | 'whatsapp' = 'web',
+    public aiBrief?: string,
+    public confidenceScore: number = 90,
+    public needsHumanAttention: boolean = false,
+    public handoffExpiresAt?: string | null,
+    public customLineItems: any[] = []
   ) {}
 
   public calculateRemaining(): number {

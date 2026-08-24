@@ -10,7 +10,6 @@ import {
 import {
   Search,
   Receipt,
-  UserCheck,
   Coffee,
   Printer,
   ChevronDown,
@@ -20,11 +19,17 @@ import {
   Edit2,
   Sparkles,
   X,
+  MessageSquare,
+  Bot,
+  UserCheck,
+  ShieldAlert,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { PaymentProofModal } from './PaymentProofModal';
 import { AddOrderModal } from './AddOrderModal';
 import { ThermalInvoice } from './ThermalInvoice';
+import { WhatsAppCustomPricingModal } from './WhatsAppCustomPricingModal';
+import { api } from '../../lib/api';
 
 interface BookingsTableProps {
   branchId: string;
@@ -34,6 +39,7 @@ export const BookingsTable: React.FC<BookingsTableProps> = ({ branchId }) => {
   const { bookings, barbers, services, products, currentUser, transitionBookingStatus, updateBookingDetails } =
     useSalonStore();
   const [filterStatus, setFilterStatus] = useState<string>('all');
+  const [sourceTab, setSourceTab] = useState<'all' | 'whatsapp' | 'web'>('all');
   const [searchQuery, setSearchQuery] = useState('');
 
   // Modals state
@@ -41,6 +47,7 @@ export const BookingsTable: React.FC<BookingsTableProps> = ({ branchId }) => {
   const [selectedOrderBooking, setSelectedOrderBooking] = useState<Booking | null>(null);
   const [selectedInvoiceBooking, setSelectedInvoiceBooking] = useState<Booking | null>(null);
   const [selectedEditBooking, setSelectedEditBooking] = useState<Booking | null>(null);
+  const [selectedCustomPricingBooking, setSelectedCustomPricingBooking] = useState<Booking | null>(null);
 
   // Edit form state
   const [editServiceId, setEditServiceId] = useState('');
@@ -57,18 +64,36 @@ export const BookingsTable: React.FC<BookingsTableProps> = ({ branchId }) => {
       !b.branch_id
   );
 
+  const whatsappCount = branchBookings.filter((b) => b.source === 'whatsapp' || Boolean(b.ai_brief)).length;
+  const webCount = branchBookings.filter((b) => b.source !== 'whatsapp' && !b.ai_brief).length;
+  const handoffCount = branchBookings.filter((b) => Boolean(b.needs_human_attention)).length;
+
   const filteredBookings = branchBookings.filter((b) => {
+    const isWhatsApp = b.source === 'whatsapp' || Boolean(b.ai_brief);
+    const matchesSource =
+      sourceTab === 'all' ||
+      (sourceTab === 'whatsapp' && isWhatsApp) ||
+      (sourceTab === 'web' && !isWhatsApp);
     const matchesStatus = filterStatus === 'all' || b.status === filterStatus;
     const matchesSearch =
       b.id.toLowerCase().includes(searchQuery.toLowerCase()) ||
       b.customer_name.toLowerCase().includes(searchQuery.toLowerCase()) ||
       b.customer_phone.includes(searchQuery);
-    return matchesStatus && matchesSearch;
+    return matchesSource && matchesStatus && matchesSearch;
   });
 
   const handleStatusChange = (bookingId: string, newStatus: BookingStatus) => {
     transitionBookingStatus(bookingId, newStatus, `تغيير الحالة يدوياً إلى ${newStatus}`);
     toast.success(`تم تحديث حالة الحجز إلى: ${BOOKING_STATUS_CONFIG[newStatus].label} ✅`);
+  };
+
+  const handleToggleHandoff = async (phone: string, currentNeedsAttention: boolean) => {
+    try {
+      await api.toggleHumanHandoff(phone, !currentNeedsAttention);
+      toast.success(!currentNeedsAttention ? 'تم تحويل المحادثة للتدخل البشري وإيقاف الـ AI 🛑' : 'تم استئناف الرد التلقائي للمساعد الذكي 🟢');
+    } catch (err: any) {
+      toast.error(err.message || 'حدث خطأ في تغيير الحالة');
+    }
   };
 
   const openEditModal = (b: Booking) => {
@@ -99,6 +124,94 @@ export const BookingsTable: React.FC<BookingsTableProps> = ({ branchId }) => {
 
   return (
     <div className="space-y-4 font-sans text-ink">
+      {/* Top Source Tabs (WhatsApp Concierge vs Web Platform) */}
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+        <button
+          onClick={() => setSourceTab('all')}
+          className={`p-3.5 rounded-2xl border transition-all text-right flex items-center justify-between shadow-xs ${
+            sourceTab === 'all'
+              ? 'bg-forest text-white border-forest shadow-md'
+              : 'bg-white/90 text-ink border-border hover:bg-paper-warm'
+          }`}
+        >
+          <div className="flex items-center gap-2.5">
+            <span className="p-2 rounded-xl bg-white/10">
+              <Receipt className="w-4 h-4" />
+            </span>
+            <div>
+              <p className="font-bold text-xs">كافة الحجوزات</p>
+              <p className={`text-[10.5px] ${sourceTab === 'all' ? 'text-white/80' : 'text-ink-mute'}`}>
+                إجمالي حجوزات الفرع
+              </p>
+            </div>
+          </div>
+          <span className={`font-mono font-bold text-sm px-2.5 py-1 rounded-full ${
+            sourceTab === 'all' ? 'bg-white/20 text-white' : 'bg-paper-warm text-ink'
+          }`}>
+            {branchBookings.length}
+          </span>
+        </button>
+
+        <button
+          onClick={() => setSourceTab('whatsapp')}
+          className={`p-3.5 rounded-2xl border transition-all text-right flex items-center justify-between shadow-xs ${
+            sourceTab === 'whatsapp'
+              ? 'bg-emerald-900 text-white border-emerald-500 shadow-md shadow-emerald-950/30'
+              : 'bg-white/90 text-ink border-emerald-500/30 hover:bg-emerald-50/50'
+          }`}
+        >
+          <div className="flex items-center gap-2.5">
+            <span className={`p-2 rounded-xl ${sourceTab === 'whatsapp' ? 'bg-emerald-500/30 text-emerald-300' : 'bg-emerald-500/10 text-emerald-600'}`}>
+              <MessageSquare className="w-4 h-4" />
+            </span>
+            <div>
+              <div className="flex items-center gap-1.5">
+                <p className="font-bold text-xs">حجوزات الواتساب الذكية 🟢</p>
+                {handoffCount > 0 && (
+                  <span className="animate-pulse px-1.5 py-0.5 rounded-full bg-rose-500 text-white text-[9px] font-bold">
+                    {handoffCount} تدخل
+                  </span>
+                )}
+              </div>
+              <p className={`text-[10.5px] ${sourceTab === 'whatsapp' ? 'text-emerald-200' : 'text-emerald-700'}`}>
+                تخصيص وتسعير مرن فوري
+              </p>
+            </div>
+          </div>
+          <span className={`font-mono font-bold text-sm px-2.5 py-1 rounded-full ${
+            sourceTab === 'whatsapp' ? 'bg-emerald-500/30 text-white' : 'bg-emerald-50 text-emerald-700 font-bold border border-emerald-200'
+          }`}>
+            {whatsappCount}
+          </span>
+        </button>
+
+        <button
+          onClick={() => setSourceTab('web')}
+          className={`p-3.5 rounded-2xl border transition-all text-right flex items-center justify-between shadow-xs ${
+            sourceTab === 'web'
+              ? 'bg-blue-900 text-white border-blue-500 shadow-md'
+              : 'bg-white/90 text-ink border-border hover:bg-paper-warm'
+          }`}
+        >
+          <div className="flex items-center gap-2.5">
+            <span className={`p-2 rounded-xl ${sourceTab === 'web' ? 'bg-blue-500/30 text-blue-300' : 'bg-blue-500/10 text-blue-600'}`}>
+              <Receipt className="w-4 h-4" />
+            </span>
+            <div>
+              <p className="font-bold text-xs">حجوزات المنصة 🌐</p>
+              <p className={`text-[10.5px] ${sourceTab === 'web' ? 'text-blue-200' : 'text-ink-mute'}`}>
+                حجوزات الموقع الذاتية
+              </p>
+            </div>
+          </div>
+          <span className={`font-mono font-bold text-sm px-2.5 py-1 rounded-full ${
+            sourceTab === 'web' ? 'bg-blue-500/30 text-white' : 'bg-paper-warm text-ink'
+          }`}>
+            {webCount}
+          </span>
+        </button>
+      </div>
+
       {/* Search and Filters Bar */}
       <div className="clinic-card p-4 flex flex-col sm:flex-row items-center justify-between gap-3 shadow-clinic-1 bg-white/90">
         <div className="relative w-full sm:w-80">
@@ -140,18 +253,31 @@ export const BookingsTable: React.FC<BookingsTableProps> = ({ branchId }) => {
           const barber = barbers.find((bar) => bar.id === b.barber_id);
           const primarySrv = services.find((s) => s.id === b.service_id);
           const statusCfg = BOOKING_STATUS_CONFIG[b.status];
+          const isWhatsApp = b.source === 'whatsapp' || Boolean(b.ai_brief);
 
           return (
             <div
               key={b.id}
-              className="clinic-card p-4 space-y-3 shadow-clinic-1 bg-white"
+              className={`clinic-card p-4 space-y-3 shadow-clinic-1 bg-white border ${
+                isWhatsApp ? 'border-emerald-500/30' : 'border-border'
+              }`}
             >
-              {/* Header: ID + Status */}
+              {/* Header: ID + Source + Status */}
               <div className="flex items-center justify-between border-b border-border/70 pb-2.5">
                 <div className="flex items-center gap-2">
                   <span className="font-mono font-bold text-forest text-xs bg-forest/10 px-2.5 py-1 rounded-lg border border-forest/20">
                     {b.id}
                   </span>
+                  {isWhatsApp ? (
+                    <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-800 border border-emerald-300 flex items-center gap-1">
+                      <MessageSquare className="w-2.5 h-2.5" />
+                      واتساب AI
+                    </span>
+                  ) : (
+                    <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-blue-50 text-blue-800 border border-blue-200">
+                      منصة
+                    </span>
+                  )}
                   <span className="text-[11px] text-ink-mute font-mono font-bold">
                     {format12Hour(b.starts_at)}
                   </span>
@@ -171,6 +297,23 @@ export const BookingsTable: React.FC<BookingsTableProps> = ({ branchId }) => {
                 )}
               </div>
 
+              {/* Human Handoff Warning if active */}
+              {b.needs_human_attention && (
+                <div className="p-2.5 rounded-xl bg-rose-50 border border-rose-200 flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-1.5 text-rose-800 text-xs font-bold">
+                    <ShieldAlert className="w-4 h-4 animate-bounce text-rose-600" />
+                    <span>العميل طلب التحدث مع موظف بشري!</span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => handleToggleHandoff(b.customer_phone, true)}
+                    className="text-[10.5px] font-bold px-2 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white transition-colors"
+                  >
+                    استئناف الـ AI 🟢
+                  </button>
+                </div>
+              )}
+
               {/* Customer & Service Info */}
               <div className="grid grid-cols-2 gap-3 text-xs">
                 <div className="min-w-0">
@@ -181,18 +324,38 @@ export const BookingsTable: React.FC<BookingsTableProps> = ({ branchId }) => {
                 <div className="min-w-0 text-left sm:text-right">
                   <span className="text-[10px] text-ink-mute block">الكابتن:</span>
                   <p className="font-bold text-forest truncate">{barber?.full_name || (b as any).barber_name || (b as any).barberName || 'محمد الحداد'}</p>
+                  {b.confidence_score && (
+                    <span className="text-[10px] text-emerald-700 font-bold block mt-0.5">
+                      🎯 دقة الطلب: {b.confidence_score}%
+                    </span>
+                  )}
                 </div>
               </div>
+
+              {/* AI Brief Box for WhatsApp Bookings */}
+              {b.ai_brief && (
+                <div className="p-2.5 bg-emerald-50/60 rounded-xl border border-emerald-200/70 text-[11.5px] text-emerald-950">
+                  <div className="font-bold text-emerald-800 mb-1 flex items-center gap-1">
+                    <Sparkles className="w-3 h-3 text-emerald-600" />
+                    ملخص الذكاء الاصطناعي:
+                  </div>
+                  <p className="whitespace-pre-line text-emerald-900 leading-relaxed font-sans">{b.ai_brief}</p>
+                </div>
+              )}
 
               {/* Service & Total Box */}
               <div className="p-2.5 bg-paper-warm/80 rounded-xl border border-border flex items-center justify-between">
                 <div>
                   <p className="font-bold text-ink text-xs">{primarySrv?.name || (b as any).service_name || (b as any).serviceName || 'قص شعر كلاسيكي'}</p>
-                  {b.additional_service_ids && b.additional_service_ids.length > 0 && (
+                  {b.custom_line_items && b.custom_line_items.length > 0 ? (
+                    <p className="text-[10px] text-forest font-semibold">
+                      {b.custom_line_items.length} بنود مخصصة بالفاتورة
+                    </p>
+                  ) : b.additional_service_ids && b.additional_service_ids.length > 0 ? (
                     <p className="text-[10px] text-forest font-semibold">
                       +{b.additional_service_ids.length} خدمات إضافية
                     </p>
-                  )}
+                  ) : null}
                 </div>
                 <div className="text-left">
                   <span className="text-[10px] text-ink-mute block">الإجمالي:</span>
@@ -201,17 +364,17 @@ export const BookingsTable: React.FC<BookingsTableProps> = ({ branchId }) => {
               </div>
 
               {/* Actions Footer */}
-              <div className="flex items-center justify-between pt-1 border-t border-border/70">
-                {b.payment_proof ? (
+              <div className="flex items-center justify-between pt-1 border-t border-border/70 gap-2">
+                {isWhatsApp ? (
                   <button
-                    onClick={() => setSelectedProofBooking(b)}
-                    className="inline-flex items-center gap-1 text-[11px] text-terra-deep hover:underline font-bold"
+                    onClick={() => setSelectedCustomPricingBooking(b)}
+                    className="flex-1 py-2 px-3 rounded-xl bg-gradient-to-r from-emerald-600 to-emerald-700 hover:from-emerald-500 hover:to-emerald-600 text-white font-bold text-xs shadow-xs flex items-center justify-center gap-1.5 transition-all"
                   >
-                    <Eye className="w-3.5 h-3.5" />
-                    <span>معاينة الإيصال</span>
+                    <Sparkles className="w-3.5 h-3.5 text-amber-300" />
+                    <span>تسعير واعتماد 🛠️</span>
                   </button>
                 ) : (
-                  <span className="text-[11px] text-ink-mute">دفع بالصالون</span>
+                  <span className="text-[11px] text-ink-mute">حجز منصة</span>
                 )}
 
                 <div className="flex items-center gap-1.5">
@@ -249,9 +412,9 @@ export const BookingsTable: React.FC<BookingsTableProps> = ({ branchId }) => {
           <table className="w-full text-right text-xs">
             <thead className="bg-paper-warm/80 border-b border-border text-ink-soft font-serif">
               <tr>
-                <th className="py-3.5 px-4 font-bold">رقم الحجز</th>
+                <th className="py-3.5 px-4 font-bold">رقم الحجز والمصدر</th>
                 <th className="py-3.5 px-4 font-bold">العميل</th>
-                <th className="py-3.5 px-4 font-bold">الخدمة والمدة</th>
+                <th className="py-3.5 px-4 font-bold">الخدمة والملخص الذكي</th>
                 <th className="py-3.5 px-4 font-bold">كابتن الحلاقة</th>
                 <th className="py-3.5 px-4 font-bold">الموعد</th>
                 <th className="py-3.5 px-4 font-bold">الحساب والإيصال</th>
@@ -264,38 +427,70 @@ export const BookingsTable: React.FC<BookingsTableProps> = ({ branchId }) => {
                 const barber = barbers.find((bar) => bar.id === b.barber_id);
                 const primarySrv = services.find((s) => s.id === b.service_id);
                 const statusCfg = BOOKING_STATUS_CONFIG[b.status];
+                const isWhatsApp = b.source === 'whatsapp' || Boolean(b.ai_brief);
 
                 return (
                   <tr key={b.id} className="hover:bg-paper-warm/40 transition-colors">
-                    <td className="py-3.5 px-4 font-mono font-bold text-forest">
-                      {b.id}
-                    </td>
-
                     <td className="py-3.5 px-4">
-                      <div>
-                        <p className="font-serif font-bold text-ink">{b.customer_name}</p>
-                        <p className="text-[11px] text-ink-mute font-mono">{b.customer_phone}</p>
-                      </div>
-                    </td>
-
-                    <td className="py-3.5 px-4">
-                      <div>
-                        <p className="font-bold text-ink">{primarySrv?.name || (b as any).service_name || (b as any).serviceName || 'قص شعر كلاسيكي'}</p>
-                        {b.additional_service_ids && b.additional_service_ids.length > 0 && (
-                          <p className="text-[10px] text-forest font-semibold">
-                            +{b.additional_service_ids.length} خدمات إضافية
-                          </p>
-                        )}
-                        {b.last_modified_by && (
-                          <span className="inline-block mt-0.5 text-[9.5px] bg-terra/15 text-terra-deep px-1.5 py-0.5 rounded border border-terra/30 font-medium">
-                            تعديل: {b.last_modified_by.actor_name}
+                      <div className="space-y-1">
+                        <span className="font-mono font-bold text-forest block">
+                          {b.id}
+                        </span>
+                        {isWhatsApp ? (
+                          <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-800 border border-emerald-300">
+                            <MessageSquare className="w-2.5 h-2.5" />
+                            واتساب AI
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center text-[10px] font-bold px-2 py-0.5 rounded-full bg-blue-50 text-blue-800 border border-blue-200">
+                            منصة 🌐
                           </span>
                         )}
                       </div>
                     </td>
 
+                    <td className="py-3.5 px-4">
+                      <div>
+                        <div className="flex items-center gap-1.5">
+                          <p className="font-serif font-bold text-ink">{b.customer_name}</p>
+                          {b.needs_human_attention && (
+                            <span className="inline-block w-2 h-2 rounded-full bg-rose-500 animate-ping" title="طلب تدخل بشري" />
+                          )}
+                        </div>
+                        <p className="text-[11px] text-ink-mute font-mono">{b.customer_phone}</p>
+                        {b.needs_human_attention && (
+                          <button
+                            onClick={() => handleToggleHandoff(b.customer_phone, true)}
+                            className="mt-1 text-[9.5px] text-rose-700 bg-rose-50 hover:bg-rose-100 border border-rose-200 px-1.5 py-0.5 rounded font-bold transition-colors"
+                          >
+                            تدخل بشري نشط 🛑 (استئناف AI)
+                          </button>
+                        )}
+                      </div>
+                    </td>
+
+                    <td className="py-3.5 px-4 max-w-xs">
+                      <div>
+                        <p className="font-bold text-ink">{primarySrv?.name || (b as any).service_name || (b as any).serviceName || 'قص شعر كلاسيكي'}</p>
+                        {b.ai_brief ? (
+                          <p className="text-[10.5px] text-emerald-800 bg-emerald-50/80 p-1.5 rounded-lg border border-emerald-200/60 mt-1 line-clamp-2" title={b.ai_brief}>
+                            💡 {b.ai_brief}
+                          </p>
+                        ) : b.additional_service_ids && b.additional_service_ids.length > 0 ? (
+                          <p className="text-[10px] text-forest font-semibold">
+                            +{b.additional_service_ids.length} خدمات إضافية
+                          </p>
+                        ) : null}
+                      </div>
+                    </td>
+
                     <td className="py-3.5 px-4 text-ink-soft font-medium">
                       {barber?.full_name || (b as any).barber_name || (b as any).barberName || 'محمد الحداد'}
+                      {b.confidence_score && (
+                        <span className="text-[10px] text-emerald-700 font-bold block mt-0.5">
+                          🎯 {b.confidence_score}% دقة
+                        </span>
+                      )}
                     </td>
 
                     <td className="py-3.5 px-4 text-ink-soft">
@@ -334,6 +529,16 @@ export const BookingsTable: React.FC<BookingsTableProps> = ({ branchId }) => {
 
                     <td className="py-3.5 px-4 text-center">
                       <div className="flex items-center justify-center gap-1">
+                        {isWhatsApp && (
+                          <button
+                            onClick={() => setSelectedCustomPricingBooking(b)}
+                            className="px-2.5 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs shadow-xs flex items-center gap-1 transition-all"
+                            title="تسعير واعتماد حجز الواتساب وإرسال الفاتورة"
+                          >
+                            <Sparkles className="w-3 h-3 text-amber-300" />
+                            <span>تسعير 🛠️</span>
+                          </button>
+                        )}
                         <button
                           onClick={() => openEditModal(b)}
                           className="p-1.5 rounded-lg bg-paper-warm hover:bg-white text-forest border border-border"
@@ -387,6 +592,25 @@ export const BookingsTable: React.FC<BookingsTableProps> = ({ branchId }) => {
           booking={selectedInvoiceBooking}
           isOpen={!!selectedInvoiceBooking}
           onClose={() => setSelectedInvoiceBooking(null)}
+        />
+      )}
+
+      {/* WHATSAPP DYNAMIC PRICING MODAL */}
+      {selectedCustomPricingBooking && (
+        <WhatsAppCustomPricingModal
+          booking={selectedCustomPricingBooking}
+          services={services}
+          barbers={barbers}
+          onClose={() => setSelectedCustomPricingBooking(null)}
+          onSuccess={(updated) => {
+            if (updated) {
+              updateBookingDetails(updated.id, {
+                serviceId: updated.service_id,
+                additionalServiceIds: updated.additional_service_ids,
+                discount: updated.discount_at_booking,
+              }, 'تم التسعير والاعتماد المخصص لحجز الواتساب');
+            }
+          }}
         />
       )}
 

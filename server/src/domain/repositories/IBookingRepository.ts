@@ -23,6 +23,11 @@ export interface CreateBookingData {
     amount?: number;
   };
   totalAmount?: number;
+  source?: 'web' | 'whatsapp';
+  aiBrief?: string;
+  confidenceScore?: number;
+  needsHumanAttention?: boolean;
+  customLineItems?: any[];
 }
 
 export interface IBookingRepository {

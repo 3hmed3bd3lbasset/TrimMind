@@ -66,6 +66,12 @@ export const api = {
   rateBooking: (id: string, ratingData: any) => apiClient.post(`/bookings/${id}/rate`, ratingData),
   reviewPaymentProof: (id: string, status: string, reason?: string) =>
     apiClient.patch(`/bookings/${id}/payment-proof`, { status, reason }),
+  customizeAndDispatchBooking: (id: string, data: any) =>
+    apiClient.post(`/bookings/${id}/customize-and-dispatch`, data),
+  toggleHumanHandoff: (phone: string, enable: boolean) =>
+    apiClient.post('/bookings/toggle-handoff', { phone, enable }),
+  getWhatsAppAnalytics: () =>
+    apiClient.get('/bookings/analytics/whatsapp'),
 
   // Queue
   getQueue: (branchId: string) => apiClient.get(`/queue/${branchId}`),

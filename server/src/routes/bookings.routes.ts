@@ -521,4 +521,121 @@ router.patch('/:id/payment-proof', optionalAuth, async (req: AuthenticatedReques
   }
 });
 
+// POST /api/bookings/:id/customize-and-dispatch (Receptionist Dynamic Pricing & Instant WhatsApp Invoice)
+router.post('/:id/customize-and-dispatch', optionalAuth, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const bookingId = req.params.id;
+    const { customLineItems, totalAmount, discount, notes, barberId, barberName, serviceName, startsAt } = req.body;
+
+    let booking: any = null;
+    try {
+      booking = await getBookingById(bookingId);
+    } catch {}
+    if (!booking) {
+      booking = liveSyncedBookings.find((b) => b.id === bookingId);
+    }
+
+    const calculatedTotal = Number(totalAmount || (booking?.total_at_booking || 180));
+    const calculatedDiscount = Number(discount || 0);
+    const assignedBarberName = barberName || booking?.barber_name || 'محمد الحداد';
+    const assignedServiceName = serviceName || booking?.service_name || 'باقة مخصصة';
+    const startsAtVal = startsAt || booking?.starts_at || new Date().toISOString();
+
+    // 1. Update Booking in MySQL
+    await query(
+      `UPDATE bookings 
+       SET total_at_booking = ?, discount_at_booking = ?, service_name = ?, barber_id = ?, barber_name = ?, 
+           custom_line_items = ?, notes = ?, starts_at = ?, status = 'confirmed', updated_at = NOW() 
+       WHERE id = ?`,
+      [
+        calculatedTotal,
+        calculatedDiscount,
+        assignedServiceName,
+        barberId || booking?.barber_id || null,
+        assignedBarberName,
+        customLineItems ? JSON.stringify(customLineItems) : null,
+        notes || booking?.notes || null,
+        startsAtVal,
+        bookingId,
+      ]
+    ).catch(() => {});
+
+    // Update in memory if present
+    if (booking) {
+      booking.status = 'confirmed';
+      booking.total_at_booking = calculatedTotal;
+      booking.service_name = assignedServiceName;
+      booking.barber_name = assignedBarberName;
+      booking.starts_at = startsAtVal;
+      booking.custom_line_items = customLineItems;
+    }
+
+    // 2. Financial Record for Deposit
+    const depositVal = booking?.booking_fee_at_booking || (booking?.booking_type === 'vip' ? 100 : 50);
+    query(
+      `INSERT INTO financial_records (id, booking_id, branch_id, barber_id, amount, type, payment_method, reference_number, notes, recorded_by, created_at)
+       VALUES (?, ?, ?, ?, ?, 'deposit', 'vodafone_cash', ?, 'عربون حجز واتساب مخصص ومعتمد', 'receptionist', NOW())`,
+      [uuidv4(), bookingId, booking?.branch_id || 'branch-elhdad', barberId || booking?.barber_id || null, depositVal, bookingId]
+    ).catch(() => {});
+
+    // 3. Dispatch Customized Official Invoice to Customer WhatsApp
+    const customerPhone = booking?.customer_phone || booking?.customerPhone;
+    if (customerPhone) {
+      try {
+        const { sendWhatsAppText } = await import('../services/whatsapp.service.js');
+        const clientName = booking.customer_name || booking.customerName || 'عزيزنا العميل';
+        const remainingVal = Math.max(0, calculatedTotal - depositVal);
+        const startsAtFormatted = startsAtVal.replace('T', ' ').substring(0, 16);
+
+        let itemsBreakdown = '';
+        if (customLineItems && Array.isArray(customLineItems) && customLineItems.length > 0) {
+          itemsBreakdown = '\n📋 *تفاصيل الباقة والخدمات المعتمدة:*\n' + customLineItems.map((item: any) => `• ${item.name}: ${item.price} ج.م`).join('\n');
+        }
+
+        const msg = `✅ *تم اعتماد وتسعير طلب حجزك بنجاح يا أستاذ ${clientName}!* 💈👑\nتم تسعير وتأكيد حجزك رقم \`#${bookingId}\` في صالون TrimMind (الحداد VIP)!\n${itemsBreakdown}\n\n💈 *الكابتن:* ${assignedBarberName}\n📅 *الميعاد:* ${startsAtFormatted}\n🔢 *رقم الدور:* رقم #${booking?.queue_number || 1} في طابور الصالون\n\n💵 *تفاصيل الفاتورة والحساب النهائي:*\n• إجمالي الفاتورة: ${calculatedTotal} ج.م\n${calculatedDiscount > 0 ? `• خصم خاص: ${calculatedDiscount} ج.م\n` : ''}• العربون المسدد: ${depositVal} ج.م ✓\n• المتبقي للدفع بالصالون: *${remainingVal} ج.م*\n\n📍 *رابط متابعة دورك لحظة بلحظة:*\nhttps://trimmind.up.railway.app/track?q=${bookingId}\n\nنتشرف بزيارتك دائماً وفي انتظارك في الميعاد المحدد 💈✨`;
+
+        await sendWhatsAppText(customerPhone, msg);
+      } catch (err) {
+        console.error('Custom invoice WhatsApp dispatch error:', err);
+      }
+    }
+
+    // 4. Broadcast Real-time Live State
+    broadcastToBranch(booking?.branch_id || 'branch-elhdad', 'SYNC_STATE', booking);
+    broadcastGlobal('SYNC_STATE');
+
+    return res.json({
+      success: true,
+      message: 'تم تسعير واعتماد الحجز وإرسال الفاتورة الرسمية للعميل عبر الواتساب بنجاح',
+      data: booking,
+    });
+  } catch (error: any) {
+    return res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// POST /api/bookings/toggle-handoff (Toggle Human Handoff Mode for a Customer)
+router.post('/toggle-handoff', optionalAuth, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const { phone, enable } = req.body;
+    if (!phone) return res.status(400).json({ success: false, error: 'رقم الهاتف مطلوب' });
+    const { toggleHumanHandoff } = await import('../services/whatsapp.service.js');
+    await toggleHumanHandoff(phone, Boolean(enable));
+    return res.json({ success: true, message: enable ? 'تم تحويل المحادثة للتدخل البشري وإيقاف الـ AI' : 'تم استئناف رد الذكاء الاصطناعي بنجاح' });
+  } catch (error: any) {
+    return res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// GET /api/bookings/analytics/whatsapp (WhatsApp ROI & Conversion Analytics)
+router.get('/analytics/whatsapp', optionalAuth, async (_req, res: Response) => {
+  try {
+    const { getWhatsAppAnalytics } = await import('../services/whatsapp.service.js');
+    const analytics = await getWhatsAppAnalytics();
+    return res.json({ success: true, data: analytics });
+  } catch (error: any) {
+    return res.status(500).json({ success: false, error: error.message });
+  }
+});
+
 export default router;

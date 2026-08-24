@@ -154,6 +154,12 @@ export async function getBookingById(bookingId: string): Promise<any> {
     branchName: b.branchName,
     payment_proof: b.paymentProof,
     paymentProof: b.paymentProof,
+    source: b.source || 'web',
+    ai_brief: b.aiBrief || undefined,
+    confidence_score: b.confidenceScore || 90,
+    needs_human_attention: Boolean(b.needsHumanAttention),
+    handoff_expires_at: b.handoffExpiresAt || null,
+    custom_line_items: b.customLineItems || [],
     created_at: b.createdAt,
   };
   } catch (err) {

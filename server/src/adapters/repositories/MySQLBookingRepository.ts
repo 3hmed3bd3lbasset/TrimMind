@@ -109,13 +109,15 @@ export class MySQLBookingRepository implements IBookingRepository {
           id, customer_id, customer_name, customer_phone, branch_id, barber_id, chair_id,
           service_id, additional_service_ids, booking_type, status, starts_at, ends_at,
           booking_date, queue_number, service_price_at_booking, booking_fee_at_booking,
-          discount_at_booking, items_total_at_booking, total_at_booking, secure_token, notes
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          discount_at_booking, items_total_at_booking, total_at_booking, secure_token, notes,
+          source, ai_brief, confidence_score, needs_human_attention, custom_line_items
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
           bookingId, actorId || uuidv4(), data.customerName, cleanPhone, finalBranchId,
           data.barberId || null, data.chairId || null, data.serviceId, JSON.stringify(data.additionalServiceIds || []),
           data.bookingType, initialStatus, data.startsAt || new Date().toISOString(), data.endsAt || null,
           bookingDate, assignedQueueNumber, servicePrice, bookingFee, 0, itemsTotal, total, secureToken, data.notes || null,
+          data.source || 'web', data.aiBrief || null, data.confidenceScore || 90, Boolean(data.needsHumanAttention), JSON.stringify(data.customLineItems || []),
         ]
       );
 
@@ -200,7 +202,13 @@ export class MySQLBookingRepository implements IBookingRepository {
         proofEntity,
         serviceName,
         barberName,
-        branchName
+        branchName,
+        data.source || 'web',
+        data.aiBrief || undefined,
+        data.confidenceScore || 90,
+        Boolean(data.needsHumanAttention),
+        null,
+        data.customLineItems || []
       );
     });
   }
@@ -266,7 +274,13 @@ export class MySQLBookingRepository implements IBookingRepository {
         proofs[0] || null,
         b.service_name,
         b.barber_name,
-        b.branch_name
+        b.branch_name,
+        b.source || 'web',
+        b.ai_brief || undefined,
+        Number(b.confidence_score || 90),
+        Boolean(b.needs_human_attention),
+        b.handoff_expires_at || null,
+        typeof b.custom_line_items === 'string' ? JSON.parse(b.custom_line_items || '[]') : b.custom_line_items || []
       );
     } catch (err) {
       console.warn('MySQLBookingRepository.findById error ignored:', err);
