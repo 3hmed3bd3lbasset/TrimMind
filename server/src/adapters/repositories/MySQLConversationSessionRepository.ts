@@ -97,28 +97,25 @@ export class MySQLConversationSessionRepository implements IConversationSessionR
   public async getOrCreate(customerPhone: string, remoteJid?: string): Promise<ConversationSession> {
     await this.ensureTable();
     const cleanPhone = customerPhone ? customerPhone.replace(/\D+/g, '') : '';
+    const storedPhone = cleanPhone || (remoteJid ? remoteJid.replace('@s.whatsapp.net', '').replace('@lid', '') : 'guest');
     
-    // 1. Search by immutable remoteJid first (isolated per WhatsApp chat)
+    // 1. Search by immutable remoteJid first
     let rows: any[] = [];
     if (remoteJid) {
       try {
         rows = await query<any[]>(
-          `SELECT * FROM conversation_sessions 
-           WHERE whatsapp_remote_jid = ? 
-           ORDER BY last_message_at DESC LIMIT 1`,
+          'SELECT * FROM conversation_sessions WHERE whatsapp_remote_jid = ? ORDER BY last_message_at DESC LIMIT 1',
           [remoteJid]
         );
       } catch {}
     }
 
-    // 2. Only fallback to phone search if remoteJid was NOT provided
-    if ((!rows || rows.length === 0) && cleanPhone && !remoteJid) {
+    // 2. Fallback to storedPhone search
+    if ((!rows || rows.length === 0) && storedPhone && storedPhone !== 'guest') {
       try {
         rows = await query<any[]>(
-          `SELECT * FROM conversation_sessions 
-           WHERE customer_phone = ? 
-           ORDER BY last_message_at DESC LIMIT 1`,
-          [cleanPhone]
+          'SELECT * FROM conversation_sessions WHERE customer_phone = ? ORDER BY last_message_at DESC LIMIT 1',
+          [storedPhone]
         );
       } catch {}
     }
@@ -137,7 +134,6 @@ export class MySQLConversationSessionRepository implements IConversationSessionR
 
     // 3. Create fresh persistent session
     const newId = `cs-${uuidv4()}`;
-    const storedPhone = cleanPhone || (remoteJid ? remoteJid.replace('@s.whatsapp.net', '').replace('@lid', '') : 'guest');
     try {
       await query(
         `INSERT INTO conversation_sessions 
