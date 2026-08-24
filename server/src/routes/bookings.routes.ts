@@ -154,7 +154,12 @@ router.patch(
   async (req: AuthenticatedRequest, res: Response) => {
     try {
       const { status, note } = req.body;
-      let booking: any = await getBookingById(req.params.id);
+      let booking: any = null;
+      try {
+        booking = await getBookingById(req.params.id);
+      } catch (err) {
+        console.warn('getBookingById error in status patch:', err);
+      }
       const targetLive = liveSyncedBookings.find((b) => b.id === req.params.id);
 
       if (targetLive) {
