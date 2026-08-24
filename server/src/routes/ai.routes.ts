@@ -80,15 +80,38 @@ router.post('/chat', aiLimiter, optionalAuth, async (req: AuthenticatedRequest, 
       }
     }
 
-    // If multiTurnContents was built from DB, use it; otherwise fallback to request contents
-    let finalContents = multiTurnContents.length > 0 ? multiTurnContents : (contents || []);
-    if (finalContents.length === 0 && userText) {
-      finalContents = [{ role: 'user', parts: [{ text: userText }] }];
+    // 2. Format and merge turns strictly for Gemini API requirements (alternating user / model)
+    let rawTurns = multiTurnContents.length > 0 ? multiTurnContents : (contents || []);
+    if (rawTurns.length === 0 && userText) {
+      rawTurns = [{ role: 'user', parts: [{ text: userText }] }];
     }
 
-    // Ensure the current user text is at the end of finalContents
-    const lastPartText = finalContents[finalContents.length - 1]?.parts?.[0]?.text || '';
+    // Ensure the current user text is at the end of turns if not already there
+    const lastPartText = rawTurns[rawTurns.length - 1]?.parts?.[0]?.text || '';
     if (lastPartText !== userText && userText) {
+      rawTurns.push({ role: 'user', parts: [{ text: userText }] });
+    }
+
+    // Merge consecutive turns with the same role so Gemini does not reject with 400
+    const finalContents: Array<{ role: string; parts: Array<{ text: string }> }> = [];
+    for (const item of rawTurns) {
+      const itemRole = item.role === 'model' || item.role === 'assistant' ? 'model' : 'user';
+      const itemText = (item.parts?.[0]?.text || '').trim();
+      if (!itemText) continue;
+
+      if (finalContents.length > 0 && finalContents[finalContents.length - 1].role === itemRole) {
+        finalContents[finalContents.length - 1].parts[0].text += '\n' + itemText;
+      } else {
+        finalContents.push({ role: itemRole, parts: [{ text: itemText }] });
+      }
+    }
+
+    // Ensure the first message is 'user'
+    while (finalContents.length > 0 && finalContents[0].role !== 'user') {
+      finalContents.shift();
+    }
+
+    if (finalContents.length === 0 && userText) {
       finalContents.push({ role: 'user', parts: [{ text: userText }] });
     }
 
@@ -219,7 +242,7 @@ ${customContext ? `\nسياق إضافي: ${String(customContext).slice(0, 500)}
     res.json({ success: true, text: responseText, isDuplicate: false });
   } catch (err: any) {
     console.error('AI chat endpoint error:', err);
-    res.status(500).json({ success: false, error: err.message || 'Internal server error' });
+    res.status(500).json({ success: false, error: String(err?.message || err || 'Internal server error'), stack: String(err?.stack || '') });
   }
 });
 
