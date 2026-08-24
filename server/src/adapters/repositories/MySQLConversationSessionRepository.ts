@@ -98,22 +98,26 @@ export class MySQLConversationSessionRepository implements IConversationSessionR
     await this.ensureTable();
     const cleanPhone = customerPhone ? customerPhone.replace(/\D+/g, '') : '';
     
-    // 1. Search by immutable remoteJid first (supports @lid, international, and standard JIDs)
+    // 1. Search by immutable remoteJid first (active within last 24 hours)
     let rows: any[] = [];
     if (remoteJid) {
       try {
         rows = await query<any[]>(
-          'SELECT * FROM conversation_sessions WHERE whatsapp_remote_jid = ? ORDER BY created_at DESC LIMIT 1',
+          `SELECT * FROM conversation_sessions 
+           WHERE whatsapp_remote_jid = ? AND last_message_at >= NOW() - INTERVAL 24 HOUR 
+           ORDER BY last_message_at DESC LIMIT 1`,
           [remoteJid]
         );
       } catch {}
     }
 
-    // 2. Fallback to clean phone search if not matched by remoteJid
+    // 2. Fallback to clean phone search (active within last 24 hours)
     if ((!rows || rows.length === 0) && cleanPhone) {
       try {
         rows = await query<any[]>(
-          'SELECT * FROM conversation_sessions WHERE customer_phone = ? ORDER BY created_at DESC LIMIT 1',
+          `SELECT * FROM conversation_sessions 
+           WHERE customer_phone = ? AND last_message_at >= NOW() - INTERVAL 24 HOUR 
+           ORDER BY last_message_at DESC LIMIT 1`,
           [cleanPhone]
         );
       } catch {}
