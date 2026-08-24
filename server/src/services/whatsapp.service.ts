@@ -559,7 +559,7 @@ export async function sendWhatsAppText(to: string, text: string): Promise<boolea
 }
 
 // Helper to forward incoming message to n8n Webhook
-function forwardToN8nWebhook(
+async function forwardToN8nWebhook(
   msg: proto.IWebMessageInfo,
   imageUrl?: string | null,
   senderPhone?: string | null,
@@ -567,7 +567,7 @@ function forwardToN8nWebhook(
 ) {
   try {
     const remoteJid = msg.key?.remoteJid || '';
-    const payload = JSON.stringify({
+    const payload = {
       event: 'messages.upsert',
       instance: 'trimmind_salon',
       senderPhone: senderPhone || null,
@@ -584,37 +584,26 @@ function forwardToN8nWebhook(
         imageUrl: imageUrl || null,
         text: text || '',
       },
-    });
+    };
 
-    const url = new URL(N8N_WEBHOOK_URL);
-    const req = https.request(
-      {
-        hostname: url.hostname,
-        port: url.port || 443,
-        path: url.pathname,
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Content-Length': Buffer.byteLength(payload),
-        },
+    const targetUrl =
+      process.env.N8N_WEBHOOK_URL ||
+      process.env.N8N_WHATSAPP_WEBHOOK_URL ||
+      'https://primary-production-45dc.up.railway.app/webhook/whatsapp-webhook';
+
+    logDebug('FORWARDING_TO_N8N', { url: targetUrl, textSnippet: text?.substring(0, 40) });
+
+    const response = await fetch(targetUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
       },
-      (res) => {
-        let respData = '';
-        res.on('data', (c) => (respData += c));
-        res.on('end', () => {
-          logDebug('N8N_WEBHOOK_STATUS', { statusCode: res.statusCode });
-        });
-      }
-    );
-
-    req.on('error', (e) => {
-      logDebug('N8N_FORWARD_ERROR', { error: e.message });
+      body: JSON.stringify(payload),
     });
 
-    req.write(payload);
-    req.end();
+    logDebug('N8N_WEBHOOK_STATUS', { statusCode: response.status, statusText: response.statusText });
   } catch (e: any) {
-    logDebug('N8N_PAYLOAD_ERROR', { error: e.message });
+    logDebug('N8N_FORWARD_ERROR', { error: e.message });
   }
 }
 
