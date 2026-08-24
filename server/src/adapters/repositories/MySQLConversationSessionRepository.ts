@@ -190,9 +190,6 @@ export class MySQLConversationSessionRepository implements IConversationSessionR
     return freshSession;
   }
 
-    return this.mapRowToEntity(createdRows[0]);
-  }
-
   public async getByPhone(customerPhone: string): Promise<ConversationSession | null> {
     const cleanPhone = customerPhone.replace(/\D+/g, '');
     const rows = await query<any[]>(
