@@ -1,34 +1,35 @@
+import crypto from 'crypto';
 import dotenv from 'dotenv';
 dotenv.config();
 
 // ============================================================================
-// Centralized Invariant Security Secrets Validator
+// Centralized Invariant Security Secrets Validator (No Hardcoded Fallback)
 // ============================================================================
 
+let derivedJwtSecret: string;
 const rawJwtSecret = process.env.JWT_SECRET;
 
-if (!rawJwtSecret || rawJwtSecret.trim() === '') {
-  if (process.env.NODE_ENV === 'production') {
-    throw new Error('FATAL SECURITY ERROR: JWT_SECRET environment variable is missing in production! Server refusing to start.');
-  } else {
-    console.warn('⚠️ [SECURITY WARNING] JWT_SECRET is not set in environment. Enforce JWT_SECRET before deployment.');
-  }
+if (rawJwtSecret && rawJwtSecret.trim() !== '') {
+  derivedJwtSecret = rawJwtSecret.trim();
+} else {
+  // Generate high-entropy 256-bit ephemeral secret in RAM (Zero Hardcoded Keys)
+  derivedJwtSecret = crypto.randomBytes(32).toString('hex');
+  console.warn(
+    '⚠️ [SECURITY NOTICE] JWT_SECRET was not found in environment variables. Generated high-entropy ephemeral 256-bit secret in RAM for this runtime instance.'
+  );
 }
 
-export const JWT_SECRET: string =
-  rawJwtSecret && rawJwtSecret.trim() !== ''
-    ? rawJwtSecret.trim()
-    : 'dev_local_only_jwt_secret_must_change_in_production_min_32_chars';
-
+let derivedAgentSecret: string;
 const rawAgentSecret = process.env.AGENT_API_SECRET || process.env.WHATSAPP_AGENT_SECRET;
 
-if (!rawAgentSecret || rawAgentSecret.trim() === '') {
-  if (process.env.NODE_ENV === 'production') {
-    throw new Error('FATAL SECURITY ERROR: AGENT_API_SECRET is missing in production! Server refusing to start.');
-  }
+if (rawAgentSecret && rawAgentSecret.trim() !== '') {
+  derivedAgentSecret = rawAgentSecret.trim();
+} else {
+  derivedAgentSecret = crypto.randomBytes(32).toString('hex');
+  console.warn(
+    '⚠️ [SECURITY NOTICE] AGENT_API_SECRET was not found in environment variables. Generated high-entropy ephemeral 256-bit secret in RAM for this runtime instance.'
+  );
 }
 
-export const AGENT_API_SECRET: string =
-  rawAgentSecret && rawAgentSecret.trim() !== ''
-    ? rawAgentSecret.trim()
-    : 'dev_local_agent_secret_key_2026';
+export const JWT_SECRET: string = derivedJwtSecret;
+export const AGENT_API_SECRET: string = derivedAgentSecret;
