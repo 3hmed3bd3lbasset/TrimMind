@@ -76,34 +76,86 @@ export function calculateEstimatedWait(queuePosition: number, averageServiceTime
   return Math.max(0, (queuePosition - 1) * averageServiceTimeMinutes);
 }
 
+/**
+ * Iconic Airport Announcement Attention Chime (نغمة رجاء الانتباه للمطارات)
+ * Synthesizes a luxury 4-tone ascending bell arpeggio (C5 -> E5 -> G5 -> C6)
+ * with authentic acoustic resonance and warm reverberant decay.
+ */
 export function playCallChime() {
   try {
-    const ctx = new (window.AudioContext || (window as any).webkitAudioContext)();
-    const osc1 = ctx.createOscillator();
-    const osc2 = ctx.createOscillator();
-    const gain = ctx.createGain();
+    const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
+    if (!AudioContextClass) return;
 
-    osc1.type = 'sine';
-    osc1.frequency.setValueAtTime(587.33, ctx.currentTime);
-    osc1.frequency.exponentialRampToValueAtTime(880, ctx.currentTime + 0.4);
+    const ctx = new AudioContextClass();
+    if (ctx.state === 'suspended') {
+      ctx.resume().catch(() => {});
+    }
 
-    osc2.type = 'triangle';
-    osc2.frequency.setValueAtTime(440, ctx.currentTime);
-    osc2.frequency.exponentialRampToValueAtTime(659.25, ctx.currentTime + 0.4);
+    const now = ctx.currentTime;
 
-    gain.gain.setValueAtTime(0.25, ctx.currentTime);
-    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 1.2);
+    // 4 Authentic Airport Chime Notes: C5 (523.25Hz), E5 (659.25Hz), G5 (783.99Hz), C6 (1046.50Hz)
+    const notes = [
+      { freq: 523.25, time: 0.0, duration: 0.85, gain: 0.32 }, // C5 (Tone 1)
+      { freq: 659.25, time: 0.28, duration: 0.85, gain: 0.34 }, // E5 (Tone 2)
+      { freq: 783.99, time: 0.56, duration: 0.85, gain: 0.36 }, // G5 (Tone 3)
+      { freq: 1046.50, time: 0.84, duration: 1.60, gain: 0.40 }, // C6 (Tone 4 - Final Resonant Bell)
+    ];
 
-    osc1.connect(gain);
-    osc2.connect(gain);
-    gain.connect(ctx.destination);
+    notes.forEach(({ freq, time, duration, gain: noteGain }) => {
+      const noteStartTime = now + time;
 
-    osc1.start(ctx.currentTime);
-    osc2.start(ctx.currentTime);
-    osc1.stop(ctx.currentTime + 1.2);
-    osc2.stop(ctx.currentTime + 1.2);
+      // 1. Primary Fundamental Oscillator (Pure Warm Bell Tone)
+      const oscFundamental = ctx.createOscillator();
+      oscFundamental.type = 'sine';
+      oscFundamental.frequency.setValueAtTime(freq, noteStartTime);
+
+      // 2. Harmonic Overtone (Chime Bell Sheen at ~2.76x frequency)
+      const oscHarmonic = ctx.createOscillator();
+      oscHarmonic.type = 'sine';
+      oscHarmonic.frequency.setValueAtTime(freq * 2.76, noteStartTime);
+
+      // 3. Sub-octave Warmth (at 0.5x frequency for deep acoustic body)
+      const oscSub = ctx.createOscillator();
+      oscSub.type = 'triangle';
+      oscSub.frequency.setValueAtTime(freq * 0.5, noteStartTime);
+
+      // 4. Note Gain Envelope (Instant strike with smooth exponential decay)
+      const gainNode = ctx.createGain();
+      gainNode.gain.setValueAtTime(0.0001, noteStartTime);
+      gainNode.gain.exponentialRampToValueAtTime(noteGain, noteStartTime + 0.015);
+      gainNode.gain.exponentialRampToValueAtTime(noteGain * 0.45, noteStartTime + 0.18);
+      gainNode.gain.exponentialRampToValueAtTime(0.0001, noteStartTime + duration);
+
+      // Harmonic gain (subtle metallic bell shimmer)
+      const harmonicGain = ctx.createGain();
+      harmonicGain.gain.setValueAtTime(noteGain * 0.18, noteStartTime);
+      harmonicGain.gain.exponentialRampToValueAtTime(0.0001, noteStartTime + duration * 0.6);
+
+      // Sub gain
+      const subGain = ctx.createGain();
+      subGain.gain.setValueAtTime(noteGain * 0.12, noteStartTime);
+      subGain.gain.exponentialRampToValueAtTime(0.0001, noteStartTime + duration * 0.7);
+
+      // Connect audio routing graph
+      oscFundamental.connect(gainNode);
+      oscHarmonic.connect(harmonicGain);
+      harmonicGain.connect(gainNode);
+      oscSub.connect(subGain);
+      subGain.connect(gainNode);
+
+      gainNode.connect(ctx.destination);
+
+      // Start & Stop Oscillators
+      oscFundamental.start(noteStartTime);
+      oscHarmonic.start(noteStartTime);
+      oscSub.start(noteStartTime);
+
+      oscFundamental.stop(noteStartTime + duration);
+      oscHarmonic.stop(noteStartTime + duration);
+      oscSub.stop(noteStartTime + duration);
+    });
   } catch (e) {
-    console.log('Chime error:', e);
+    console.warn('Airport chime playback notice:', e);
   }
 }
 
