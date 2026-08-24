@@ -436,9 +436,9 @@ export async function initWhatsApp(): Promise<WhatsAppState> {
         // Ignore broadcast status updates
         if (remoteJid.includes('status@broadcast')) continue;
 
-        // If sent from the same phone (self-chat testing), allow only 1-to-1 chats to bot number
-        if (isFromMe && !remoteJid.includes('201005437633') && !remoteJid.includes('01005437633')) {
-          logDebug('SKIPPED_EXTERNAL_FROM_ME', { remoteJid });
+        // Strictly skip any message sent by the bot itself (isFromMe) or from salon number
+        if (isFromMe) {
+          logDebug('SKIPPED_FROM_ME', { remoteJid });
           continue;
         }
 
