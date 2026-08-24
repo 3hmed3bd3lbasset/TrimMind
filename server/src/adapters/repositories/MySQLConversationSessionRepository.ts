@@ -199,6 +199,7 @@ export class MySQLConversationSessionRepository implements IConversationSessionR
     content: string;
     extractedIntent?: any;
   }): Promise<{ isDuplicate: boolean; messageId: string }> {
+    await this.ensureTable();
     const messageId = `cm-${uuidv4()}`;
     const intentJson = message.extractedIntent ? JSON.stringify(message.extractedIntent) : null;
 
@@ -233,9 +234,11 @@ export class MySQLConversationSessionRepository implements IConversationSessionR
     extractedIntent?: any;
     createdAt: string;
   }>> {
+    await this.ensureTable();
+    const safeLimit = Math.max(1, Math.min(50, Number(limit) || 20));
     const rows = await query<any[]>(
-      'SELECT * FROM conversation_messages WHERE session_id = ? ORDER BY created_at DESC LIMIT ?',
-      [sessionId, limit]
+      `SELECT * FROM conversation_messages WHERE session_id = ? ORDER BY created_at DESC LIMIT ${safeLimit}`,
+      [sessionId]
     );
 
     if (!rows || rows.length === 0) return [];
