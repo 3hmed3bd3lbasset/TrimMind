@@ -131,7 +131,8 @@ router.post('/', bookingLimiter, validateBody(createBookingSchema), async (req: 
       data: booking,
     });
   } catch (error: any) {
-    return res.status(400).json({ success: false, error: error.message });
+    console.error('[POST /api/bookings Exception]:', error);
+    return res.status(400).json({ success: false, error: error?.message || error?.sqlMessage || String(error) });
   }
 });
 
