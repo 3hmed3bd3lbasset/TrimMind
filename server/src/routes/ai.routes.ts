@@ -295,12 +295,26 @@ ${customContext ? `\nسياق إضافي: ${String(customContext).slice(0, 500)}
 
     // Strip redundant repeated greeting prefixes on continuing conversation turns
     if (isContinuingConversation && responseText) {
-      let prev = '';
-      while (prev !== responseText) {
-        prev = responseText;
-        responseText = responseText
-          .replace(/^(أهلاً\s*ب?حضرتك|أهلاً\s*بك|أهلاً|يا\s*هلا\s*(بيك|بك|بحضرتك|يا\s*فندم|يا\s*بطل)?|مرحباً|نورتنا|منورنا\s*(دايماً)?|منور\s*صالون[^\n]*|تحت\s*أمرك\s*(يا\s*فندم)?|ولا\s*يهمك\s*(يا\s*فندم)?|تمام\s*يا\s*فندم|يا\s*فندم|يا\s*غالي)[^\n.!?]*[\n.!?\s]*/i, '')
-          .trim();
+      const greetingPatterns = [
+        /^(أهلاً\s*ب?حضرتك|أهلاً\s*بك|أهلاً|مرحباً|يا\s*هلا\s*(بيك|بك|بحضرتك|يا\s*فندم|يا\s*بطل)?|نورتنا|منورنا\s*(دايماً)?|منور\s*صالون[^\n]*|تشرفنا\s*(دايماً)?\s*(بخدمتك)?|تحت\s*أمرك\s*(يا\s*فندم)?|ولا\s*يهمك\s*(يا\s*فندم)?|يا\s*فندم|يا\s*غالي)[^\n.!?،]*[\n.!?،\s]*/i,
+        /^[^\n]*في\s*صالون\s*TrimMind[^\n]*[\n.!?،\s]*/i,
+        /^[^\n]*تشرفنا\s*دائماً\s*بخدمتك[^\n]*[\n.!?،\s]*/i,
+        /^[^\n]*منورنا\s*دايماً[^\n]*[\n.!?،\s]*/i,
+        /^[^\n]*نورت\s*صالون[^\n]*[\n.!?،\s]*/i,
+        /^[^\n]*بما\s*أننا\s*تحدثنا\s*مسبقاً[،\s]*/i,
+      ];
+
+      let changed = true;
+      let iterations = 0;
+      while (changed && iterations < 6) {
+        changed = false;
+        iterations++;
+        for (const pattern of greetingPatterns) {
+          if (pattern.test(responseText)) {
+            responseText = responseText.replace(pattern, '').trim();
+            changed = true;
+          }
+        }
       }
     }
 
