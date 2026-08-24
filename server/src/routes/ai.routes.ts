@@ -359,7 +359,13 @@ ${barbersListStr}`;
       });
     }
 
-    res.json({ success: true, text: responseText, isDuplicate: false });
+    res.json({
+      success: true,
+      text: responseText,
+      isDuplicate: false,
+      isContinuingConversation,
+      historyLength: finalContents.length,
+    });
   } catch (err: any) {
     console.error('AI chat endpoint error:', err);
     res.status(500).json({ success: false, error: String(err?.message || err || 'Internal server error'), stack: String(err?.stack || '') });
