@@ -7,7 +7,10 @@ export class MySQLBookingRepository implements IBookingRepository {
   public async createWithTransaction(data: CreateBookingData, actorId?: string): Promise<Booking> {
     const bookingId = data.id || `BK-${Math.floor(1000 + Math.random() * 9000)}`;
     const secureToken = `SEC-${uuidv4().substring(0, 8).toUpperCase()}`;
-    const bookingDate = (data.startsAt || new Date().toISOString()).split('T')[0];
+    const rawStartsAt = data.startsAt || new Date().toISOString();
+    const bookingDate = rawStartsAt.split('T')[0];
+    const startsAtSql = rawStartsAt.replace('T', ' ').replace('Z', '').substring(0, 19);
+    const endsAtSql = data.endsAt ? data.endsAt.replace('T', ' ').replace('Z', '').substring(0, 19) : null;
 
     return await withTransaction(async (conn) => {
       // 1. Validate Branch
@@ -115,7 +118,7 @@ export class MySQLBookingRepository implements IBookingRepository {
         [
           bookingId, actorId || uuidv4(), data.customerName, cleanPhone, finalBranchId,
           data.barberId || null, data.chairId || null, data.serviceId, JSON.stringify(data.additionalServiceIds || []),
-          data.bookingType, initialStatus, data.startsAt || new Date().toISOString(), data.endsAt || null,
+          data.bookingType, initialStatus, startsAtSql, endsAtSql,
           bookingDate, assignedQueueNumber, servicePrice, bookingFee, 0, itemsTotal, total, secureToken, data.notes || null,
           data.source || 'web', data.aiBrief || null, data.confidenceScore || 90, Boolean(data.needsHumanAttention), JSON.stringify(data.customLineItems || []),
         ]
