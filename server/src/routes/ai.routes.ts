@@ -220,11 +220,11 @@ router.post('/chat', aiLimiter, optionalAuth, async (req: AuthenticatedRequest, 
 - ❌ ممنوع كتابة أي إيموجيات أو أقواس أو أحرف إنجليزية مشوهة في اسم العميل.
 - ادخل في الرد أو الإجراء فوراً ومباشرة بدون أي مقدمات إطلاقاً!
 
-🧠 قواعد ذكية جداً لتتبع الحجز وعدم النسيان (Smart Booking State Continuity):
+🧠 قواعد ذكية لتتبع الحجز وتثبيت الخيارات (Smart Booking State Continuity):
 - راجع تاريخ المحادثة بالكامل خطوة بخطوة:
   • إذا اقترح المساعد خدمة معينة (مثل: VIP Full Experience) أو كابتن معين (مثل: كابتن محمد الحداد / كريم السيد)، ورد العميل بـ "تمام", "احجزلي", "ماشي", أو حدد موعداً (مثل: "بكرا الساعة 5 العصر") ⬅️
     ✅ هذا يعني أن العميل وافق على الخدمة المقترحة والكابتن المقترح وطلب هذا الموعد!
-    ❌ إياك إطلاقاً أن تسأله مجدداً: "تحب تختار خدمة إيه؟" أو "مع أي كابتن؟" لأن ذلك يغضب العميل!
+    ❌ إياك إطلاقاً أن تسأله مجدداً: "تحب تختار خدمة إيه؟" أو "مع أي كابتن؟".
     ✅ رد فوراً بتلخيص بيانات الحجز المعتمدة:
     "تم تسجيل طلب الحجز مبدئياً:
     • الخدمة: (الخدمة المقترحة سابقاً)
@@ -245,7 +245,10 @@ router.post('/chat', aiLimiter, optionalAuth, async (req: AuthenticatedRequest, 
 ${servicesCatalogStr}
 
 ✂️ طاقم الكباتن:
-${barbersListStr}`
+${barbersListStr}
+
+🎯 قاعدة الحسم القصوى (تتغلب على أي تعليمات أخرى):
+إذا اتفق العميل أو وافق على خدمة أو كابتن تم اقتراحهم، اعتمد الحجز فوراً بهذه البيانات والموعد المطلوب ولا تسأله عنها مرة ثانية أبداً!`
       : `أنت المساعد الذكي الرسمي لصالون TrimMind VIP.
 أسلوبك: راقي، مهذب، سريع، ومفيد باللهجة المصرية الراقية.
 ${customerNameSnippet}
@@ -262,10 +265,7 @@ ${customerNameSnippet}
 ${servicesCatalogStr}
 
 ✂️ طاقم الكباتن:
-${barbersListStr}
-
-${clientSystemInstruction || ''}
-${customContext ? `\nسياق إضافي: ${String(customContext).slice(0, 500)}` : ''}`;
+${barbersListStr}`;
 
     let responseText = '';
 
@@ -315,16 +315,16 @@ ${customContext ? `\nسياق إضافي: ${String(customContext).slice(0, 500)}
         .trim();
 
       if (isContinuingConversation) {
-        const greetingWords = [
-          'أهلاً بحضرتك', 'أهلاً بك', 'أهلاً يا', 'أهلاً',
+        const greetingPhrases = [
+          'يا أهلاً بحضرتك', 'يا أهلاً بك', 'يا أهلاً', 'أهلاً بحضرتك', 'أهلاً بك', 'أهلاً يا', 'أهلاً',
           'يا هلا بيك', 'يا هلا بك', 'يا هلا بحضرتك', 'يا هلا يا', 'يا هلا',
           'مرحباً بك', 'مرحباً بحضرتك', 'مرحباً',
-          'نورتنا يا', 'نورتنا', 'نورت صالون',
-          'منورنا دايماً', 'منورنا يا', 'منورنا', 'منور صالون',
+          'نورتنا يا', 'نورتنا', 'نورت صالون', 'نورت',
+          'منورنا دايماً', 'منورنا يا', 'منورنا', 'منور صالون', 'منور',
           'تشرفنا دائماً بخدمتك', 'تشرفنا دايماً', 'تشرفنا جداً بخدمتك', 'تشرفنا',
-          'تحت أمرك يا فندم', 'تحت أمرك',
+          'تحت أمرك يا فندم', 'تحت أمرك يا', 'تحت أمرك',
           'ولا يهمك يا فندم', 'ولا يهمك',
-          'يا فندم', 'يا غالي'
+          'يا فندم', 'يا غالي', 'يا بطل'
         ];
 
         let changed = true;
@@ -332,14 +332,14 @@ ${customContext ? `\nسياق إضافي: ${String(customContext).slice(0, 500)}
         while (changed && guard < 10) {
           changed = false;
           guard++;
-          for (const phrase of greetingWords) {
+          for (const phrase of greetingPhrases) {
             const regex = new RegExp('^' + phrase + '[^.\\n!?،]*(?:[.\\n!?،]\\s*|\\s+)', 'i');
             if (regex.test(responseText)) {
               responseText = responseText.replace(regex, '').trim();
               changed = true;
             }
           }
-          const prefixRegex = /^(في صالون [^.\\n!?،]+[.\\n!?،\\s]*)/i;
+          const prefixRegex = /^(في صالون [^.\\n!?،]+[.\\n!?،\\s]*|تنورنا [^.\\n!?،]+[.\\n!?،\\s]*)/i;
           if (prefixRegex.test(responseText)) {
             responseText = responseText.replace(prefixRegex, '').trim();
             changed = true;
