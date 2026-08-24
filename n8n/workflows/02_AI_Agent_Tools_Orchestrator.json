@@ -76,10 +76,15 @@
         "url": "https://trimmind.up.railway.app/api/agent-tools/branches/list",
         "authentication": "none",
         "sendHeaders": true,
-        "sendBody": false,
+        "sendBody": true,
         "specifyBody": "keypair",
         "parametersBody": {
-          "values": []
+          "values": [
+            {
+              "name": "branchId",
+              "value": "={{ $fromAI('branchId', 'معرف الفرع اختياري') }}"
+            }
+          ]
         },
         "headerParameters": {
           "parameters": [
