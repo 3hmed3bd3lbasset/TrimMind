@@ -18,7 +18,7 @@ import BarberDashboard from './pages/BarberDashboard';
 import QueueDisplayPage from './pages/QueueDisplayPage';
 import AuthPage from './pages/AuthPage';
 
-// Secure Route Guard for Strict RBAC (Preserves User Session Across Page Refreshes)
+// Secure Route Guard for Strict RBAC (Pure In-Memory Session Verification via HttpOnly Cookie)
 function RoleGuard({
   allowedRoles,
   children,
@@ -26,33 +26,35 @@ function RoleGuard({
   allowedRoles: UserRole[];
   children: React.ReactNode;
 }) {
-  const { currentUser } = useSalonStore();
-  const [hasHydrated, setHasHydrated] = React.useState(
-    typeof useSalonStore.persist?.hasHydrated === 'function'
-      ? useSalonStore.persist.hasHydrated()
-      : true
-  );
+  const { currentUser, setCurrentUser } = useSalonStore();
+  const [isCheckingAuth, setIsCheckingAuth] = React.useState(!allowedRoles.includes(currentUser.role));
 
   React.useEffect(() => {
-    const unsub = useSalonStore.persist?.onFinishHydration?.(() => {
-      setHasHydrated(true);
-    });
-    return () => unsub?.();
-  }, []);
-
-  let effectiveRole = currentUser.role;
-  try {
-    const raw = localStorage.getItem('salon_current_user');
-    if (raw) {
-      const parsed = JSON.parse(raw);
-      if (parsed?.role) effectiveRole = parsed.role;
+    if (!allowedRoles.includes(currentUser.role)) {
+      api.getMe()
+        .then((res: any) => {
+          if (res && res.success && res.data) {
+            setCurrentUser(res.data);
+          }
+        })
+        .catch(() => {})
+        .finally(() => {
+          setIsCheckingAuth(false);
+        });
+    } else {
+      setIsCheckingAuth(false);
     }
-  } catch {}
+  }, [currentUser.role]);
 
-  if (!allowedRoles.includes(effectiveRole) && !allowedRoles.includes(currentUser.role)) {
-    if (!hasHydrated) {
-      return null;
-    }
+  if (isCheckingAuth) {
+    return (
+      <div className="min-h-screen bg-paper flex items-center justify-center text-ink-soft text-sm font-bold">
+        جاري التحقق من الصلاحيات وأمان الجلسة...
+      </div>
+    );
+  }
+
+  if (!allowedRoles.includes(currentUser.role)) {
     return <Navigate to="/auth" replace />;
   }
   return <>{children}</>;
@@ -68,7 +70,7 @@ function AppLayout() {
     // 1. Hydrate state from server DB on startup
     const hydrateFromBackend = async () => {
       try {
-        const [branchesRes, barbersRes, chairsRes, servicesRes, productsRes, settingsRes, bookingsRes, profilesRes] = await Promise.allSettled([
+        const [branchesRes, barbersRes, chairsRes, servicesRes, productsRes, settingsRes, bookingsRes, profilesRes, meRes] = await Promise.allSettled([
           api.getBranches(),
           api.getBarbers(),
           api.getChairs(),
@@ -77,9 +79,14 @@ function AppLayout() {
           api.getSettings(),
           api.getBookings(),
           api.getProfiles(),
+          api.getMe(),
         ]);
 
         const stateUpdates: any = {};
+
+        if (meRes.status === 'fulfilled' && (meRes.value as any)?.success && (meRes.value as any)?.data) {
+          stateUpdates.currentUser = (meRes.value as any).data;
+        }
 
         if (branchesRes.status === 'fulfilled' && (branchesRes.value as any)?.success && Array.isArray((branchesRes.value as any)?.data) && (branchesRes.value as any).data.length > 0) {
           stateUpdates.branches = (branchesRes.value as any).data;
@@ -169,7 +176,6 @@ function AppLayout() {
     });
 
     const unsubscribe = initRealtimeSync(() => {
-      useSalonStore.persist?.rehydrate();
       hydrateFromBackend();
       syncToBackend();
     });

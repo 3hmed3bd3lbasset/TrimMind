@@ -39,8 +39,6 @@ export const Navbar: React.FC<NavbarProps> = ({ onOpenAiDrawer }) => {
     } catch {
       // Ignore network errors on logout
     }
-    localStorage.removeItem('salon_auth_token');
-    localStorage.removeItem('salon_current_user');
     sessionStorage.clear();
     switchRole('customer');
     toast.success('تم تسجيل الخروج بنجاح');

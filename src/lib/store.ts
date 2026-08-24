@@ -1,6 +1,4 @@
 import { create } from 'zustand';
-import { persist, createJSONStorage, StateStorage } from 'zustand/middleware';
-import { get as idbGet, set as idbSet, del as idbDel } from 'idb-keyval';
 import {
   Branch,
   Barber,
@@ -201,123 +199,74 @@ interface SalonStore {
   resetAllData: () => void;
 }
 
-function getInitialCurrentUser(): Profile {
-  if (typeof window === 'undefined') return INITIAL_PROFILES[0];
-  try {
-    const raw = localStorage.getItem('salon_current_user');
-    if (raw) {
-      const parsed = JSON.parse(raw);
-      if (parsed && parsed.role) return parsed;
+export const useSalonStore = create<SalonStore>((set, get) => ({
+  currentUser: INITIAL_PROFILES[0],
+  selectedBranchId: INITIAL_BRANCHES[0]?.id || '',
+  branches: INITIAL_BRANCHES,
+  barbers: INITIAL_BARBERS,
+  chairs: INITIAL_CHAIRS,
+  services: INITIAL_SERVICES,
+  products: INITIAL_PRODUCTS,
+  bookings: INITIAL_BOOKINGS,
+  queue: INITIAL_QUEUE,
+  profiles: INITIAL_PROFILES,
+  auditLogs: INITIAL_AUDIT_LOGS,
+  notifications: [],
+  settings: INITIAL_SETTINGS,
+  isAiDrawerOpen: false,
+  lastCalledCustomer: null,
+
+  addNotification: (notif) => {
+    const newNotif: AppNotification = {
+      ...notif,
+      id: generateUUID(),
+      read: false,
+      created_at: new Date().toISOString(),
+    };
+    set((state) => ({ notifications: [newNotif, ...state.notifications] }));
+    broadcastEvent('NOTIFICATION_CREATED', newNotif);
+  },
+
+  markNotificationAsRead: (id) => {
+    set((state) => ({
+      notifications: state.notifications.map((n) =>
+        n.id === id ? { ...n, read: true } : n
+      ),
+    }));
+  },
+
+  markAllNotificationsAsRead: () => {
+    set((state) => ({
+      notifications: state.notifications.map((n) => ({ ...n, read: true })),
+    }));
+  },
+
+  deleteNotification: (id) => {
+    set((state) => ({
+      notifications: state.notifications.filter((n) => n.id !== id),
+    }));
+  },
+
+  clearAllNotifications: () => {
+    set({ notifications: [] });
+  },
+
+  setCurrentUser: (profile) => {
+    set({ currentUser: profile });
+  },
+  setLastCalledCustomer: (event) => set({ lastCalledCustomer: event }),
+
+  switchRole: (role: UserRole) => {
+    if (role === 'customer') {
+      const defaultCustomer = INITIAL_PROFILES.find((p) => p.role === 'customer') || INITIAL_PROFILES[0];
+      set({ currentUser: defaultCustomer });
     }
-    const storeRaw = localStorage.getItem('barber-platform-storage-v3');
-    if (storeRaw) {
-      const parsed = JSON.parse(storeRaw);
-      if (parsed?.state?.currentUser?.role) {
-        return parsed.state.currentUser;
-      }
-    }
-  } catch {
-    // ignore
-  }
-  return INITIAL_PROFILES[0];
-}
+  },
 
-function getInitialBranchId(): string {
-  if (typeof window === 'undefined') return INITIAL_BRANCHES[0]?.id || '';
-  try {
-    const branchId = localStorage.getItem('salon_selected_branch_id');
-    if (branchId) return branchId;
-    const storeRaw = localStorage.getItem('barber-platform-storage-v4');
-    if (storeRaw) {
-      const parsed = JSON.parse(storeRaw);
-      if (parsed?.state?.selectedBranchId) return parsed.state.selectedBranchId;
-    }
-  } catch {
-    // ignore
-  }
-  return INITIAL_BRANCHES[0]?.id || '';
-}
-
-export const useSalonStore = create<SalonStore>()(
-  persist(
-    (set, get) => ({
-      currentUser: getInitialCurrentUser(),
-      selectedBranchId: getInitialBranchId(),
-      branches: INITIAL_BRANCHES,
-      barbers: INITIAL_BARBERS,
-      chairs: INITIAL_CHAIRS,
-      services: INITIAL_SERVICES,
-      products: INITIAL_PRODUCTS,
-      bookings: INITIAL_BOOKINGS,
-      queue: INITIAL_QUEUE,
-      profiles: INITIAL_PROFILES,
-      auditLogs: INITIAL_AUDIT_LOGS,
-      notifications: [],
-      settings: INITIAL_SETTINGS,
-      isAiDrawerOpen: false,
-      lastCalledCustomer: null,
-
-      addNotification: (notif) => {
-        const newNotif: AppNotification = {
-          ...notif,
-          id: generateUUID(),
-          read: false,
-          created_at: new Date().toISOString(),
-        };
-        set((state) => ({ notifications: [newNotif, ...state.notifications] }));
-        broadcastEvent('NOTIFICATION_CREATED', newNotif);
-      },
-
-      markNotificationAsRead: (id) => {
-        set((state) => ({
-          notifications: state.notifications.map((n) =>
-            n.id === id ? { ...n, read: true } : n
-          ),
-        }));
-      },
-
-      markAllNotificationsAsRead: () => {
-        set((state) => ({
-          notifications: state.notifications.map((n) => ({ ...n, read: true })),
-        }));
-      },
-
-      deleteNotification: (id) => {
-        set((state) => ({
-          notifications: state.notifications.filter((n) => n.id !== id),
-        }));
-      },
-
-      clearAllNotifications: () => {
-        set({ notifications: [] });
-      },
-
-      setCurrentUser: (profile) => {
-        try {
-          localStorage.setItem('salon_current_user', JSON.stringify(profile));
-        } catch {}
-        set({ currentUser: profile });
-      },
-      setLastCalledCustomer: (event) => set({ lastCalledCustomer: event }),
-
-      switchRole: (role: UserRole) => {
-        if (role === 'customer') {
-          const defaultCustomer = INITIAL_PROFILES.find((p) => p.role === 'customer') || INITIAL_PROFILES[0];
-          try {
-            localStorage.removeItem('salon_auth_token');
-            localStorage.setItem('salon_current_user', JSON.stringify(defaultCustomer));
-          } catch {}
-          set({ currentUser: defaultCustomer });
-        }
-      },
-
-      setSelectedBranchId: (id) => {
-        try {
-          localStorage.setItem('salon_selected_branch_id', id);
-        } catch {}
-        set({ selectedBranchId: id });
-      },
-      setAiDrawerOpen: (open) => set({ isAiDrawerOpen: open }),
+  setSelectedBranchId: (id) => {
+    set({ selectedBranchId: id });
+  },
+  setAiDrawerOpen: (open) => set({ isAiDrawerOpen: open }),
 
       createBooking: (payload) => {
         const {
@@ -1419,40 +1368,5 @@ export const useSalonStore = create<SalonStore>()(
           lastCalledCustomer: null,
         });
       },
-    }),
-    {
-      name: 'barber-platform-storage-v4',
-      storage: createJSONStorage(() => ({
-        getItem: async (name: string): Promise<string | null> => {
-          try {
-            const value = await idbGet(name);
-            if (value) return value;
-          } catch (e) {
-            console.warn('IndexedDB read warning:', e);
-          }
-          return localStorage.getItem(name);
-        },
-        setItem: async (name: string, value: string): Promise<void> => {
-          try {
-            await idbSet(name, value);
-          } catch (e) {
-            console.error('IndexedDB write error:', e);
-          }
-          try {
-            localStorage.setItem(name, value);
-          } catch {
-            // Ignore localStorage quota exceeded because IndexedDB handles unlimited sizes!
-          }
-        },
-        removeItem: async (name: string): Promise<void> => {
-          try {
-            await idbDel(name);
-          } catch (e) {
-            console.error('IndexedDB delete error:', e);
-          }
-          localStorage.removeItem(name);
-        },
-      })),
-    }
-  )
+    })
 );

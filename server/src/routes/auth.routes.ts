@@ -93,21 +93,29 @@ router.post('/login', validateBody(loginSchema), async (req, res: Response) => {
       userAgent
     );
 
-    // Set Refresh Token in HttpOnly, Secure, SameSite=Strict Cookie locked to /api/auth
+    // Set Refresh Token in HttpOnly, Secure Cookie
     res.cookie('refresh_token', sessionTokens.refreshToken, {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
-      sameSite: 'strict',
-      path: '/api/auth',
+      sameSite: 'lax',
+      path: '/',
       maxAge: 30 * 24 * 60 * 60 * 1000, // 30 days
     });
 
-    // Also set short-lived Access Token in Cookie for web client backwards compatibility
+    // Set short-lived Access Token in HttpOnly Cookie (15 min)
+    res.cookie('access_token', sessionTokens.accessToken, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'lax',
+      path: '/',
+      maxAge: 15 * 60 * 1000, // 15 minutes
+    });
     res.cookie('auth_token', sessionTokens.accessToken, {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
       sameSite: 'lax',
-      maxAge: 15 * 60 * 1000, // 15 minutes
+      path: '/',
+      maxAge: 15 * 60 * 1000,
     });
 
     return res.json({
@@ -154,15 +162,23 @@ router.post('/refresh', async (req, res: Response) => {
   res.cookie('refresh_token', rotationResult.tokens.refreshToken, {
     httpOnly: true,
     secure: process.env.NODE_ENV === 'production',
-    sameSite: 'strict',
-    path: '/api/auth',
+    sameSite: 'lax',
+    path: '/',
     maxAge: 30 * 24 * 60 * 60 * 1000,
   });
 
+  res.cookie('access_token', rotationResult.tokens.accessToken, {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === 'production',
+    sameSite: 'lax',
+    path: '/',
+    maxAge: 15 * 60 * 1000,
+  });
   res.cookie('auth_token', rotationResult.tokens.accessToken, {
     httpOnly: true,
     secure: process.env.NODE_ENV === 'production',
     sameSite: 'lax',
+    path: '/',
     maxAge: 15 * 60 * 1000,
   });
 
@@ -194,9 +210,10 @@ router.post('/logout', async (req, res: Response) => {
     await logoutSession(refreshToken, clientIp);
   }
 
+  res.clearCookie('refresh_token', { path: '/' });
   res.clearCookie('refresh_token', { path: '/api/auth' });
-  res.clearCookie('auth_token');
-  res.clearCookie('access_token');
+  res.clearCookie('auth_token', { path: '/' });
+  res.clearCookie('access_token', { path: '/' });
 
   return res.json({ success: true, message: 'تم تسجيل الخروج بنجاح' });
 });

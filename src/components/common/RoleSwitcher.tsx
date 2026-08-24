@@ -22,6 +22,13 @@ export const RoleSwitcher: React.FC = () => {
     return null;
   }
 
+  // In Production, hide floating role switcher for unauthenticated customers
+  const isDev = import.meta.env.DEV;
+  const isAuthorizedAdmin = currentUser.role === 'manager' || currentUser.is_super_admin;
+  if (!isDev && !isAuthorizedAdmin) {
+    return null;
+  }
+
   const handleRoleChange = (role: UserRole) => {
     switchRole(role);
     if (role === 'customer') {

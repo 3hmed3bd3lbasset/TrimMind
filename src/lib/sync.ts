@@ -44,11 +44,6 @@ export const broadcastEvent = (type: SyncEventType, payload?: any) => {
       console.error('Error broadcasting message:', err);
     }
   }
-
-  // Fallback / local storage trigger
-  try {
-    localStorage.setItem('trimmind_sync_ping', JSON.stringify(message));
-  } catch (e) {}
 };
 
 export const initRealtimeSync = (
@@ -99,19 +94,9 @@ export const initRealtimeSync = (
     };
   }
 
-  // Listen to storage events for browsers where BroadcastChannel might be isolated
-  const handleStorage = (e: StorageEvent) => {
-    if (e.key === 'trimmind_sync_ping' && e.newValue) {
-      try {
-        const msg = JSON.parse(e.newValue);
-        handleMessage(msg);
-      } catch (err) {}
-    }
-  };
-
-  window.addEventListener('storage', handleStorage);
-
   return () => {
-    window.removeEventListener('storage', handleStorage);
+    if (channel) {
+      channel.onmessage = null;
+    }
   };
 };

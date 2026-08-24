@@ -36,6 +36,11 @@ export interface AiQuotaStatus {
   isUnlimited: boolean;
 }
 
+let inMemoryAiQuota = {
+  windowStart: Date.now(),
+  count: 0,
+};
+
 export function getAiQuotaStatus(role: UserRole = 'customer'): AiQuotaStatus {
   // Staff, Barbers, and Manager have 100% unlimited quota
   if (role === 'receptionist' || role === 'manager' || role === 'barber') {
@@ -50,60 +55,26 @@ export function getAiQuotaStatus(role: UserRole = 'customer'): AiQuotaStatus {
     };
   }
 
-  try {
-    const raw = localStorage.getItem(AI_RATE_LIMIT.STORAGE_KEY);
-    const now = Date.now();
-    if (!raw) {
-      return {
-        used: 0,
-        remaining: AI_RATE_LIMIT.MAX_MESSAGES,
-        total: AI_RATE_LIMIT.MAX_MESSAGES,
-        isBlocked: false,
-        resetAt: now + AI_RATE_LIMIT.WINDOW_MS,
-        secondsRemaining: 600,
-        isUnlimited: false,
-      };
-    }
-    const data = JSON.parse(raw);
-    // If window expired (10 minutes passed), reset count and window
-    if (now - data.windowStart >= AI_RATE_LIMIT.WINDOW_MS) {
-      return {
-        used: 0,
-        remaining: AI_RATE_LIMIT.MAX_MESSAGES,
-        total: AI_RATE_LIMIT.MAX_MESSAGES,
-        isBlocked: false,
-        resetAt: now + AI_RATE_LIMIT.WINDOW_MS,
-        secondsRemaining: 600,
-        isUnlimited: false,
-      };
-    }
-
-    const used = Math.min(data.count || 0, AI_RATE_LIMIT.MAX_MESSAGES);
-    const remaining = Math.max(0, AI_RATE_LIMIT.MAX_MESSAGES - used);
-    const resetAt = data.windowStart + AI_RATE_LIMIT.WINDOW_MS;
-    const secondsRemaining = Math.max(0, Math.ceil((resetAt - now) / 1000));
-    const isBlocked = remaining <= 0;
-
-    return {
-      used,
-      remaining,
-      total: AI_RATE_LIMIT.MAX_MESSAGES,
-      isBlocked,
-      resetAt,
-      secondsRemaining,
-      isUnlimited: false,
-    };
-  } catch (e) {
-    return {
-      used: 0,
-      remaining: AI_RATE_LIMIT.MAX_MESSAGES,
-      total: AI_RATE_LIMIT.MAX_MESSAGES,
-      isBlocked: false,
-      resetAt: Date.now() + AI_RATE_LIMIT.WINDOW_MS,
-      secondsRemaining: 600,
-      isUnlimited: false,
-    };
+  const now = Date.now();
+  if (now - inMemoryAiQuota.windowStart >= AI_RATE_LIMIT.WINDOW_MS) {
+    inMemoryAiQuota = { windowStart: now, count: 0 };
   }
+
+  const used = Math.min(inMemoryAiQuota.count, AI_RATE_LIMIT.MAX_MESSAGES);
+  const remaining = Math.max(0, AI_RATE_LIMIT.MAX_MESSAGES - used);
+  const resetAt = inMemoryAiQuota.windowStart + AI_RATE_LIMIT.WINDOW_MS;
+  const secondsRemaining = Math.max(0, Math.ceil((resetAt - now) / 1000));
+  const isBlocked = remaining <= 0;
+
+  return {
+    used,
+    remaining,
+    total: AI_RATE_LIMIT.MAX_MESSAGES,
+    isBlocked,
+    resetAt,
+    secondsRemaining,
+    isUnlimited: false,
+  };
 }
 
 export function consumeAiQuota(role: UserRole = 'customer'): { allowed: boolean; status: AiQuotaStatus } {
@@ -113,30 +84,11 @@ export function consumeAiQuota(role: UserRole = 'customer'): { allowed: boolean;
   }
 
   const current = getAiQuotaStatus('customer');
-  const now = Date.now();
-
   if (current.isBlocked) {
     return { allowed: false, status: current };
   }
 
-  // Update storage for customer
-  let windowStart = now;
-  const raw = localStorage.getItem(AI_RATE_LIMIT.STORAGE_KEY);
-  if (raw) {
-    try {
-      const data = JSON.parse(raw);
-      if (now - data.windowStart < AI_RATE_LIMIT.WINDOW_MS) {
-        windowStart = data.windowStart;
-      }
-    } catch (e) {}
-  }
-
-  const newUsed = current.used + 1;
-  localStorage.setItem(
-    AI_RATE_LIMIT.STORAGE_KEY,
-    JSON.stringify({ windowStart, count: newUsed })
-  );
-
+  inMemoryAiQuota.count += 1;
   const updatedStatus = getAiQuotaStatus('customer');
   return { allowed: true, status: updatedStatus };
 }

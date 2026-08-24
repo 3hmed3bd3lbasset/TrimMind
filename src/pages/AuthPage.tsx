@@ -50,10 +50,7 @@ export default function AuthPage() {
     try {
       const res: any = await api.login({ identifier: cleanId, password });
       if (res && res.success && res.data) {
-        const { token, user } = res.data;
-        if (token) {
-          localStorage.setItem('salon_auth_token', token);
-        }
+        const { user } = res.data;
         if (user) {
           const profile: Profile = {
             id: user.id,
@@ -176,8 +173,6 @@ export default function AuthPage() {
     try {
       await api.logout();
     } catch {}
-    localStorage.removeItem('salon_auth_token');
-    localStorage.removeItem('salon_current_user');
     sessionStorage.clear();
     switchRole('customer');
     toast.success('تم تسجيل الخروج بنجاح');

@@ -1,4 +1,4 @@
-import axios from 'axios';
+import axios, { AxiosError, InternalAxiosRequestConfig } from 'axios';
 
 const API_BASE_URL =
   (import.meta.env.VITE_API_URL as string) ||
@@ -7,35 +7,75 @@ const API_BASE_URL =
 export const apiClient = axios.create({
   baseURL: API_BASE_URL,
   timeout: 15000,
-  withCredentials: true,
+  withCredentials: true, // Automatically sends and receives HttpOnly Cookies
   headers: {
     'Content-Type': 'application/json',
     Accept: 'application/json',
   },
 });
 
-// Request Interceptor: Attach JWT token from localStorage if present
-apiClient.interceptors.request.use(
-  (config) => {
-    try {
-      const storedToken = localStorage.getItem('salon_auth_token');
-      if (storedToken && config.headers) {
-        config.headers.Authorization = `Bearer ${storedToken}`;
-      }
-    } catch (e) {}
-    return config;
-  },
-  (error) => Promise.reject(error)
-);
+// Mutex & Queue for Automatic Silent Token Refresh
+let isRefreshing = false;
+let failedQueue: Array<{
+  resolve: (value?: any) => void;
+  reject: (reason?: any) => void;
+}> = [];
 
-// Response Interceptor: Uniform error extractor
+const processQueue = (error: any = null) => {
+  failedQueue.forEach((prom) => {
+    if (error) {
+      prom.reject(error);
+    } else {
+      prom.resolve();
+    }
+  });
+  failedQueue = [];
+};
+
+// Response Interceptor with Automatic Silent Token Refresh & Uniform Error Extraction
 apiClient.interceptors.response.use(
   (response) => response.data,
-  (error) => {
+  async (error: AxiosError<any>) => {
+    const originalRequest = error.config as InternalAxiosRequestConfig & { _retry?: boolean };
+
+    // Check if error is 401 and request hasn't been retried yet
+    const status = error.response?.status;
+    const isAuthEndpoint =
+      originalRequest?.url?.includes('/auth/login') ||
+      originalRequest?.url?.includes('/auth/refresh') ||
+      originalRequest?.url?.includes('/auth/logout');
+
+    if (status === 401 && !originalRequest?._retry && !isAuthEndpoint) {
+      if (isRefreshing) {
+        // Queue concurrent requests while refresh is in flight
+        return new Promise((resolve, reject) => {
+          failedQueue.push({ resolve, reject });
+        })
+          .then(() => apiClient(originalRequest))
+          .catch((err) => Promise.reject(err));
+      }
+
+      originalRequest._retry = true;
+      isRefreshing = true;
+
+      try {
+        // Trigger silent token refresh (HttpOnly cookie will be sent automatically)
+        await axios.post(`${API_BASE_URL}/auth/refresh`, {}, { withCredentials: true });
+        processQueue(null);
+        return apiClient(originalRequest);
+      } catch (refreshErr) {
+        processQueue(refreshErr);
+        // Clear session if refresh failed completely
+        return Promise.reject(new Error('انتهت صلاحية الجلسة، يرجى تسجيل الدخول مجدداً'));
+      } finally {
+        isRefreshing = false;
+      }
+    }
+
     const errorMsg =
       error.response?.data?.error ||
       error.response?.data?.message ||
-      (error.response?.status === 401 ? 'يرجى تسجيل الدخول' : 'تعذر الاتصال بالسيرفر، يرجى المحاولة لاحقاً');
+      (status === 401 ? 'يرجى تسجيل الدخول' : 'تعذر الاتصال بالسيرفر، يرجى المحاولة لاحقاً');
 
     return Promise.reject(new Error(errorMsg));
   }

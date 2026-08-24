@@ -1,5 +1,7 @@
+import crypto from 'crypto';
 import { Router, Request, Response } from 'express';
 import { requireAuth, requireRoles } from '../middleware/auth.js';
+import { AGENT_API_SECRET } from '../config/jwt.js';
 import {
   getWhatsAppState,
   initWhatsApp,
@@ -12,10 +14,13 @@ import {
 
 const router = Router();
 
-const AGENT_API_SECRET =
-  process.env.AGENT_API_SECRET ||
-  process.env.WHATSAPP_AGENT_SECRET ||
-  'trim-mind-agent-secret-key-2026';
+function timingSafeStringCompare(a: string, b: string): boolean {
+  if (!a || !b) return false;
+  const bufA = Buffer.from(a.trim());
+  const bufB = Buffer.from(b.trim());
+  if (bufA.length !== bufB.length) return false;
+  return crypto.timingSafeEqual(bufA, bufB);
+}
 
 function requireManagerOrAgent(req: Request, res: Response, next: any) {
   const secretHeader = req.headers['x-agent-secret'] || req.headers['x-api-key'] || (req.query as any)?.secret || (req.query as any)?.key;
@@ -23,7 +28,7 @@ function requireManagerOrAgent(req: Request, res: Response, next: any) {
   const bearerToken = authHeader?.startsWith('Bearer ') ? authHeader.substring(7) : null;
   const providedKey = (secretHeader as string) || bearerToken;
 
-  if (providedKey && (providedKey === AGENT_API_SECRET || providedKey === 'trim-mind-agent-secret-key-2026')) {
+  if (providedKey && timingSafeStringCompare(providedKey, AGENT_API_SECRET)) {
     return next();
   }
 
@@ -32,6 +37,9 @@ function requireManagerOrAgent(req: Request, res: Response, next: any) {
     return requireRoles('manager')(req as any, res, next);
   });
 }
+
+// Protect all session routes with manager or agent credentials
+router.use(requireManagerOrAgent);
 
 // 1. Get WhatsApp status
 router.get('/status', async (_req: Request, res: Response) => {
