@@ -1194,33 +1194,27 @@ export async function sendBookingConfirmationWhatsApp(booking: any): Promise<boo
     }
   }
 
-  const branchName = booking.branch_name || 'صالون الحداد VIP - المقر الرئيسي';
+  const vipBadge = booking.booking_type === 'vip' ? 'VIP' : 'باقة مميزة';
+  const branchName = 'صالون الحداد';
   const trackingUrl = `https://trimmind.up.railway.app/track?q=${bookingId}`;
 
-  const message = `💈👑 *صالون TrimMind (الحداد VIP)* 👑💈
-━━━━━━━━━━━━━━━━━━━━━
-🎉 *أهلاً بك يا أستاذ ${clientName}! تم قبول وتأكيد طلب حجزك بنجاح.*
+  const message = `👑 تم تأكيد حجزك بنجاح! 💈✨
 
-📋 *بيانات وتفاصيل الحجز المعتمد:*
-🔖 *رقم الحجز والتتبع:* \`#${bookingId}\`
-🔢 *رقم دورك في الطابور:* *#${queueNumber}*
-💈 *كابتن الحلاقة:* *${barberName}* ✂️
-💇‍♂️ *الباقة والخدمات:* *${serviceName}*
-📅 *الموعد المحدد:* *${formattedDateTime}*
-🏛️ *الفرع:* ${branchName}
+📋 رقم الحجز: ${bookingId}
+💈 الكابتن: ${barberName}
+✂️ الخدمة: ${serviceName}
+📅 الموعد: ${formattedDateTime}
+👑 ${vipBadge} – ${branchName}
 
-━━━━━━━━━━━━━━━━━━━━━
-💵 *تفاصيل الحساب والفاتورة:*
-• *إجمالي الفاتورة:* *${totalAmount} جنيه*
-• *العربون المسدد:* *${depositPaid} جنيه* ✓
-• *المبلغ المتبقي للدفع في الصالون:* *${remainingAmount} جنيه*
+💰 الإجمالي: ${totalAmount} ج
+💳 العربون: ${depositPaid} ج
+💵 المتبقي: ${remainingAmount} ج
 
-━━━━━━━━━━━━━━━━━━━━━
-📍 *رابط التتبع الحي ومتابعة دورك لحظة بلحظة:*
-👉 ${trackingUrl}
+📍 تابع دورك لحظة بلحظة:
+${trackingUrl}
 
-💡 *تنبيه:* يرجى التواجد قبل موعدك بـ 5 دقائق، وسيقوم النظام بإرسال إشعار فوري لك بمجرد اقتراب دورك وتجهيز الكرسي.
-نتشرف بزيارتك دائماً يا غالي! ✨`;
+🔔 هنبلغك قبل دورك بـ5 دقائق.
+نتشرف بزيارتك ❤️`;
 
   const success = await sendWhatsAppText(customerPhone, message);
   if (success) {

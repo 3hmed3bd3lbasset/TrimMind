@@ -492,9 +492,8 @@ router.patch(
       // 3. WhatsApp Notification on Completed Service (Thank You & Rating)
       else if (status === 'completed' && customerPhone) {
         import('../services/whatsapp.service.js').then(({ sendWhatsAppText }) => {
-          const clientName = booking.customer_name || booking.customerName || 'عزيزنا العميل';
-          const barberName = booking.barber_name || booking.barberName || 'كابتن الصالون';
-          const msg = `نعيماً يا أستاذ *${clientName}*! 💈✂️✨👑\nسعدنا جداً بزيارتك وتشريفك لنا اليوم في صالون TrimMind (الحداد VIP).\n\nنتمنى تكون الحلاقة وتجربتك الفاخرة مع الكابتن *${barberName}* وأداؤه نال كامل إعجابك ورضاك التام! 🌟\n\n⭐ يسعدنا جداً مشاركتنا تقييمك ورأيك في الخدمة وأداء الكابتن عبر الرابط التالي:\nhttps://trimmind.up.railway.app/track?q=${booking.id}\n\nشكراً لاختيارك صالون TrimMind VIP والكابتن ${barberName}! ننتظر زيارتك القادمة دائماً 💈❤️`;
+          const barberName = booking.barber_name || booking.barberName || 'محمد الحداد';
+          const msg = `👑 شكرًا لزيارتك TrimMind! 💈✨\n\nنتمنى تكون استمتعت بتجربتك مع الكابتن ${barberName} ❤️\n\n⭐ قيّم تجربتك:\nhttps://trimmind.up.railway.app/track?q=${booking.id}\n\nشكرًا لاختيارك TrimMind، ونستناك دايمًا! 💈❤️`;
           sendWhatsAppText(customerPhone, msg).catch((e) => console.error('WA Completed Send Error:', e));
         }).catch(() => {});
       }
@@ -766,12 +765,24 @@ router.post('/:id/customize-and-dispatch', optionalAuth, async (req: Authenticat
         const remainingVal = Math.max(0, calculatedTotal - depositVal);
         const startsAtFormatted = startsAtVal.replace('T', ' ').substring(0, 16);
 
-        let itemsBreakdown = '';
-        if (customLineItems && Array.isArray(customLineItems) && customLineItems.length > 0) {
-          itemsBreakdown = '\n📋 *تفاصيل الباقة والخدمات المعتمدة:*\n' + customLineItems.map((item: any) => `• ${item.name}: ${item.price} ج.م`).join('\n');
-        }
+        const trackingUrl = `https://trimmind.up.railway.app/track?q=${bookingId}`;
+        const msg = `👑 تم تأكيد حجزك بنجاح! 💈✨
 
-        const msg = `✅ *تم اعتماد وتسعير طلب حجزك بنجاح يا أستاذ ${clientName}!* 💈👑\nتم تسعير وتأكيد حجزك رقم \`#${bookingId}\` في صالون TrimMind (الحداد VIP)!\n${itemsBreakdown}\n\n💈 *الكابتن:* ${assignedBarberName}\n📅 *الميعاد:* ${startsAtFormatted}\n🔢 *رقم الدور:* رقم #${booking?.queue_number || 1} في طابور الصالون\n\n💵 *تفاصيل الفاتورة والحساب النهائي:*\n• إجمالي الفاتورة: ${calculatedTotal} ج.م\n${calculatedDiscount > 0 ? `• خصم خاص: ${calculatedDiscount} ج.م\n` : ''}• العربون المسدد: ${depositVal} ج.م ✓\n• المتبقي للدفع بالصالون: *${remainingVal} ج.م*\n\n📍 *رابط متابعة دورك لحظة بلحظة:*\nhttps://trimmind.up.railway.app/track?q=${bookingId}\n\nنتشرف بزيارتك دائماً وفي انتظارك في الميعاد المحدد 💈✨`;
+📋 رقم الحجز: ${bookingId}
+💈 الكابتن: ${assignedBarberName}
+✂️ الخدمة: ${assignedServiceName}
+📅 الموعد: ${startsAtFormatted}
+👑 VIP – صالون الحداد
+
+💰 الإجمالي: ${calculatedTotal} ج
+💳 العربون: ${depositVal} ج
+💵 المتبقي: ${remainingVal} ج
+
+📍 تابع دورك لحظة بلحظة:
+${trackingUrl}
+
+🔔 هنبلغك قبل دورك بـ5 دقائق.
+نتشرف بزيارتك ❤️`;
 
         await sendWhatsAppText(customerPhone, msg);
       } catch (err) {
