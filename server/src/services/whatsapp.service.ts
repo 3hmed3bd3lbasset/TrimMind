@@ -1187,14 +1187,8 @@ ${currentBookingContext}`;
   history.push({ role: 'model', parts: [{ text: replyText }] });
   chatHistories.set(sessionKey, history);
 
-  // Send WhatsApp Reply
-  let targetJid = remoteJid;
-  if (senderPhone && !remoteJid.includes('@s.whatsapp.net')) {
-    let clean = senderPhone.replace(/\D+/g, '');
-    if (clean.startsWith('01')) clean = '20' + clean.substring(1);
-    targetJid = `${clean}@s.whatsapp.net`;
-  }
-  await sendWhatsAppText(targetJid, replyText);
+  // Send WhatsApp Reply directly to incoming chat thread (remoteJid)
+  await sendWhatsAppText(remoteJid, replyText);
 }
 
 export async function toggleHumanHandoff(phone: string, enableHumanMode: boolean): Promise<boolean> {
