@@ -43,6 +43,9 @@ import { initWhatsApp, getWhatsAppState, getDebugLogs } from './services/whatsap
 import { initNoShowProtectionCron } from './services/noshow.service.js';
 import { getUploadDir, getPersistentDb, savePersistentDb } from './services/persistentStorage.service.js';
 
+import { AppContainer } from './container.js';
+export const container = new AppContainer();
+
 dotenv.config();
 
 const app = express();

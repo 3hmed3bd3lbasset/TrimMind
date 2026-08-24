@@ -19,7 +19,7 @@
         "promptType": "define",
         "text": "={{ $json.chatInput }}",
         "options": {
-          "systemMessage": "أنت المساعد الذكي الرسمي لصالون (TrimMind - صالون الحداد VIP).\nتحدث بلهجة مصرية مهذبة، ذكية، ولبقة.\nالتحية الترحيبية تكون في **أول رسالة فقط** من المحادثة، ولا تكررها أبداً بعدها.\n\n# 📞 قواعد رقم هاتف العميل:\n1. أرقام الهواتف المصرية المعتمدة تبدأ بـ 01 وتتكون من 11 رقماً (مثل: 010..., 011..., 012..., 015...).\n2. إذا كان رقم هاتف العميل محدد في [معلومات الجلسة] وقال العميل \"على نفس الرقم\" أو \"بنفس رقمي\"، استخدم ذلك الرقم فوراً.\n3. إذا لم يكن متوفراً في معلومات الجلسة، اسأل العميل بلباقة عن رقم هاتفه.\n\n# 📋 خطوات جمع بيانات الحجز:\n1. اجمع بيانات الحجز: (الاسم + رقم الهاتف + نوع الخدمة + اليوم).\n2. في باقات VIP: يختار اليوم والساعة المحددة (استدعِ check_availability).\n3. في الحلاقة العادية: الحجز برقم دور في طابور اليوم.\n\n# 💳 تفاصيل الحسابات البنكية والإلكترونية للفرع (استلام العربون):\n- عند استدعاء أداة (create_pending_booking)، ستعيد لك الأداة كائن paymentInstructions يحتوي على حسابات الفرع المعتمدة المحدثة من الإدارة:\n  • **عنوان / رقم إنستاباي (InstaPay):** الموجود في paymentInstructions.instapay (أو الافتراضي 01285694670)\n  • **رقم محفظة فودافون كاش (Vodafone Cash):** الموجود في paymentInstructions.vodafoneCash (أو الافتراضي 01285694689)\n  • **قيمة العربون:** 50 ج.م\n\n# 🎯 عند اكتمال بيانات الحجز:\n**استدعِ أداة (create_pending_booking) فوراً وأرسل بطاقة الحجز الرسمية مع ذكر وسائل الدفع المعتمدة:**\n\nتم تسجيل حجزك المبدئي بنجاح يا فندم! ✂️👑\n\n📋 *تفاصيل الحجز الرسمية:*\n👤 *اسم العميل:* [اسم العميل]\n📞 *رقم الهاتف:* [رقم هاتف العميل]\n💈 *الخدمة:* [اسم الخدمة]\n📅 *الموعد:* [اليوم والتاريخ والوقت]\n🔢 *رقم الدور:* رقم #[رقم الدور الناتج] في طابور اليوم\n✂️ *كابتن الصالون:* كابتن الصالون الرئيسي (الحداد)\n💺 *الكرسي المخصص:* كرسي الخدمة الرئيسي\n🎫 *كود الحجز:* #[كود الحجز]\n\n💵 *تفاصيل الفاتورة والحساب:*\n• *إجمالي قيمة الفاتورة:* [سعر الخدمة] ج.م\n• *العربون المطلوب للسداد:* 50 ج.م\n• *المتبقي للدفع بالصالون عند الحضور:* [السعر ناقص 50] ج.م\n\n📍 *رابط تتبع حجزك وموقعك المباشر في الطابور:*\nhttps://trimmind.up.railway.app/track?q=[كود الحجز]\n\n💳 *لتأكيد الحجز نهائياً:*\nبرجاء تحويل العربون *(50 ج.م)* عبر إحدى وسائل الدفع المعتمدة للفرع:\n• 🟣 *عنوان إنستاباي (InstaPay):* [قيمة instapay من الأداة]\n• 🔴 *محفظة فودافون كاش (Vodafone Cash):* [قيمة vodafoneCash من الأداة]\n\nثم أرسل سكرين شوت أو صورة الإيصال هنا فوراً لتأكيد الحجز ودخولك فور وصولك! 💈✨\n\n⚠️ *ملاحظة هامة:* وفقاً لسياسة الصالون، رسم الحجز (العربون 50 ج.م) غير قابل للاسترداد في حال الإلغاء نظراً لتخصيص مقعد ووقت مخصص لكم."
+          "systemMessage": "أنت المساعد الذكي الرسمي لصالون (TrimMind - صالون الحداد VIP).\nوظيفتك خدمة عملاء الصالون بذكاء ولطف ومرونة فائقة باللهجة المصرية المحترمة والراقية (\"يا هلا يا فندم\", \"منورنا يا باشا\", \"تحت أمرك يا غالي\").\n\n# 🧠 القواعد الأساسية لعملك كـ AI Agent ذكي (الفهم بالسياق دون كلمات مفتاحية جامدة):\n1. **افهم معنى رسالة العميل وسياق الحوار كاملاً**، وحدد الأداة (Tool) المناسبة تلقائياً لتنفيذ العملية من خلال السيرفر وقاعدة البيانات:\n   \n   - **الاستفسار عن الحجز / مواعيد الفراغ:**\n     • افحص الأوقات المتاحة عبر أداة (check_availability) أو (get_barbers).\n     • لو كانت المواعيد ممتلئة تماماً ⬅️ اقترح بلطف: \"المواعيد ممتلئة حالياً يا فندم، تحب أضيفك في قائمة الانتظار الذكية (Smart Waitlist) وأول ما حد يلغي أو يفضى موعد نبلغك فوراً؟\"\n   \n   - **قائمة الانتظار الذكية (Smart Waitlist):**\n     • إذا قال العميل: \"مفيش مواعيد فاضية؟\", \"حطني احتياطي لو حد لغى\", \"لو حد لغى بلغني\", \"سجلني في الانتظار\" ⬅️ اجمع الاسم والتاريخ المفضل واستدعِ أداة (join_smart_waitlist).\n     • إذا جاء العميل لتأكيد عرض وصله على واتساب (Token مثل WLT-XXXXXX) ⬅️ استدعِ أداة (claim_smart_waitlist_offer) فوراً.\n     • إذا سأل عن موقفه في قائمة الانتظار ⬅️ استدعِ أداة (check_waitlist_status).\n\n   - **متابعة الطابور وموقع الدور المباشر (Queue Tracking):**\n     • إذا سأل العميل: \"أنا دوري وصل لفين؟\", \"فاضل كام واحد؟\", \"موقعي في الطابور إيه؟\" ⬅️ استدعِ أداة (get_waiting_position) أو (get_booking_status) وطمئنه بعدد العملاء أمامه والوقت التقريبي المتبقي مع رابط التتبع المباشر.\n\n   - **تأكيد الحضور والوصول (Arrival Confirmation):**\n     • إذا قال العميل: \"أنا في الطريق\", \"وصلت الصالون\", \"أنا برة\", \"1\" ⬅️ استدعِ أداة (confirm_arrival) لتسجيل حضوره وتحويل حالته إلى (customer_arrived).\n\n   - **إثباتات الدفع والعربون (Payment Proofs):**\n     • إذا قال العميل: \"أنا حولت العربون اهو\", \"بعت الفلوس إنستاباي/فودافون كاش\", \"شوف الإيصال\" ⬅️ استدعِ أداة (submit_payment_proof) ووضّح له بلطف: \"تم استلام إثبات الدفع وجارٍ مراجعته وتأكيده من الاستقبال خلال دقائق، وسيصلك إشعار التأكيد فوراً.\" (لا تعتبر الدفع مؤكداً نهائياً قبل اعتماد الموظف).\n\n   - **تعديل أو إلغاء الحجز:**\n     • لتعديل الميعاد ⬅️ استدعِ (reschedule_booking).\n     • للإلغاء ⬅️ استدعِ (cancel_booking).\n\n   - **حالات عدم الحضور وحماية الصالون (No-Show Protection):**\n     • إذا استفسر العميل عن سبب إلغاء حجزه أو تأخره ⬅️ استدعِ أداة (check_noshow_status). وإذا كان الحجز ملغياً بسبب No-Show، اشرح له بلباقة واقترح عليه حجز موعد جديد أو الانضمام لقائمة الانتظار.\n\n   - **الاستعلام عن الخدمات والأسعار والفروع:**\n     • استدعِ (get_services) أو (get_branches).\n\n# 📞 قواعد الهواتف وأرقام الحجز:\n- أرقام الهواتف المصرية تبدأ بـ 01 وتتكون من 11 رقماً.\n- إذا كان رقم العميل متوفراً في معلومات الجلسة أو قال \"على نفس الرقم\"، استخدمه فوراً.\n- كن موجزاً، لبقاً، ذكياً، ولا تطلب من العميل أي معلومة ذكرها مسبقاً."
         }
       },
       "name": "AI Agent",
@@ -33,7 +33,7 @@
     },
     {
       "parameters": {
-        "modelName": "models/gemini-3.5-flash-lite",
+        "modelName": "models/gemini-1.5-flash",
         "options": {
           "temperature": 0.3
         }
@@ -75,11 +75,23 @@
         "method": "POST",
         "url": "https://trimmind.up.railway.app/api/agent-tools/branches/list",
         "authentication": "none",
-        "sendHeaders": false,
+        "sendHeaders": true,
         "sendBody": false,
         "specifyBody": "keypair",
         "parametersBody": {
           "values": []
+        },
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "x-agent-secret",
+              "value": "trim-mind-agent-secret-key-2026"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
         }
       },
       "name": "Tool: get_branches",
@@ -98,7 +110,7 @@
         "method": "POST",
         "url": "https://trimmind.up.railway.app/api/agent-tools/customer/lookup",
         "authentication": "none",
-        "sendHeaders": false,
+        "sendHeaders": true,
         "sendBody": true,
         "specifyBody": "keypair",
         "parametersBody": {
@@ -106,6 +118,18 @@
             {
               "name": "phone",
               "value": "={{ $fromAI('phone', 'رقم هاتف العميل') }}"
+            }
+          ]
+        },
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "x-agent-secret",
+              "value": "trim-mind-agent-secret-key-2026"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
             }
           ]
         }
@@ -126,7 +150,7 @@
         "method": "POST",
         "url": "https://trimmind.up.railway.app/api/agent-tools/services/list",
         "authentication": "none",
-        "sendHeaders": false,
+        "sendHeaders": true,
         "sendBody": true,
         "specifyBody": "keypair",
         "parametersBody": {
@@ -134,6 +158,18 @@
             {
               "name": "category",
               "value": "={{ $fromAI('category', 'تصنيف اختياري مثل hair, beard, package') }}"
+            }
+          ]
+        },
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "x-agent-secret",
+              "value": "trim-mind-agent-secret-key-2026"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
             }
           ]
         }
@@ -154,7 +190,7 @@
         "method": "POST",
         "url": "https://trimmind.up.railway.app/api/agent-tools/barbers/list",
         "authentication": "none",
-        "sendHeaders": false,
+        "sendHeaders": true,
         "sendBody": true,
         "specifyBody": "keypair",
         "parametersBody": {
@@ -162,6 +198,18 @@
             {
               "name": "branchId",
               "value": "={{ $fromAI('branchId', 'معرف الفرع اختياري') }}"
+            }
+          ]
+        },
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "x-agent-secret",
+              "value": "trim-mind-agent-secret-key-2026"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
             }
           ]
         }
@@ -182,7 +230,7 @@
         "method": "POST",
         "url": "https://trimmind.up.railway.app/api/agent-tools/availability/check",
         "authentication": "none",
-        "sendHeaders": false,
+        "sendHeaders": true,
         "sendBody": true,
         "specifyBody": "keypair",
         "parametersBody": {
@@ -198,6 +246,18 @@
             {
               "name": "serviceId",
               "value": "={{ $fromAI('serviceId', 'معرف الخدمة اختياري') }}"
+            }
+          ]
+        },
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "x-agent-secret",
+              "value": "trim-mind-agent-secret-key-2026"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
             }
           ]
         }
@@ -218,7 +278,7 @@
         "method": "POST",
         "url": "https://trimmind.up.railway.app/api/agent-tools/bookings/create-pending",
         "authentication": "none",
-        "sendHeaders": false,
+        "sendHeaders": true,
         "sendBody": true,
         "specifyBody": "keypair",
         "parametersBody": {
@@ -244,6 +304,18 @@
               "value": "={{ $fromAI('barberId', 'معرف الحلاق: barber-lead لكابتن الصالون الرئيسي، أو barber-beard-specialist لمصفف اللحية') }}"
             }
           ]
+        },
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "x-agent-secret",
+              "value": "trim-mind-agent-secret-key-2026"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
         }
       },
       "name": "Tool: create_pending_booking",
@@ -262,7 +334,7 @@
         "method": "POST",
         "url": "https://trimmind.up.railway.app/api/agent-tools/bookings/status",
         "authentication": "none",
-        "sendHeaders": false,
+        "sendHeaders": true,
         "sendBody": true,
         "specifyBody": "keypair",
         "parametersBody": {
@@ -270,6 +342,18 @@
             {
               "name": "bookingId",
               "value": "={{ $fromAI('bookingId', 'رقم الحجز أو رقم الهاتف') }}"
+            }
+          ]
+        },
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "x-agent-secret",
+              "value": "trim-mind-agent-secret-key-2026"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
             }
           ]
         }
@@ -290,7 +374,7 @@
         "method": "POST",
         "url": "https://trimmind.up.railway.app/api/agent-tools/queue/position",
         "authentication": "none",
-        "sendHeaders": false,
+        "sendHeaders": true,
         "sendBody": true,
         "specifyBody": "keypair",
         "parametersBody": {
@@ -298,6 +382,18 @@
             {
               "name": "phone",
               "value": "={{ $fromAI('phone', 'رقم هاتف العميل') }}"
+            }
+          ]
+        },
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "x-agent-secret",
+              "value": "trim-mind-agent-secret-key-2026"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
             }
           ]
         }
@@ -318,7 +414,7 @@
         "method": "POST",
         "url": "https://trimmind.up.railway.app/api/agent-tools/bookings/cancel",
         "authentication": "none",
-        "sendHeaders": false,
+        "sendHeaders": true,
         "sendBody": true,
         "specifyBody": "keypair",
         "parametersBody": {
@@ -330,6 +426,18 @@
             {
               "name": "phone",
               "value": "={{ $fromAI('phone', 'رقم الهاتف للتحقق') }}"
+            }
+          ]
+        },
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "x-agent-secret",
+              "value": "trim-mind-agent-secret-key-2026"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
             }
           ]
         }
@@ -350,7 +458,7 @@
         "method": "POST",
         "url": "https://trimmind.up.railway.app/api/agent-tools/bookings/reschedule",
         "authentication": "none",
-        "sendHeaders": false,
+        "sendHeaders": true,
         "sendBody": true,
         "specifyBody": "keypair",
         "parametersBody": {
@@ -366,6 +474,18 @@
             {
               "name": "phone",
               "value": "={{ $fromAI('phone', 'رقم الهاتف للتحقق') }}"
+            }
+          ]
+        },
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "x-agent-secret",
+              "value": "trim-mind-agent-secret-key-2026"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
             }
           ]
         }
@@ -407,7 +527,7 @@
         "method": "POST",
         "url": "https://trimmind.up.railway.app/api/agent-tools/bookings/confirm-arrival",
         "authentication": "none",
-        "sendHeaders": false,
+        "sendHeaders": true,
         "sendBody": true,
         "specifyBody": "keypair",
         "parametersBody": {
@@ -421,8 +541,256 @@
               "value": "={{ $fromAI('bookingId', 'رقم الحجز اختياري') }}"
             }
           ]
+        },
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "x-agent-secret",
+              "value": "trim-mind-agent-secret-key-2026"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
         }
       }
+    },
+    {
+      "parameters": {
+        "name": "join_smart_waitlist",
+        "description": "إضافة العميل لقائمة الانتظار الذكية عند امتلاء المواعيد أو طلبه إبلاغه بأي موعد شاغر.",
+        "method": "POST",
+        "url": "https://trimmind.up.railway.app/api/agent-tools/waitlist/join",
+        "authentication": "none",
+        "sendHeaders": true,
+        "sendBody": true,
+        "specifyBody": "keypair",
+        "parametersBody": {
+          "values": [
+            {
+              "name": "phone",
+              "value": "={{ $fromAI('phone', 'رقم هاتف العميل') }}"
+            },
+            {
+              "name": "customerName",
+              "value": "={{ $fromAI('customerName', 'اسم العميل') }}"
+            },
+            {
+              "name": "preferredDate",
+              "value": "={{ $fromAI('preferredDate', 'التاريخ المفضل YYYY-MM-DD') }}"
+            },
+            {
+              "name": "preferredTimeWindow",
+              "value": "={{ $fromAI('preferredTimeWindow', 'الفترة المفضلة مثل morning أو afternoon أو evening') }}"
+            },
+            {
+              "name": "barberId",
+              "value": "={{ $fromAI('barberId', 'معرف الحلاق اختياري') }}"
+            },
+            {
+              "name": "serviceId",
+              "value": "={{ $fromAI('serviceId', 'معرف الخدمة اختياري') }}"
+            }
+          ]
+        },
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "x-agent-secret",
+              "value": "trim-mind-agent-secret-key-2026"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        }
+      },
+      "name": "Tool: join_smart_waitlist",
+      "type": "@n8n/n8n-nodes-langchain.toolHttpRequest",
+      "typeVersion": 1.1,
+      "position": [
+        1360,
+        480
+      ],
+      "id": "tool-join_smart_waitlist"
+    },
+    {
+      "parameters": {
+        "name": "claim_smart_waitlist_offer",
+        "description": "تأكيد واستبدال عرض قائمة الانتظار الشاغر (Token) بحجز مؤكد.",
+        "method": "POST",
+        "url": "https://trimmind.up.railway.app/api/agent-tools/waitlist/claim",
+        "authentication": "none",
+        "sendHeaders": true,
+        "sendBody": true,
+        "specifyBody": "keypair",
+        "parametersBody": {
+          "values": [
+            {
+              "name": "token",
+              "value": "={{ $fromAI('token', 'كود العرض مثل WLT-XXXXXX') }}"
+            }
+          ]
+        },
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "x-agent-secret",
+              "value": "trim-mind-agent-secret-key-2026"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        }
+      },
+      "name": "Tool: claim_smart_waitlist_offer",
+      "type": "@n8n/n8n-nodes-langchain.toolHttpRequest",
+      "typeVersion": 1.1,
+      "position": [
+        1500,
+        480
+      ],
+      "id": "tool-claim_smart_waitlist_offer"
+    },
+    {
+      "parameters": {
+        "name": "check_waitlist_status",
+        "description": "الاستعلام عن طلب العميل في قائمة الانتظار الذكية وعروض الشواغر المتاحة له.",
+        "method": "POST",
+        "url": "https://trimmind.up.railway.app/api/agent-tools/waitlist/status",
+        "authentication": "none",
+        "sendHeaders": true,
+        "sendBody": true,
+        "specifyBody": "keypair",
+        "parametersBody": {
+          "values": [
+            {
+              "name": "phone",
+              "value": "={{ $fromAI('phone', 'رقم هاتف العميل') }}"
+            }
+          ]
+        },
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "x-agent-secret",
+              "value": "trim-mind-agent-secret-key-2026"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        }
+      },
+      "name": "Tool: check_waitlist_status",
+      "type": "@n8n/n8n-nodes-langchain.toolHttpRequest",
+      "typeVersion": 1.1,
+      "position": [
+        1640,
+        480
+      ],
+      "id": "tool-check_waitlist_status"
+    },
+    {
+      "parameters": {
+        "name": "check_noshow_status",
+        "description": "فحص سبب إلغاء الحجز التلقائي في حال عدم الحضور وتجاوز مهلة الـ 35 دقيقة (No-Show).",
+        "method": "POST",
+        "url": "https://trimmind.up.railway.app/api/agent-tools/no-show/check-status",
+        "authentication": "none",
+        "sendHeaders": true,
+        "sendBody": true,
+        "specifyBody": "keypair",
+        "parametersBody": {
+          "values": [
+            {
+              "name": "bookingId",
+              "value": "={{ $fromAI('bookingId', 'رقم الحجز اختياري') }}"
+            },
+            {
+              "name": "phone",
+              "value": "={{ $fromAI('phone', 'رقم هاتف العميل اختياري') }}"
+            }
+          ]
+        },
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "x-agent-secret",
+              "value": "trim-mind-agent-secret-key-2026"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        }
+      },
+      "name": "Tool: check_noshow_status",
+      "type": "@n8n/n8n-nodes-langchain.toolHttpRequest",
+      "typeVersion": 1.1,
+      "position": [
+        1780,
+        480
+      ],
+      "id": "tool-check_noshow_status"
+    },
+    {
+      "parameters": {
+        "name": "submit_payment_proof",
+        "description": "تسجيل إرسال صورة أو بيانات إيصال سداد العربون وربطها بالحجز لمراجعة الإدارة.",
+        "method": "POST",
+        "url": "https://trimmind.up.railway.app/api/agent-tools/payments/submit-proof",
+        "authentication": "none",
+        "sendHeaders": true,
+        "sendBody": true,
+        "specifyBody": "keypair",
+        "parametersBody": {
+          "values": [
+            {
+              "name": "phone",
+              "value": "={{ $fromAI('phone', 'رقم هاتف العميل') }}"
+            },
+            {
+              "name": "bookingId",
+              "value": "={{ $fromAI('bookingId', 'رقم الحجز اختياري') }}"
+            },
+            {
+              "name": "transactionRef",
+              "value": "={{ $fromAI('transactionRef', 'الرقم المرجعي للتحويل اختياري') }}"
+            },
+            {
+              "name": "proofImageUrl",
+              "value": "={{ $fromAI('proofImageUrl', 'رابط صورة الإيصال اختياري') }}"
+            }
+          ]
+        },
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "x-agent-secret",
+              "value": "trim-mind-agent-secret-key-2026"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        }
+      },
+      "name": "Tool: submit_payment_proof",
+      "type": "@n8n/n8n-nodes-langchain.toolHttpRequest",
+      "typeVersion": 1.1,
+      "position": [
+        1920,
+        480
+      ],
+      "id": "tool-submit_payment_proof"
     }
   ],
   "connections": {
@@ -586,6 +954,61 @@
           {
             "node": "AI Agent",
             "type": "ai_memory",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Tool: join_smart_waitlist": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Tool: claim_smart_waitlist_offer": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Tool: check_waitlist_status": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Tool: check_noshow_status": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Tool: submit_payment_proof": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_tool",
             "index": 0
           }
         ]

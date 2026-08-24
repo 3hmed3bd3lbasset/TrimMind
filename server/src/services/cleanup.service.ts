@@ -182,9 +182,40 @@ export async function ensureInitialDbData() {
         INDEX idx_wa_event (event_type),
         INDEX idx_wa_created (created_at)
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+      CREATE TABLE IF NOT EXISTS conversation_sessions (
+        id VARCHAR(64) PRIMARY KEY,
+        customer_phone VARCHAR(20) NOT NULL,
+        whatsapp_remote_jid VARCHAR(64) NULL,
+        channel ENUM('whatsapp') DEFAULT 'whatsapp',
+        state VARCHAR(40) NOT NULL DEFAULT 'IDLE',
+        active_booking_id VARCHAR(64) NULL,
+        pending_entities JSON NULL,
+        last_intent VARCHAR(40) NULL,
+        human_handoff_active TINYINT(1) DEFAULT 0,
+        human_handoff_expires_at TIMESTAMP NULL,
+        last_message_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        INDEX idx_cs_phone (customer_phone),
+        FOREIGN KEY (active_booking_id) REFERENCES bookings(id) ON DELETE SET NULL
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+      CREATE TABLE IF NOT EXISTS conversation_messages (
+        id VARCHAR(64) PRIMARY KEY,
+        session_id VARCHAR(64) NOT NULL,
+        whatsapp_message_id VARCHAR(128) NULL,
+        role ENUM('customer','assistant','system') NOT NULL,
+        content TEXT NOT NULL,
+        extracted_intent JSON NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        INDEX idx_cm_session (session_id),
+        UNIQUE KEY uq_cm_wa_msg (whatsapp_message_id),
+        FOREIGN KEY (session_id) REFERENCES conversation_sessions(id) ON DELETE CASCADE
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
     `);
 
-    // Safely add WhatsApp Concierge columns to bookings table
+    // Safely add WhatsApp Concierge columns and expand Enums
     const safeColumns = [
       'ALTER TABLE bookings ADD COLUMN source ENUM("web", "whatsapp") DEFAULT "web"',
       'ALTER TABLE bookings ADD COLUMN ai_brief TEXT NULL',
@@ -192,7 +223,11 @@ export async function ensureInitialDbData() {
       'ALTER TABLE bookings ADD COLUMN needs_human_attention BOOLEAN DEFAULT FALSE',
       'ALTER TABLE bookings ADD COLUMN handoff_expires_at TIMESTAMP NULL',
       'ALTER TABLE bookings ADD COLUMN custom_line_items JSON NULL',
+      'ALTER TABLE bookings ADD COLUMN custom_pricing_notes TEXT NULL',
       'ALTER TABLE bookings ADD COLUMN no_show_marked_at TIMESTAMP NULL',
+      'ALTER TABLE bookings MODIFY COLUMN status ENUM("draft", "awaiting_payment", "custom_pricing_requested", "payment_submitted", "pending_review", "confirmed", "customer_arrived", "in_service", "completed", "rejected", "cancelled", "expired", "no_show") DEFAULT "confirmed"',
+      'ALTER TABLE services ADD COLUMN aliases JSON NULL',
+      'ALTER TABLE services ADD COLUMN bundle_service_ids JSON NULL',
       'ALTER TABLE payment_proofs MODIFY COLUMN image_path LONGTEXT NULL',
       'ALTER TABLE financial_records ADD COLUMN previous_hash VARCHAR(64) DEFAULT "0000000000000000000000000000000000000000000000000000000000000000"',
       'ALTER TABLE financial_records ADD COLUMN record_hash VARCHAR(64) NULL',

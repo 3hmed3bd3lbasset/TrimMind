@@ -362,6 +362,100 @@ export class MySQLBookingRepository implements IBookingRepository {
     await query('UPDATE bookings SET status = "no_show", no_show_marked_at = NOW(), updated_at = NOW() WHERE id = ?', [bookingId]);
   }
 
+  public async updateCustomPricing(data: {
+    bookingId: string;
+    serviceName: string;
+    totalAmount: number;
+    depositRequired: number;
+    discount: number;
+    customLineItems: any[];
+    barberId?: string | null;
+    barberName?: string | null;
+  }): Promise<Booking> {
+    await query(
+      `UPDATE bookings 
+       SET status = 'awaiting_payment',
+           service_name = ?,
+           barber_id = COALESCE(?, barber_id),
+           barber_name = COALESCE(?, barber_name),
+           custom_line_items = ?,
+           discount_at_booking = ?,
+           total_at_booking = ?,
+           service_price_at_booking = ?,
+           booking_fee_at_booking = ?,
+           updated_at = NOW()
+       WHERE id = ?`,
+      [
+        data.serviceName,
+        data.barberId || null,
+        data.barberName || null,
+        JSON.stringify(data.customLineItems || []),
+        data.discount,
+        data.totalAmount,
+        data.totalAmount + data.discount,
+        data.depositRequired,
+        data.bookingId,
+      ]
+    );
+
+    const b = await this.findById(data.bookingId);
+    if (!b) throw new Error('Booking not found after updating custom pricing');
+    return b;
+  }
+
+  public async updateDraft(data: {
+    bookingId: string;
+    serviceId?: string;
+    serviceName?: string;
+    additionalServiceIds?: string[];
+    barberId?: string | null;
+    barberName?: string | null;
+    startsAt?: string;
+    notes?: string;
+  }): Promise<Booking> {
+    const setClauses: string[] = ['updated_at = NOW()'];
+    const params: any[] = [];
+
+    if (data.serviceId) {
+      setClauses.push('service_id = ?');
+      params.push(data.serviceId);
+    }
+    if (data.serviceName) {
+      setClauses.push('service_name = ?');
+      params.push(data.serviceName);
+    }
+    if (data.additionalServiceIds) {
+      setClauses.push('additional_service_ids = ?');
+      params.push(JSON.stringify(data.additionalServiceIds));
+    }
+    if (data.barberId !== undefined) {
+      setClauses.push('barber_id = ?');
+      params.push(data.barberId || null);
+    }
+    if (data.barberName !== undefined) {
+      setClauses.push('barber_name = ?');
+      params.push(data.barberName || null);
+    }
+    if (data.startsAt) {
+      setClauses.push('starts_at = ?');
+      params.push(data.startsAt);
+      const bookingDate = data.startsAt.split('T')[0].split(' ')[0];
+      setClauses.push('booking_date = ?');
+      params.push(bookingDate);
+    }
+    if (data.notes) {
+      setClauses.push('notes = ?');
+      params.push(data.notes);
+    }
+
+    params.push(data.bookingId);
+    await query(`UPDATE bookings SET ${setClauses.join(', ')} WHERE id = ?`, params);
+
+    const b = await this.findById(data.bookingId);
+    if (!b) throw new Error('Booking not found after updating draft');
+    return b;
+  }
+
   public async cancel(bookingId: string, reason?: string, actorId?: string): Promise<void> {
     await query(
       'UPDATE bookings SET status = "cancelled", cancellation_reason = ?, cancelled_at = NOW(), updated_at = NOW() WHERE id = ?',

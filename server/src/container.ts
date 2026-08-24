@@ -16,10 +16,15 @@ import { MySQLWaitlistRepository } from './adapters/repositories/MySQLWaitlistRe
 import { MySQLRecallRepository } from './adapters/repositories/MySQLRecallRepository.js';
 import { MySQLInsightsRepository } from './adapters/repositories/MySQLInsightsRepository.js';
 import { MySQLWebhookEventRepository } from './adapters/repositories/MySQLWebhookEventRepository.js';
+import { MySQLConversationSessionRepository } from './adapters/repositories/MySQLConversationSessionRepository.js';
+import { MySQLPaymentProofRepository } from './adapters/repositories/MySQLPaymentProofRepository.js';
 
 // Use Cases
 import { CreateBookingUseCase } from './usecases/bookings/CreateBookingUseCase.js';
 import { CancelBookingUseCase } from './usecases/bookings/CancelBookingUseCase.js';
+import { ApplyCustomPricingUseCase } from './usecases/bookings/ApplyCustomPricingUseCase.js';
+import { UpdateBookingDraftUseCase } from './usecases/bookings/UpdateBookingDraftUseCase.js';
+import { SubmitPaymentProofUseCase } from './usecases/payments/SubmitPaymentProofUseCase.js';
 import { AuthenticateStaffUseCase } from './usecases/auth/AuthenticateStaffUseCase.js';
 import { ProcessNoShowsUseCase } from './usecases/noshow/ProcessNoShowsUseCase.js';
 import { JoinWaitlistUseCase } from './usecases/waitlist/JoinWaitlistUseCase.js';
@@ -45,6 +50,8 @@ export class AppContainer {
   public readonly recallRepo = new MySQLRecallRepository();
   public readonly insightsRepo = new MySQLInsightsRepository();
   public readonly webhookEventRepo = new MySQLWebhookEventRepository();
+  public readonly conversationSessionRepo = new MySQLConversationSessionRepository();
+  public readonly paymentProofRepo = new MySQLPaymentProofRepository();
 
   // Use Cases
   public readonly createBookingUseCase = new CreateBookingUseCase(
@@ -58,6 +65,23 @@ export class AppContainer {
     this.chairRepo,
     this.waitlistRepo,
     this.notificationGateway,
+    this.realtimeNotifier
+  );
+
+  public readonly applyCustomPricingUseCase = new ApplyCustomPricingUseCase(
+    this.bookingRepo,
+    this.realtimeNotifier,
+    this.notificationGateway
+  );
+
+  public readonly updateBookingDraftUseCase = new UpdateBookingDraftUseCase(
+    this.bookingRepo,
+    this.realtimeNotifier
+  );
+
+  public readonly submitPaymentProofUseCase = new SubmitPaymentProofUseCase(
+    this.bookingRepo,
+    this.paymentProofRepo,
     this.realtimeNotifier
   );
 

@@ -93,7 +93,20 @@
             }
           ]
         },
-        "options": {}
+        "options": {},
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "x-agent-secret",
+              "value": "trim-mind-agent-secret-key-2026"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        }
       },
       "name": "Send WhatsApp Reply via Salon Backend",
       "type": "n8n-nodes-base.httpRequest",

@@ -1,23 +1,18 @@
 import { Router, Request, Response, NextFunction } from 'express';
 import { v4 as uuidv4 } from 'uuid';
+import crypto from 'crypto';
 import { query } from '../config/database.js';
 import { createBooking, cancelBooking, getBookingById } from '../services/booking.service.js';
 import { getBranchQueue } from '../services/queue.service.js';
 import { broadcastToBranch, broadcastGlobal } from '../socket/realtime.js';
-import { MySQLWaitlistRepository } from '../adapters/repositories/MySQLWaitlistRepository.js';
-import { MySQLBookingRepository } from '../adapters/repositories/MySQLBookingRepository.js';
-import { MySQLRecallRepository } from '../adapters/repositories/MySQLRecallRepository.js';
-import { SocketRealtimeNotifier } from '../adapters/gateways/SocketRealtimeNotifier.js';
-import { JoinWaitlistUseCase } from '../usecases/waitlist/JoinWaitlistUseCase.js';
-import { ClaimWaitlistOfferUseCase } from '../usecases/waitlist/ClaimWaitlistOfferUseCase.js';
-import { FindRecallCandidatesUseCase } from '../usecases/recall/FindRecallCandidatesUseCase.js';
-
-import crypto from 'crypto';
 import { AGENT_API_SECRET } from '../config/jwt.js';
+import { container } from '../index.js';
 
 const router = Router();
 
-// 1. Security & Authentication Middleware for Agent Tools (Constant-Time Verification)
+// ============================================================================
+// Security & Authentication Middleware for Agent Tools (Constant-Time Verification)
+// ============================================================================
 function requireAgentAuth(req: Request, res: Response, next: NextFunction): void {
   const secretHeader = req.headers['x-agent-secret'] || req.headers['x-api-key'];
   const authHeader = req.headers['authorization'];
@@ -61,15 +56,226 @@ router.use(requireAgentAuth);
 function normalizePhone(phone: string): string {
   if (!phone) return '';
   let cleaned = phone.replace(/\D+/g, '');
-  if (cleaned.startsWith('20')) {
+  if (cleaned.startsWith('20') && cleaned.length === 12) {
     cleaned = '0' + cleaned.substring(2);
   }
   return cleaned;
 }
 
-// ---------------------------------------------------------------------------
-// 1. Customer Lookup & History
-// ---------------------------------------------------------------------------
+// In-memory live mirror for backward compatibility and fast access
+export const liveSyncedBookings: any[] = [];
+export const liveSyncedState: {
+  branches: any[];
+  services: any[];
+  barbers: any[];
+  settings: any;
+} = {
+  branches: [],
+  services: [],
+  barbers: [],
+  settings: null,
+};
+
+// ============================================================================
+// 1. Session Persistence & Context Resolution (Database-First Single Source of Truth)
+// ============================================================================
+
+// POST /api/agent-tools/session/resolve
+router.post('/session/resolve', async (req: Request, res: Response) => {
+  try {
+    const { phone, remoteJid, pushName } = req.body;
+    const cleanPhone = normalizePhone(phone || remoteJid || '');
+
+    if (!cleanPhone && !remoteJid) {
+      return res.status(400).json({ success: false, error: 'Phone number or remoteJid is required' });
+    }
+
+    const session = await container.conversationSessionRepo.getOrCreate(cleanPhone || remoteJid, remoteJid);
+    const recentMessages = await container.conversationSessionRepo.getRecentMessages(session.id, 15);
+
+    // Fetch active booking if linked or find latest pending/awaiting_payment booking in DB
+    let activeBooking = null;
+    if (session.activeBookingId) {
+      activeBooking = await getBookingById(session.activeBookingId).catch(() => null);
+    }
+
+    if (!activeBooking && cleanPhone) {
+      const activeRows = await query<any[]>(
+        `SELECT id FROM bookings 
+         WHERE (customer_phone = ? OR customer_phone = ?) 
+           AND status IN ('draft', 'custom_pricing_requested', 'awaiting_payment', 'payment_submitted', 'pending_review', 'confirmed', 'customer_arrived', 'in_service')
+         ORDER BY created_at DESC LIMIT 1`,
+        [cleanPhone, cleanPhone.replace(/^0/, '20')]
+      ).catch(() => []);
+
+      if (activeRows && activeRows.length > 0) {
+        activeBooking = await getBookingById(activeRows[0].id).catch(() => null);
+        if (activeBooking) {
+          await container.conversationSessionRepo.update(session.id, { activeBookingId: activeBooking.id });
+          session.activeBookingId = activeBooking.id;
+        }
+      }
+    }
+
+    // Customer summary
+    const pastBookings = cleanPhone ? await query<any[]>(
+      `SELECT status, booking_date FROM bookings WHERE customer_phone = ? ORDER BY created_at DESC LIMIT 10`,
+      [cleanPhone]
+    ).catch(() => []) : [];
+
+    const visitsCount = pastBookings.filter((b) => b.status === 'completed').length;
+    const isCustomerKnown = visitsCount > 0 || (pastBookings.length > 0 && Boolean(pastBookings[0]?.customer_name));
+
+    return res.json({
+      success: true,
+      data: {
+        session: {
+          id: session.id,
+          phone: session.customerPhone,
+          remoteJid: session.whatsappRemoteJid,
+          state: session.state,
+          activeBookingId: session.activeBookingId,
+          pendingEntities: session.pendingEntities || {},
+          lastIntent: session.lastIntent,
+          humanHandoffActive: session.humanHandoffActive,
+          humanHandoffExpiresAt: session.humanHandoffExpiresAt,
+          lastMessageAt: session.lastMessageAt,
+        },
+        activeBooking,
+        customer: {
+          phone: cleanPhone,
+          pushName: pushName || '',
+          isKnown: isCustomerKnown,
+          totalVisits: visitsCount,
+        },
+        recentMessages,
+      },
+    });
+  } catch (err: any) {
+    return res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// POST /api/agent-tools/session/record-message
+router.post('/session/record-message', async (req: Request, res: Response) => {
+  try {
+    const { sessionId, phone, whatsappMessageId, role = 'customer', content, extractedIntent } = req.body;
+
+    let targetSessionId = sessionId;
+    if (!targetSessionId && phone) {
+      const cleanPhone = normalizePhone(phone);
+      const session = await container.conversationSessionRepo.getOrCreate(cleanPhone);
+      targetSessionId = session.id;
+    }
+
+    if (!targetSessionId) {
+      return res.status(400).json({ success: false, error: 'sessionId or phone is required' });
+    }
+
+    const result = await container.conversationSessionRepo.recordMessage(targetSessionId, {
+      whatsappMessageId,
+      role,
+      content: content || '',
+      extractedIntent,
+    });
+
+    return res.json({
+      success: true,
+      data: result,
+    });
+  } catch (err: any) {
+    return res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// POST /api/agent-tools/session/update-state
+router.post('/session/update-state', async (req: Request, res: Response) => {
+  try {
+    const { sessionId, phone, state, activeBookingId, pendingEntities, lastIntent } = req.body;
+
+    let targetSessionId = sessionId;
+    if (!targetSessionId && phone) {
+      const cleanPhone = normalizePhone(phone);
+      const session = await container.conversationSessionRepo.getOrCreate(cleanPhone);
+      targetSessionId = session.id;
+    }
+
+    if (!targetSessionId) {
+      return res.status(400).json({ success: false, error: 'sessionId or phone is required' });
+    }
+
+    await container.conversationSessionRepo.update(targetSessionId, {
+      state,
+      activeBookingId,
+      pendingEntities,
+      lastIntent,
+    });
+
+    return res.json({ success: true, message: 'Session state updated successfully' });
+  } catch (err: any) {
+    return res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// POST /api/agent-tools/handoff/request
+router.post('/handoff/request', async (req: Request, res: Response) => {
+  try {
+    const { phone, customerName, reason, message } = req.body;
+    const cleanPhone = normalizePhone(phone);
+
+    if (!cleanPhone) {
+      return res.status(400).json({ success: false, error: 'Phone number is required' });
+    }
+
+    const session = await container.conversationSessionRepo.getOrCreate(cleanPhone);
+    const expiresAt = new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString();
+
+    await container.conversationSessionRepo.update(session.id, {
+      humanHandoffActive: true,
+      humanHandoffExpiresAt: expiresAt,
+      state: 'HUMAN_HANDOFF',
+    });
+
+    // Mark active booking if exists
+    if (session.activeBookingId) {
+      await query(
+        'UPDATE bookings SET needs_human_attention = 1, handoff_expires_at = ? WHERE id = ?',
+        [new Date(expiresAt), session.activeBookingId]
+      ).catch(() => {});
+    }
+
+    // Log analytics
+    await query(
+      `INSERT INTO whatsapp_analytics_logs (id, phone, event_type, metadata, created_at)
+       VALUES (?, ?, 'human_handoff_requested', ?, NOW())`,
+      [uuidv4(), cleanPhone, JSON.stringify({ reason, message, customerName })]
+    ).catch(() => {});
+
+    // Broadcast to Reception Staff
+    broadcastToBranch('branch-elhdad', 'HUMAN_HANDOFF_REQUESTED', {
+      phone: cleanPhone,
+      customerName: customerName || 'عميل واتساب',
+      reason: reason || 'طلب التحدث مع موظف خدمة العملاء',
+      message: message || '',
+      timestamp: new Date().toISOString(),
+    });
+
+    return res.json({
+      success: true,
+      message: 'تم تحويل المحادثة لموظف الاستقبال بنجاح',
+      data: {
+        humanHandoffActive: true,
+        expiresAt,
+      },
+    });
+  } catch (err: any) {
+    return res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// ============================================================================
+// 2. Customer Lookup & History
+// ============================================================================
 router.post('/customer/lookup', async (req: Request, res: Response) => {
   try {
     const rawPhone = req.body.phone || req.body.phoneNumber || '';
@@ -79,16 +285,15 @@ router.post('/customer/lookup', async (req: Request, res: Response) => {
       return res.status(400).json({ success: false, error: 'رقم الهاتف غير صالح' });
     }
 
-    // Lookup bookings by this phone
     const pastBookings = await query<any[]>(
       `SELECT b.*, s.name as service_name, bar.full_name as barber_name, br.name as branch_name
        FROM bookings b
        LEFT JOIN services s ON b.service_id = s.id
        LEFT JOIN barbers bar ON b.barber_id = bar.id
        LEFT JOIN branches br ON b.branch_id = br.id
-       WHERE REPLACE(REPLACE(b.customer_phone, ' ', ''), '+', '') LIKE ?
+       WHERE (b.customer_phone = ? OR b.customer_phone = ?)
        ORDER BY b.created_at DESC LIMIT 5`,
-      [`%${cleanPhone.slice(-9)}%`]
+      [cleanPhone, cleanPhone.replace(/^0/, '20')]
     );
 
     const isExistingCustomer = pastBookings.length > 0;
@@ -127,168 +332,12 @@ router.post('/customer/lookup', async (req: Request, res: Response) => {
   }
 });
 
-export const liveSyncedBookings: any[] = [];
-
-export let liveSyncedState: {
-  branches: any[];
-  services: any[];
-  barbers: any[];
-  settings: any;
-} = {
-  branches: [
-    {
-      id: 'branch-elhdad',
-      name: 'الحداد - ELHDAD',
-      address: 'سقيل - مركز أوسيم',
-      phone: '01005437633',
-      openingTime: '10:00',
-      closingTime: '23:30',
-      totalChairs: 4,
-    },
-  ],
-  services: [
-    {
-      id: 'srv-vip-royal',
-      name: 'VIP Royal Cut',
-      description: 'تجربة ملكية متكاملة لقص الشعر بأعلى مستوى من الدقة (جناح خاص ومكيف، كرسي مساج، شاشة سينما، دخول فوري بدون انتظار)',
-      price: 650,
-      duration_minutes: 60,
-      category: 'vip',
-      is_vip_only: 1,
-    },
-    {
-      id: 'srv-vip-gentleman',
-      name: 'VIP Gentleman',
-      description: 'عناية شاملة ومميزة بالشعر واللحية في أجواء من الخصوصية التامة (جناح خاص، كرسي مساج، شاشة سينما، دخول فوري)',
-      price: 650,
-      duration_minutes: 90,
-      category: 'vip',
-      is_vip_only: 1,
-    },
-    {
-      id: 'srv-vip-full',
-      name: 'VIP Full Experience',
-      description: 'التجربة الكاملة للاسترخاء والعناية الفائقة بالشعر واللحية والبشرة (جناح VIP خاص، مساج، سينما، دخول فوري)',
-      price: 750,
-      duration_minutes: 120,
-      category: 'vip',
-      is_vip_only: 1,
-    },
-    {
-      id: 'srv-vip-executive',
-      name: 'VIP Executive',
-      description: 'الباقة التنفيذية الفاخرة لرجال الأعمال والنخبة (شاملة كل الخدمات والعناية الملكية)',
-      price: 900,
-      duration_minutes: 130,
-      category: 'vip',
-      is_vip_only: 1,
-    },
-    {
-      id: 'srv-haircut-classic',
-      name: 'قص شعر كلاسيكي',
-      description: 'قص وتصفيف شعر احترافي',
-      price: 180,
-      duration_minutes: 30,
-      category: 'hair',
-      is_vip_only: 0,
-    },
-    {
-      id: 'srv-haircut-beard',
-      name: 'قص شعر + لحية',
-      description: 'قص شعر متكامل وتحديد اللحية بالموس والبخار',
-      price: 220,
-      duration_minutes: 40,
-      category: 'hair',
-      is_vip_only: 0,
-    },
-    {
-      id: 'srv-fade',
-      name: 'تدريج Fade',
-      description: 'تدريج دقيق وعصري بأحدث الماكينات',
-      price: 180,
-      duration_minutes: 35,
-      category: 'hair',
-      is_vip_only: 0,
-    },
-    {
-      id: 'srv-beard-shape',
-      name: 'تحديد لحية',
-      description: 'تحديد وتشذيب اللحية مع زيوت العناية',
-      price: 100,
-      duration_minutes: 30,
-      category: 'beard',
-      is_vip_only: 0,
-    },
-    {
-      id: 'srv-kids',
-      name: 'قص شعر أطفال',
-      description: 'قص شعر مميز للأطفال بأمان وعناية خاصة',
-      price: 120,
-      duration_minutes: 40,
-      category: 'hair',
-      is_vip_only: 0,
-    },
-    {
-      id: 'srv-skincare',
-      name: 'تنظيف بشرة',
-      description: 'جلسة تنظيف وتقشير عميق للبشرة بالبخار وماسك نضارة',
-      price: 240,
-      duration_minutes: 45,
-      category: 'skincare',
-      is_vip_only: 0,
-    },
-    {
-      id: 'srv-protein',
-      name: 'بروتين وترطيب شعر',
-      description: 'علاج وترطيب وتغذية الشعر بالبروتين العلاجي',
-      price: 300,
-      duration_minutes: 60,
-      category: 'treatment',
-      is_vip_only: 0,
-    },
-  ],
-  barbers: [
-    {
-      id: 'barber-lead',
-      full_name: 'كابتن الصالون الرئيسي',
-      specialty: 'خبير قص وتصفيف وتسريحات VIP',
-      rating: 4.9,
-      rating_count: 38,
-      branch_id: 'branch-elhdad',
-      branch_name: 'الحداد - ELHDAD',
-    },
-    {
-      id: 'barber-beard-specialist',
-      full_name: 'مصفف اللحية والعناية بالبشرة',
-      specialty: 'متخصص اللحية الملكية وماسكات البشرة',
-      rating: 4.9,
-      rating_count: 26,
-      branch_id: 'branch-elhdad',
-      branch_name: 'الحداد - ELHDAD',
-    },
-  ],
-  settings: null,
-};
-
-// Sync live state from web frontend directly
-router.post('/sync-store', (req: Request, res: Response) => {
-  const { branches, services, barbers, settings } = req.body;
-  if (Array.isArray(branches) && branches.length > 0) liveSyncedState.branches = branches;
-  if (Array.isArray(services) && services.length > 0) liveSyncedState.services = services;
-  if (Array.isArray(barbers) && barbers.length > 0) liveSyncedState.barbers = barbers;
-  if (settings) liveSyncedState.settings = settings;
-  return res.json({ success: true, message: 'تمت المزامنة الحية بنجاح' });
-});
-
-// ---------------------------------------------------------------------------
-// 0. Branches List (Live Branches, Address, Working Hours, Phone)
-// ---------------------------------------------------------------------------
+// ============================================================================
+// 3. Branches & Salon Data
+// ============================================================================
 router.post('/branches/list', async (_req: Request, res: Response) => {
   try {
-    let branches = await query<any[]>('SELECT * FROM branches WHERE is_active = 1 ORDER BY name ASC');
-    if (!branches || branches.length === 0) {
-      branches = liveSyncedState.branches;
-    }
+    const branches = await query<any[]>('SELECT * FROM branches WHERE is_active = 1 ORDER BY name ASC');
     return res.json({
       success: true,
       data: branches.map((b) => ({
@@ -296,13 +345,13 @@ router.post('/branches/list', async (_req: Request, res: Response) => {
         name: b.name,
         address: b.address,
         phone: b.phone,
-        openingTime: b.opening_time || b.openingTime || '10:00',
-        closingTime: b.closing_time || b.closingTime || '23:30',
-        totalChairs: b.total_chairs || b.totalChairs || 4,
+        openingTime: b.opening_time || '10:00',
+        closingTime: b.closing_time || '23:30',
+        totalChairs: b.total_chairs || 4,
         paymentAccounts: {
-          vodafoneCash: b.vodafone_cash || liveSyncedState.settings?.vodafone_cash_number || b.phone || '01005437633',
-          instapay: b.instapay_username || liveSyncedState.settings?.instapay_username || b.phone || '01005437633',
-          depositRequired: liveSyncedState.settings?.booking_fee_normal || 50,
+          vodafoneCash: b.vodafone_cash || '01005437633',
+          instapay: b.instapay_username || '01005437633',
+          depositRequired: 50,
         },
       })),
     });
@@ -311,33 +360,22 @@ router.post('/branches/list', async (_req: Request, res: Response) => {
   }
 });
 
-// ---------------------------------------------------------------------------
-// 2. Services List
-// ---------------------------------------------------------------------------
+// ============================================================================
+// 4. Services & Packages List
+// ============================================================================
 router.post('/services/list', async (req: Request, res: Response) => {
   try {
-    const { branchId, category } = req.body;
-    let sql = 'SELECT * FROM services WHERE is_active = 1';
+    const { category } = req.body;
+    let sql = 'SELECT * FROM services WHERE is_active = 1 OR is_active IS NULL';
     const params: any[] = [];
 
     if (category) {
       sql += ' AND category = ?';
       params.push(category);
     }
-
     sql += ' ORDER BY price ASC';
-    let services = await query<any[]>(sql, params);
 
-    if ((!services || services.length === 0) && liveSyncedState.services.length > 0) {
-      services = liveSyncedState.services;
-      if (category) {
-        services = services.filter((s: any) => s.category === category);
-      }
-    }
-
-    if (!services || services.length === 0) {
-      services = liveSyncedState.services;
-    }
+    const services = await query<any[]>(sql, params);
 
     return res.json({
       success: true,
@@ -346,9 +384,10 @@ router.post('/services/list', async (req: Request, res: Response) => {
         name: s.name,
         description: s.description,
         price: Number(s.price),
-        durationMinutes: s.duration_minutes || s.durationMinutes || 30,
-        category: s.category,
-        isVipOnly: Boolean(s.is_vip_only || s.isVipOnly),
+        durationMinutes: s.duration_minutes || 30,
+        category: s.category || 'general',
+        isVipOnly: Boolean(s.is_vip_only),
+        aliases: s.aliases ? (typeof s.aliases === 'string' ? JSON.parse(s.aliases) : s.aliases) : [],
       })),
     });
   } catch (err: any) {
@@ -356,9 +395,82 @@ router.post('/services/list', async (req: Request, res: Response) => {
   }
 });
 
-// ---------------------------------------------------------------------------
-// 3. Barbers List
-// ---------------------------------------------------------------------------
+// POST /api/agent-tools/packages/list
+router.post('/packages/list', async (_req: Request, res: Response) => {
+  try {
+    const packages = await query<any[]>(
+      `SELECT * FROM services 
+       WHERE (category = 'vip' OR is_vip_only = 1 OR bundle_service_ids IS NOT NULL) 
+         AND (is_active = 1 OR is_active IS NULL) 
+       ORDER BY price ASC`
+    );
+
+    return res.json({
+      success: true,
+      data: packages.map((p) => ({
+        id: p.id,
+        name: p.name,
+        description: p.description,
+        price: Number(p.price),
+        durationMinutes: p.duration_minutes || 60,
+        isVipOnly: true,
+        bundledServiceIds: p.bundle_service_ids ? (typeof p.bundle_service_ids === 'string' ? JSON.parse(p.bundle_service_ids) : p.bundle_service_ids) : [],
+      })),
+    });
+  } catch (err: any) {
+    return res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// POST /api/agent-tools/packages/details
+router.post('/packages/details', async (req: Request, res: Response) => {
+  try {
+    const { packageId } = req.body;
+    if (!packageId) {
+      return res.status(400).json({ success: false, error: 'packageId is required' });
+    }
+
+    const rows = await query<any[]>(
+      'SELECT * FROM services WHERE id = ? OR name LIKE ? LIMIT 1',
+      [packageId, `%${packageId}%`]
+    );
+
+    if (!rows || rows.length === 0) {
+      return res.status(404).json({ success: false, error: 'الباقة غير موجودة' });
+    }
+
+    const p = rows[0];
+    let bundledServices: any[] = [];
+    if (p.bundle_service_ids) {
+      const ids = typeof p.bundle_service_ids === 'string' ? JSON.parse(p.bundle_service_ids) : p.bundle_service_ids;
+      if (Array.isArray(ids) && ids.length > 0) {
+        bundledServices = await query<any[]>(
+          `SELECT id, name, price, duration_minutes FROM services WHERE id IN (?)`,
+          [ids]
+        ).catch(() => []);
+      }
+    }
+
+    return res.json({
+      success: true,
+      data: {
+        id: p.id,
+        name: p.name,
+        description: p.description,
+        price: Number(p.price),
+        durationMinutes: p.duration_minutes || 60,
+        isVipOnly: Boolean(p.is_vip_only),
+        bundledServices,
+      },
+    });
+  } catch (err: any) {
+    return res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// ============================================================================
+// 5. Barbers List
+// ============================================================================
 router.post('/barbers/list', async (req: Request, res: Response) => {
   try {
     const { branchId } = req.body;
@@ -366,7 +478,7 @@ router.post('/barbers/list', async (req: Request, res: Response) => {
       SELECT bar.*, br.name as branch_name 
       FROM barbers bar
       LEFT JOIN branches br ON bar.branch_id = br.id
-      WHERE bar.is_active = 1
+      WHERE bar.is_active = 1 OR bar.is_active IS NULL
     `;
     const params: any[] = [];
 
@@ -375,37 +487,7 @@ router.post('/barbers/list', async (req: Request, res: Response) => {
       params.push(branchId);
     }
 
-    let barbers = await query<any[]>(sql, params);
-
-    if ((!barbers || barbers.length === 0) && liveSyncedState.barbers.length > 0) {
-      barbers = liveSyncedState.barbers;
-      if (branchId) {
-        barbers = barbers.filter((b: any) => b.branch_id === branchId || b.branchId === branchId);
-      }
-    }
-
-    if (!barbers || barbers.length === 0) {
-      barbers = [
-        {
-          id: 'barber-lead',
-          full_name: 'كابتن الصالون الرئيسي',
-          specialty: 'خبير قص وتصفيف وتسريحات VIP',
-          rating: 4.9,
-          rating_count: 38,
-          branch_id: 'branch-elhdad',
-          branch_name: 'الحداد - ELHDAD',
-        },
-        {
-          id: 'barber-beard-specialist',
-          full_name: 'مصفف اللحية والعناية بالبشرة',
-          specialty: 'متخصص اللحية الملكية وماسكات البشرة',
-          rating: 4.9,
-          rating_count: 26,
-          branch_id: 'branch-elhdad',
-          branch_name: 'الحداد - ELHDAD',
-        },
-      ];
-    }
+    const barbers = await query<any[]>(sql, params);
 
     return res.json({
       success: true,
@@ -416,7 +498,7 @@ router.post('/barbers/list', async (req: Request, res: Response) => {
         rating: Number(b.rating || 4.9),
         ratingCount: b.rating_count || b.ratingCount || 0,
         branchId: b.branch_id || b.branchId,
-        branchName: b.branch_name || b.branchName || 'الحداد - ELHDAD',
+        branchName: b.branch_name || 'صالون الحداد VIP',
       })),
     });
   } catch (err: any) {
@@ -424,34 +506,153 @@ router.post('/barbers/list', async (req: Request, res: Response) => {
   }
 });
 
-// ---------------------------------------------------------------------------
-// 4. Availability Check
-// ---------------------------------------------------------------------------
+// ============================================================================
+// 6. Booking Settings (Database-First Source of Truth)
+// ============================================================================
+router.post('/settings/booking', async (_req: Request, res: Response) => {
+  try {
+    const settingsRows = await query<any[]>('SELECT `key`, `value` FROM settings').catch(() => []);
+    const settingsMap: Record<string, string> = {};
+    settingsRows.forEach((r) => {
+      settingsMap[r.key] = r.value;
+    });
+
+    const branch = (await query<any[]>('SELECT * FROM branches WHERE is_active = 1 LIMIT 1'))?.[0];
+
+    const depositNormal = Number(settingsMap['booking_fee_normal'] || 50);
+    const depositVip = Number(settingsMap['booking_fee_vip'] || 100);
+    const instapay = settingsMap['instapay_username'] || branch?.instapay_username || '01005437633';
+    const vodafoneCash = settingsMap['vodafone_cash_number'] || branch?.vodafone_cash || '01005437633';
+
+    return res.json({
+      success: true,
+      data: {
+        depositAmounts: {
+          normal: depositNormal,
+          vip: depositVip,
+        },
+        paymentAccounts: {
+          instapay,
+          vodafoneCash,
+        },
+        operatingHours: {
+          openingTime: branch?.opening_time || '10:00',
+          closingTime: branch?.closing_time || '23:30',
+        },
+        salonName: 'TrimMind — صالون الحداد VIP',
+        trackingBaseUrl: 'https://trimmind.up.railway.app/track',
+      },
+    });
+  } catch (err: any) {
+    return res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// ============================================================================
+// 7. Real DB Availability Check
+// ============================================================================
 router.post('/availability/check', async (req: Request, res: Response) => {
   try {
-    const { branchId, barberId, date, startsAt, bookingType = 'normal' } = req.body;
+    const { branchId, barberId, serviceId, serviceIds = [], date, startsAt } = req.body;
     const targetDate = (date || startsAt || new Date().toISOString()).split('T')[0];
 
-    let branch = null;
-    try {
-      if (branchId) {
-        const branches = await query<any[]>('SELECT * FROM branches WHERE id = ? LIMIT 1', [branchId]);
-        branch = branches[0];
-      } else {
-        const branches = await query<any[]>('SELECT * FROM branches WHERE is_active = 1 LIMIT 1');
-        branch = branches[0];
-      }
-    } catch {}
+    const branches = await query<any[]>('SELECT * FROM branches WHERE (id = ? OR is_active = 1) LIMIT 1', [branchId || '']);
+    const branch = branches[0] || {
+      id: 'branch-elhdad',
+      name: 'صالون الحداد VIP',
+      opening_time: '10:00',
+      closing_time: '23:30',
+      total_chairs: 4,
+    };
 
-    if (!branch) {
-      branch = liveSyncedState.branches[0] || {
-        id: 'branch-elhdad',
-        name: 'الحداد - ELHDAD',
-        opening_time: '10:00',
-        closing_time: '23:30',
-      };
+    // Calculate requested duration
+    let totalDurationMinutes = 30;
+    const allServiceIds = serviceId ? [serviceId, ...serviceIds] : serviceIds;
+    if (allServiceIds.length > 0) {
+      const srvRows = await query<any[]>(
+        `SELECT duration_minutes FROM services WHERE id IN (?)`,
+        [allServiceIds]
+      ).catch(() => []);
+      if (srvRows && srvRows.length > 0) {
+        totalDurationMinutes = srvRows.reduce((sum, s) => sum + Number(s.duration_minutes || 30), 0);
+      }
     }
 
+    if (startsAt) {
+      const requestedStart = new Date(startsAt.includes('T') ? startsAt : startsAt.replace(' ', 'T'));
+      const requestedEnd = new Date(requestedStart.getTime() + totalDurationMinutes * 60 * 1000);
+      const startStr = requestedStart.toISOString().replace('T', ' ').substring(0, 19);
+      const endStr = requestedEnd.toISOString().replace('T', ' ').substring(0, 19);
+
+      // Check barber specific conflict
+      if (barberId) {
+        const barberConflicts = await query<any[]>(
+          `SELECT id, customer_name, starts_at, ends_at FROM bookings
+           WHERE barber_id = ?
+             AND booking_date = ?
+             AND status IN ('confirmed', 'awaiting_payment', 'payment_submitted', 'pending_review', 'customer_arrived', 'in_service')
+             AND (starts_at < ? AND (ends_at > ? OR starts_at >= ?))
+           LIMIT 1`,
+          [barberId, targetDate, endStr, startStr, startStr]
+        );
+
+        if (barberConflicts && barberConflicts.length > 0) {
+          return res.json({
+            success: true,
+            data: {
+              branchId: branch.id,
+              branchName: branch.name,
+              date: targetDate,
+              isSlotAvailable: false,
+              conflictReason: 'الكابتن المطلوب محجوز في هذا الوقت المحدد',
+              suggestedAlternative: 'يمكنك اختيار كابتن آخر أو حجز موعد بعد 45 دقيقة',
+            },
+          });
+        }
+      }
+
+      // Check branch chairs capacity
+      const totalChairs = Number(branch.total_chairs || 4);
+      const concurrentBookings = await query<any[]>(
+        `SELECT COUNT(*) as count FROM bookings
+         WHERE (branch_id = ? OR branch_id IS NULL)
+           AND booking_date = ?
+           AND status IN ('confirmed', 'awaiting_payment', 'payment_submitted', 'pending_review', 'customer_arrived', 'in_service')
+           AND starts_at < ? AND (ends_at > ? OR starts_at >= ?)`,
+        [branch.id, targetDate, endStr, startStr, startStr]
+      );
+
+      const activeCount = Number(concurrentBookings[0]?.count || 0);
+      if (activeCount >= totalChairs) {
+        return res.json({
+          success: true,
+          data: {
+            branchId: branch.id,
+            branchName: branch.name,
+            date: targetDate,
+            isSlotAvailable: false,
+            conflictReason: 'كافة كراسي الصالون مشغولة في هذا التوقيت',
+            suggestedAlternative: 'المواعيد ممتلئة تماماً، يمكنك الانضمام لقائمة الانتظار الذكية وسنبلغك فور إلغاء أي موعد',
+          },
+        });
+      }
+
+      return res.json({
+        success: true,
+        data: {
+          branchId: branch.id,
+          branchName: branch.name,
+          date: targetDate,
+          isSlotAvailable: true,
+          conflictReason: null,
+          openingTime: branch.opening_time || '10:00',
+          closingTime: branch.closing_time || '23:30',
+          estimatedWaitTimeMinutes: 5,
+        },
+      });
+    }
+
+    // If only date provided
     return res.json({
       success: true,
       data: {
@@ -459,34 +660,25 @@ router.post('/availability/check', async (req: Request, res: Response) => {
         branchName: branch.name,
         date: targetDate,
         isSlotAvailable: true,
-        conflictReason: null,
-        openingTime: branch.opening_time || branch.openingTime || '10:00',
-        closingTime: branch.closing_time || branch.closingTime || '23:30',
-        estimatedWaitTimeMinutes: 10,
+        openingTime: branch.opening_time || '10:00',
+        closingTime: branch.closing_time || '23:30',
+        availableTimeSlots: ['14:00', '15:30', '17:00', '18:30', '20:00', '21:30'],
       },
     });
   } catch (err: any) {
-    return res.json({
-      success: true,
-      data: {
-        branchId: 'branch-elhdad',
-        branchName: 'الحداد - ELHDAD',
-        isSlotAvailable: true,
-        openingTime: '10:00',
-        closingTime: '23:30',
-      },
-    });
+    return res.status(500).json({ success: false, error: err.message });
   }
 });
 
-// ---------------------------------------------------------------------------
-// 5. Create Pending Booking (Idempotent)
-// ---------------------------------------------------------------------------
+// ============================================================================
+// 8. Create Pending Booking (Idempotent + Complete HTTP Response)
+// ============================================================================
 router.post('/bookings/create-pending', async (req: Request, res: Response) => {
   try {
     const {
       customerName,
       customerPhone,
+      phone,
       branchId,
       barberId,
       serviceId,
@@ -497,177 +689,212 @@ router.post('/bookings/create-pending', async (req: Request, res: Response) => {
       notes,
     } = req.body;
 
-    const rawPhone = req.body.customerPhone || req.body.phone || req.body.phoneNumber || '';
-    const finalCustomerName = (req.body.customerName || req.body.name || req.body.clientName || 'عميل الصالون').trim();
+    const rawPhone = customerPhone || phone || req.body.phoneNumber || '';
+    const finalCustomerName = (customerName || req.body.name || req.body.clientName || 'عميل الصالون').trim();
+    const cleanPhone = normalizePhone(rawPhone);
 
-    if (!rawPhone) {
+    if (!cleanPhone || cleanPhone.length < 8) {
       return res.status(400).json({
         success: false,
-        error: 'بيانات الحجز غير مكتملة (رقم الهاتف مطلوب).',
+        error: 'بيانات الحجز غير مكتملة (رقم الهاتف مطلوب وصحيح).',
       });
     }
 
-    const cleanPhone = normalizePhone(rawPhone);
-    const finalBranchId = branchId || liveSyncedState.branches[0]?.id || 'branch-elhdad';
-    const bookingId = `BK-${Math.floor(1000 + Math.random() * 9000)}`;
+    // Check Idempotency Key via WebhookEventRepository
+    if (idempotencyKey) {
+      const existingEvent = await container.webhookEventRepo.find(idempotencyKey);
+      if (existingEvent) {
+        return res.json({
+          success: true,
+          message: 'تم استرجاع الحجز المسجل مسبقاً بنجاح (Idempotency Safe).',
+          data: existingEvent.payload,
+        });
+      }
+    }
 
-    const matchedService = liveSyncedState.services.find(
-      (s) => s.id === serviceId || s.name.toLowerCase().includes((serviceId || '').toLowerCase())
-    ) || { id: 'srv-haircut', name: 'قص شعر كلاسيكي', price: 180 };
+    const branchRows = await query<any[]>('SELECT * FROM branches WHERE is_active = 1 LIMIT 1');
+    const finalBranchId = branchId || branchRows[0]?.id || 'branch-elhdad';
+    const branchRow = branchRows[0];
 
-    const resolvedServiceName = matchedService.name;
+    // Resolve service from DB
+    let matchedService = null;
+    if (serviceId) {
+      const srvRows = await query<any[]>(
+        'SELECT * FROM services WHERE id = ? OR name LIKE ? LIMIT 1',
+        [serviceId, `%${serviceId}%`]
+      );
+      if (srvRows && srvRows.length > 0) {
+        matchedService = srvRows[0];
+      }
+    }
+    if (!matchedService) {
+      const defaultSrv = await query<any[]>('SELECT * FROM services WHERE is_active = 1 ORDER BY price ASC LIMIT 1');
+      matchedService = defaultSrv[0] || { id: 'srv-haircut', name: 'قص شعر كلاسيكي', price: 180, duration_minutes: 30 };
+    }
+
     const resolvedPrice = Number(matchedService.price || 180);
-    const resolvedBookingType = (serviceId?.toLowerCase().includes('vip') || matchedService.name.toLowerCase().includes('vip') || bookingType === 'vip') ? 'vip' : 'normal';
+    const resolvedBookingType = (bookingType === 'vip' || matchedService.is_vip_only || matchedService.name?.toLowerCase().includes('vip')) ? 'vip' : 'normal';
+
+    const settingsRows = await query<any[]>('SELECT `key`, `value` FROM settings').catch(() => []);
+    const settingsMap: Record<string, string> = {};
+    settingsRows.forEach((r) => { settingsMap[r.key] = r.value; });
+
+    const depositRequired = resolvedBookingType === 'vip'
+      ? Number(settingsMap['booking_fee_vip'] || 100)
+      : Number(settingsMap['booking_fee_normal'] || 50);
 
     let finalStartsAt = startsAt || `${new Date().toISOString().split('T')[0]} 16:00:00`;
     const currentYear = new Date().getFullYear().toString();
     if (finalStartsAt.startsWith('2025') || finalStartsAt.startsWith('2024') || finalStartsAt.startsWith('2023')) {
       finalStartsAt = finalStartsAt.replace(/^\d{4}/, currentYear);
     }
-    const bookingDate = finalStartsAt.split('T')[0].split(' ')[0];
-    const existingDayBookings = liveSyncedBookings.filter((b) => (b.starts_at || b.startsAt || '').startsWith(bookingDate));
-    const nextQueueNum = existingDayBookings.length + 1;
 
-    try {
-      const payload = {
-        customerName: finalCustomerName,
-        customerPhone: cleanPhone,
-        branchId: finalBranchId,
-        barberId: barberId || null,
-        serviceId: matchedService.id,
-        additionalServiceIds,
-        bookingType: resolvedBookingType,
-        startsAt: finalStartsAt,
-        notes: notes || 'تم الحجز عبر مساعد واتساب الذكي',
-      };
+    const payload = {
+      customerName: finalCustomerName,
+      customerPhone: cleanPhone,
+      branchId: finalBranchId,
+      barberId: barberId || null,
+      serviceId: matchedService.id,
+      additionalServiceIds,
+      bookingType: resolvedBookingType,
+      startsAt: finalStartsAt,
+      notes: notes || 'تم الحجز عبر مساعد واتساب الذكي',
+    };
 
-      let branchRow = (await query<any[]>('SELECT * FROM branches WHERE id = ?', [finalBranchId]))?.[0];
-      if (!branchRow) {
-        branchRow = (await query<any[]>('SELECT * FROM branches LIMIT 1'))?.[0];
-      }
-      const instapayHandle = branchRow?.instapay_username || liveSyncedState.settings?.instapay_username || branchRow?.phone || '01285694670';
-      const vodafoneCashNumber = branchRow?.vodafone_cash_number || liveSyncedState.settings?.vodafone_cash_number || branchRow?.phone || '01285694689';
+    const instapayHandle = settingsMap['instapay_username'] || branchRow?.instapay_username || '01005437633';
+    const vodafoneCashNumber = settingsMap['vodafone_cash_number'] || branchRow?.vodafone_cash || '01005437633';
 
-      const newBooking = await createBooking(payload, { role: 'whatsapp_agent' }, req.ip);
-      const bookingData = {
-        id: newBooking.id,
-        bookingId: newBooking.id,
-        customer_name: newBooking.customer_name,
-        customerName: newBooking.customer_name,
-        customer_phone: cleanPhone,
-        customerPhone: cleanPhone,
-        service_id: payload.serviceId,
-        service_name: resolvedServiceName,
-        serviceName: resolvedServiceName,
-        booking_type: resolvedBookingType,
-        bookingType: resolvedBookingType,
-        branch_id: finalBranchId,
-        branch_name: branchRow?.name || 'الحداد - ELHDAD',
-        status: newBooking.status,
-        queue_number: newBooking.queue_number || nextQueueNum,
-        queueNumber: newBooking.queue_number || nextQueueNum,
-        starts_at: newBooking.starts_at,
-        startsAt: newBooking.starts_at,
-        booking_fee_at_booking: 50,
-        depositRequired: 50,
-        total_at_booking: resolvedPrice,
-        totalAmount: resolvedPrice,
-        secure_token: (newBooking as any).secure_token || (newBooking as any).secureToken || `TK-${newBooking.id}`,
-        created_at: new Date().toISOString(),
-        trackingUrl: `https://trimmind.up.railway.app/track?q=${newBooking.id}`,
-        paymentInstructions: {
-          instapay: instapayHandle,
-          vodafoneCash: vodafoneCashNumber,
-          depositRequired: 50,
-        },
-      };
+    const newBooking = await createBooking(payload, { role: 'whatsapp_agent' }, req.ip);
 
-      liveSyncedBookings.unshift(bookingData);
+    const bookingData = {
+      id: newBooking.id,
+      bookingId: newBooking.id,
+      customer_name: newBooking.customer_name,
+      customerName: newBooking.customer_name,
+      customer_phone: cleanPhone,
+      customerPhone: cleanPhone,
+      service_id: payload.serviceId,
+      service_name: matchedService.name,
+      serviceName: matchedService.name,
+      booking_type: resolvedBookingType,
+      bookingType: resolvedBookingType,
+      branch_id: finalBranchId,
+      branch_name: branchRow?.name || 'صالون الحداد VIP',
+      status: newBooking.status,
+      queue_number: newBooking.queue_number || 1,
+      queueNumber: newBooking.queue_number || 1,
+      starts_at: newBooking.starts_at,
+      startsAt: newBooking.starts_at,
+      booking_fee_at_booking: depositRequired,
+      depositRequired,
+      total_at_booking: resolvedPrice,
+      totalAmount: resolvedPrice,
+      secure_token: (newBooking as any).secure_token || `TK-${newBooking.id}`,
+      created_at: new Date().toISOString(),
+      trackingUrl: `https://trimmind.up.railway.app/track?q=${newBooking.id}`,
+      paymentInstructions: {
+        instapay: instapayHandle,
+        vodafoneCash: vodafoneCashNumber,
+        depositRequired,
+      },
+    };
 
-    } catch (dbErr: any) {
-      console.error('Database error in /bookings/create-pending:', dbErr);
-      return res.status(500).json({
-        success: false,
-        error: 'تعذر تسجيل الحجز في قاعدة البيانات، يرجى إعادة المحاولة.',
-        details: dbErr?.message || 'DB Error',
+    // Update conversation session in DB
+    const session = await container.conversationSessionRepo.getOrCreate(cleanPhone);
+    await container.conversationSessionRepo.update(session.id, {
+      activeBookingId: newBooking.id,
+      state: 'AWAITING_PAYMENT',
+      lastIntent: 'booking_created',
+    });
+
+    // Save Idempotency Event
+    if (idempotencyKey) {
+      await container.webhookEventRepo.record({
+        id: idempotencyKey,
+        source: 'whatsapp_agent_create_pending',
+        eventType: 'BOOKING_CREATED',
+        payload: bookingData,
       });
     }
+
+    // Mirror to liveSyncedBookings for fast search
+    liveSyncedBookings.unshift(bookingData);
+
+    return res.json({
+      success: true,
+      message: 'تم تسجيل طلب الحجز بنجاح وفي انتظار استلام إثبات سداد العربون لتأكيده.',
+      data: bookingData,
+    });
   } catch (err: any) {
     return res.status(500).json({ success: false, error: err.message });
   }
 });
 
-// ---------------------------------------------------------------------------
-// 6. Get Booking Status
-// ---------------------------------------------------------------------------
-router.post('/bookings/status', async (req: Request, res: Response) => {
+// ============================================================================
+// 9. Create Custom Booking Request (Custom Services / Dynamic Pricing)
+// ============================================================================
+router.post('/bookings/create-custom-request', async (req: Request, res: Response) => {
   try {
-    const { phone, bookingId } = req.body;
+    const { customerName, phone, requestedServicesText, notes, preferredBarberId, startsAt } = req.body;
     const cleanPhone = normalizePhone(phone);
 
-    let rows: any[] = [];
-
-    if (bookingId) {
-      rows = await query<any[]>(
-        `SELECT b.*, s.name as service_name, bar.full_name as barber_name, br.name as branch_name
-         FROM bookings b
-         LEFT JOIN services s ON b.service_id = s.id
-         LEFT JOIN barbers bar ON b.barber_id = bar.id
-         LEFT JOIN branches br ON b.branch_id = br.id
-         WHERE b.id = ? LIMIT 1`,
-        [bookingId.trim().toUpperCase()]
-      );
-    } else if (cleanPhone) {
-      rows = await query<any[]>(
-        `SELECT b.*, s.name as service_name, bar.full_name as barber_name, br.name as branch_name
-         FROM bookings b
-         LEFT JOIN services s ON b.service_id = s.id
-         LEFT JOIN barbers bar ON b.barber_id = bar.id
-         LEFT JOIN branches br ON b.branch_id = br.id
-         WHERE REPLACE(REPLACE(b.customer_phone, ' ', ''), '+', '') LIKE ?
-         ORDER BY b.created_at DESC LIMIT 1`,
-        [`%${cleanPhone.slice(-9)}%`]
-      );
-    } else {
-      return res.status(400).json({ success: false, error: 'يرجى تزويد رقم الهاتف أو رقم الحجز' });
+    if (!cleanPhone) {
+      return res.status(400).json({ success: false, error: 'رقم الهاتف مطلوب لطلب الحجز المخصص' });
     }
 
-    if (!rows || rows.length === 0) {
-      return res.status(404).json({ success: false, error: 'لم يتم العثور على حجز مطابق.' });
-    }
+    const bookingId = `BK-${Math.floor(1000 + Math.random() * 9000)}`;
+    const branchRow = (await query<any[]>('SELECT * FROM branches WHERE is_active = 1 LIMIT 1'))?.[0];
+    const defaultService = (await query<any[]>('SELECT id FROM services LIMIT 1'))?.[0];
 
-    const b = rows[0];
+    const finalCustomerName = (customerName || 'عميل واتساب').trim();
+    const finalStartsAt = startsAt || `${new Date().toISOString().split('T')[0]} 16:00:00`;
+    const bookingDate = finalStartsAt.split('T')[0].split(' ')[0];
 
-    // Status translation in natural Egyptian Arabic
-    const statusMap: Record<string, string> = {
-      awaiting_payment: 'بانتظار تحويل العربون لتأكيد الموعد ⏳',
-      payment_submitted: 'تم إرسال إثبات الدفع وقيد مراجعة الاستقبال 🔍',
-      pending_review: 'قيد مراجعة الإيصال وتأكيد الحجز 🔍',
-      confirmed: 'مؤكد ومسجل في جدول المواعيد بنجاح ✅',
-      customer_arrived: 'وصل الصالون وبانتظار النداء للدخول للكرسي 💈',
-      in_service: 'داخل جلسة الحلاقة على الكرسي حالياً ✂️',
-      completed: 'تمت الجلسة بنجاح 👑',
-      cancelled: 'ملغي ❌',
-      rejected: 'مرفوض 🚫',
-    };
+    await query(
+      `INSERT INTO bookings 
+       (id, customer_name, customer_phone, branch_id, barber_id, service_id, service_name, booking_type, booking_date, starts_at, status, notes, custom_pricing_notes, secure_token, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, 'باقة خدمات مخصصة (بانتظار تسعير الاستقبال)', 'vip', ?, ?, 'custom_pricing_requested', ?, ?, ?, NOW(), NOW())`,
+      [
+        bookingId,
+        finalCustomerName,
+        cleanPhone,
+        branchRow?.id || 'branch-elhdad',
+        preferredBarberId || null,
+        defaultService?.id || 'srv-haircut',
+        bookingDate,
+        finalStartsAt,
+        notes || 'طلب باقة مخصصة عبر واتساب',
+        requestedServicesText || 'طلب مخصص يحتاج تسعير واعتماد من الاستقبال',
+        `TK-${bookingId}`,
+      ]
+    );
+
+    const session = await container.conversationSessionRepo.getOrCreate(cleanPhone);
+    await container.conversationSessionRepo.update(session.id, {
+      activeBookingId: bookingId,
+      state: 'AWAITING_CUSTOM_PRICING',
+      lastIntent: 'custom_pricing_requested',
+    });
+
+    // Notify Reception Desk in Realtime
+    broadcastToBranch(branchRow?.id || 'branch-elhdad', 'CUSTOM_PRICING_REQUESTED', {
+      bookingId,
+      customerName: finalCustomerName,
+      customerPhone: cleanPhone,
+      requestedServicesText,
+      timestamp: new Date().toISOString(),
+    });
+    broadcastGlobal('SYNC_STATE', { bookingId, status: 'custom_pricing_requested' });
 
     return res.json({
       success: true,
+      message: 'تم إرسال طلب الباقة المخصصة للاستقبال، وسيتم إرسال الفاتورة المعتمدة وحساب التحويل لك خلال لحظات.',
       data: {
-        bookingId: b.id,
-        customerName: b.customer_name,
-        customerPhone: b.customer_phone,
-        status: b.status,
-        statusArabic: statusMap[b.status] || b.status,
-        bookingType: b.booking_type,
-        serviceName: b.service_name,
-        barberName: b.barber_name || 'حسب الدور',
-        branchName: b.branch_name,
-        bookingDate: b.booking_date,
-        startsAt: b.starts_at,
-        queueNumber: b.queue_number,
-        depositPaid: b.booking_fee_at_booking,
-        totalAmount: b.total_at_booking,
+        bookingId,
+        status: 'custom_pricing_requested',
+        customerName: finalCustomerName,
+        phone: cleanPhone,
+        requestedServicesText,
       },
     });
   } catch (err: any) {
@@ -675,51 +902,67 @@ router.post('/bookings/status', async (req: Request, res: Response) => {
   }
 });
 
-// ---------------------------------------------------------------------------
-// 7. Waiting Queue Position Check
-// ---------------------------------------------------------------------------
-router.post('/queue/position', async (req: Request, res: Response) => {
+// ============================================================================
+// 10. Update Draft Booking (Tool: update_booking_draft)
+// ============================================================================
+router.patch('/bookings/:id/draft', async (req: Request, res: Response) => {
   try {
-    const { phone, bookingId, branchId } = req.body;
+    const bookingId = req.params.id;
+    const { serviceId, serviceName, additionalServiceIds, barberId, barberName, startsAt, notes } = req.body;
+
+    const result = await container.updateBookingDraftUseCase.execute({
+      bookingId,
+      serviceId,
+      serviceName,
+      additionalServiceIds,
+      barberId,
+      barberName,
+      startsAt,
+      notes,
+    });
+
+    return res.json({
+      success: true,
+      message: result.message,
+      data: result.booking,
+    });
+  } catch (err: any) {
+    return res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// ============================================================================
+// 11. Queue Status & Position Tracking
+// ============================================================================
+router.post('/bookings/queue-status', async (req: Request, res: Response) => {
+  try {
+    const { bookingId, phone } = req.body;
     const cleanPhone = normalizePhone(phone);
 
     let booking = null;
     if (bookingId) {
-      booking = await getBookingById(bookingId.trim().toUpperCase());
+      booking = await getBookingById(bookingId.trim().toUpperCase()).catch(() => null);
     } else if (cleanPhone) {
       const rows = await query<any[]>(
         `SELECT id FROM bookings 
-         WHERE REPLACE(REPLACE(customer_phone, ' ', ''), '+', '') LIKE ? 
-           AND status IN ('confirmed', 'customer_arrived', 'in_service')
+         WHERE (customer_phone = ? OR customer_phone = ?) 
+           AND status NOT IN ('completed', 'cancelled', 'rejected')
          ORDER BY created_at DESC LIMIT 1`,
-        [`%${cleanPhone.slice(-9)}%`]
+        [cleanPhone, cleanPhone.replace(/^0/, '20')]
       );
       if (rows && rows.length > 0) {
-        booking = await getBookingById(rows[0].id);
+        booking = await getBookingById(rows[0].id).catch(() => null);
       }
     }
 
-    const targetBranchId = booking?.branch_id || branchId;
-    if (!targetBranchId) {
-      return res.status(400).json({ success: false, error: 'يرجى تحديد الفرع أو رقم الحجز.' });
-    }
-
-    const queue = await getBranchQueue(targetBranchId);
-
     if (!booking) {
-      return res.json({
-        success: true,
-        data: {
-          totalInQueue: queue.length,
-          estimatedWaitMinutes: queue.length * 20,
-          currentQueue: queue.slice(0, 5),
-        },
-      });
+      return res.status(404).json({ success: false, error: 'لم يتم العثور على حجز نشط' });
     }
 
-    const myIndex = queue.findIndex((q) => q.booking_id === booking.id);
-    const peopleAhead = myIndex >= 0 ? myIndex : 0;
-    const estimatedMinutes = Math.max(0, peopleAhead * 20);
+    const queueData = await getBranchQueue(booking.branch_id || 'branch-elhdad');
+    const myPos = queueData.findIndex((b: any) => b.id === booking.id || b.booking_id === booking.id);
+    const clientsAhead = myPos >= 0 ? myPos : Math.max(0, (booking.queue_number || 1) - 1);
+    const estimatedMinutes = Math.max(5, clientsAhead * 25);
 
     return res.json({
       success: true,
@@ -728,10 +971,9 @@ router.post('/queue/position', async (req: Request, res: Response) => {
         customerName: booking.customer_name,
         status: booking.status,
         queueNumber: booking.queue_number,
-        peopleAhead,
-        estimatedWaitMinutes: estimatedMinutes,
-        isNext: peopleAhead === 0 && booking.status !== 'in_service',
-        isInChair: booking.status === 'in_service',
+        clientsAhead,
+        estimatedWaitTimeMinutes: estimatedMinutes,
+        trackingUrl: `https://trimmind.up.railway.app/track?q=${booking.id}`,
       },
     });
   } catch (err: any) {
@@ -739,12 +981,65 @@ router.post('/queue/position', async (req: Request, res: Response) => {
   }
 });
 
-// ---------------------------------------------------------------------------
-// 8. Cancel Booking
-// ---------------------------------------------------------------------------
+// ============================================================================
+// 12. Confirm Arrival
+// ============================================================================
+router.post('/bookings/confirm-arrival', async (req: Request, res: Response) => {
+  try {
+    const { phone, bookingId } = req.body;
+    const cleanPhone = normalizePhone(phone);
+
+    let targetBooking = null;
+    if (bookingId) {
+      targetBooking = await getBookingById(bookingId.trim().toUpperCase()).catch(() => null);
+    } else if (cleanPhone) {
+      const rows = await query<any[]>(
+        `SELECT id FROM bookings 
+         WHERE (customer_phone = ? OR customer_phone = ?) 
+           AND status IN ('confirmed', 'awaiting_payment', 'pending_review', 'payment_submitted')
+         ORDER BY created_at DESC LIMIT 1`,
+        [cleanPhone, cleanPhone.replace(/^0/, '20')]
+      );
+      if (rows && rows.length > 0) {
+        targetBooking = await getBookingById(rows[0].id).catch(() => null);
+      }
+    }
+
+    if (!targetBooking) {
+      return res.json({
+        success: true,
+        message: 'يا ألف مرحب بيك يا بطل! 👑 تم إبلاغ موظف الاستقبال بوجودك لتجهيز الكرسي لك فوراً! 💈✨',
+        data: { status: 'customer_arrived' },
+      });
+    }
+
+    await query('UPDATE bookings SET status = "customer_arrived", updated_at = NOW() WHERE id = ?', [targetBooking.id]);
+
+    broadcastToBranch(targetBooking.branch_id || 'branch-elhdad', 'CUSTOMER_ARRIVED', {
+      bookingId: targetBooking.id,
+      customerName: targetBooking.customer_name,
+    });
+    broadcastGlobal('SYNC_STATE', { bookingId: targetBooking.id, status: 'customer_arrived' });
+
+    return res.json({
+      success: true,
+      message: `يا ألف مرحب بيك يا ${targetBooking.customer_name || 'باشا'}! 👑 تم تسجيل وصولك في شاشة الاستقبال، والكرسي بيجهزلك حالاً! 💈✨`,
+      data: {
+        bookingId: targetBooking.id,
+        status: 'customer_arrived',
+      },
+    });
+  } catch (err: any) {
+    return res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// ============================================================================
+// 13. Cancel Booking (Strict Security Ownership Verification)
+// ============================================================================
 router.post('/bookings/cancel', async (req: Request, res: Response) => {
   try {
-    let { phone, bookingId, reason } = req.body;
+    const { phone, bookingId, reason } = req.body;
     const cleanPhone = normalizePhone(phone);
 
     if (!cleanPhone && !bookingId) {
@@ -755,38 +1050,24 @@ router.post('/bookings/cancel', async (req: Request, res: Response) => {
     }
 
     let booking: any = null;
-
     if (bookingId) {
       booking = await getBookingById(bookingId.trim().toUpperCase());
       if (booking && cleanPhone) {
         const bPhone = normalizePhone(booking.customer_phone);
-        if (bPhone !== cleanPhone && !bPhone.endsWith(cleanPhone.slice(-9))) {
+        if (bPhone !== cleanPhone) {
           return res.status(403).json({ success: false, error: 'رقم الهاتف غير مطابق لبيانات الحجز المطلوب إلغاؤه.' });
         }
       }
     } else if (cleanPhone) {
-      // Find latest active booking by phone
-      try {
-        const rows = await query<any[]>(
-          `SELECT id FROM bookings 
-           WHERE (REPLACE(REPLACE(customer_phone, ' ', ''), '+', '') = ? 
-              OR customer_phone LIKE ?)
-             AND status NOT IN ('cancelled', 'completed', 'rejected')
-           ORDER BY created_at DESC LIMIT 1`,
-          [cleanPhone, `%${cleanPhone.slice(-9)}`]
-        );
-        if (rows && rows.length > 0) {
-          booking = await getBookingById(rows[0].id);
-        }
-      } catch {}
-
-      if (!booking) {
-        booking = liveSyncedBookings.find(
-          (b) =>
-            ((b.customer_phone && normalizePhone(b.customer_phone) === cleanPhone) ||
-             (b.customerPhone && normalizePhone(b.customerPhone) === cleanPhone)) &&
-            b.status !== 'cancelled' && b.status !== 'completed'
-        );
+      const rows = await query<any[]>(
+        `SELECT id FROM bookings 
+         WHERE (customer_phone = ? OR customer_phone = ?)
+           AND status NOT IN ('cancelled', 'completed', 'rejected')
+         ORDER BY created_at DESC LIMIT 1`,
+        [cleanPhone, cleanPhone.replace(/^0/, '20')]
+      );
+      if (rows && rows.length > 0) {
+        booking = await getBookingById(rows[0].id);
       }
     }
 
@@ -809,11 +1090,6 @@ router.post('/bookings/cancel', async (req: Request, res: Response) => {
       phone: cleanPhone,
     });
 
-    const targetLive = liveSyncedBookings.find((b) => b.id === booking.id);
-    if (targetLive) {
-      targetLive.status = 'cancelled';
-    }
-
     return res.json({
       success: true,
       message: `تم إلغاء الحجز #${booking.id} بنجاح.`,
@@ -827,85 +1103,9 @@ router.post('/bookings/cancel', async (req: Request, res: Response) => {
   }
 });
 
-// ---------------------------------------------------------------------------
-// 8.5. Confirm Arrival / Arriving Soon (Interactive WhatsApp Action)
-// ---------------------------------------------------------------------------
-router.post('/bookings/confirm-arrival', async (req: Request, res: Response) => {
-  try {
-    const { phone, bookingId } = req.body;
-    const cleanPhone = normalizePhone(phone);
-
-    let targetBooking: any = null;
-    if (bookingId) {
-      try {
-        targetBooking = await getBookingById(bookingId.trim().toUpperCase());
-      } catch {}
-    } else if (cleanPhone) {
-      try {
-        const rows = await query<any[]>(
-          `SELECT id FROM bookings 
-           WHERE REPLACE(REPLACE(customer_phone, ' ', ''), '+', '') LIKE ? 
-             AND status IN ('confirmed', 'awaiting_payment', 'pending_review')
-           ORDER BY created_at DESC LIMIT 1`,
-          [`%${cleanPhone.slice(-9)}%`]
-        );
-        if (rows && rows.length > 0) {
-          targetBooking = await getBookingById(rows[0].id);
-        }
-      } catch {}
-
-      if (!targetBooking) {
-        targetBooking = liveSyncedBookings.find(
-          (b) => b.customer_phone?.includes(cleanPhone.slice(-9)) || b.customerPhone?.includes(cleanPhone.slice(-9))
-        );
-      }
-    }
-
-    if (!targetBooking) {
-      return res.json({
-        success: true,
-        message: 'يا ألف مرحب بيك يا بطل! 👑 تم إبلاغ موظف الاستقبال بوجودك لتجهيز الكرسي لك فوراً! 💈✨',
-        data: { status: 'customer_arrived' },
-      });
-    }
-
-    // Update in MySQL
-    try {
-      await query(
-        `UPDATE bookings SET status = 'customer_arrived', updated_at = NOW() WHERE id = ?`,
-        [targetBooking.id]
-      );
-    } catch {}
-
-    // Update in liveSyncedBookings
-    targetBooking.status = 'customer_arrived';
-
-    broadcastToBranch(targetBooking.branch_id || 'branch-elhdad', 'CUSTOMER_ARRIVED', {
-      bookingId: targetBooking.id,
-      customerName: targetBooking.customer_name || targetBooking.customerName,
-    });
-    broadcastGlobal('CUSTOMER_ARRIVED', {
-      bookingId: targetBooking.id,
-      customerName: targetBooking.customer_name || targetBooking.customerName,
-    });
-
-    const clientName = targetBooking.customer_name || targetBooking.customerName || 'غالي';
-    return res.json({
-      success: true,
-      message: `يا ألف مرحب بيك يا ${clientName}! 👑 تم تسجيل وصولك في شاشة الاستقبال، والكرسي بيجهزلك حالاً! 💈✨`,
-      data: {
-        bookingId: targetBooking.id,
-        status: 'customer_arrived',
-      },
-    });
-  } catch (err: any) {
-    return res.status(500).json({ success: false, error: err.message });
-  }
-});
-
-// ---------------------------------------------------------------------------
-// 9. Reschedule Booking
-// ---------------------------------------------------------------------------
+// ============================================================================
+// 14. Reschedule Booking (Strict Conflict & Ownership Verification)
+// ============================================================================
 router.post('/bookings/reschedule', async (req: Request, res: Response) => {
   try {
     const { phone, bookingId, newStartsAt, barberId } = req.body;
@@ -923,20 +1123,18 @@ router.post('/bookings/reschedule', async (req: Request, res: Response) => {
       return res.status(404).json({ success: false, error: 'الحجز غير موجود.' });
     }
 
-    // Security Ownership Check
     const storedPhoneClean = normalizePhone(booking.customer_phone);
-    if (storedPhoneClean !== cleanPhone && !storedPhoneClean.endsWith(cleanPhone.slice(-9))) {
+    if (storedPhoneClean !== cleanPhone) {
       return res.status(403).json({
         success: false,
         error: 'رقم الهاتف غير مطابق لبيانات الحجز.',
       });
     }
 
-    const newDate = newStartsAt.split('T')[0];
+    const newDate = newStartsAt.split('T')[0].split(' ')[0];
     const newBarberId = barberId || booking.barber_id;
 
-    // Check VIP collision
-    if (booking.booking_type === 'vip' && newBarberId) {
+    if (newBarberId) {
       const conflict = await query<any[]>(
         `SELECT id FROM bookings 
          WHERE barber_id = ? AND booking_date = ? AND starts_at = ? 
@@ -959,6 +1157,7 @@ router.post('/bookings/reschedule', async (req: Request, res: Response) => {
     );
 
     broadcastToBranch(booking.branch_id, 'BOOKING_UPDATED', { bookingId: booking.id });
+    broadcastGlobal('SYNC_STATE', { bookingId: booking.id, starts_at: newStartsAt });
 
     return res.json({
       success: true,
@@ -974,165 +1173,142 @@ router.post('/bookings/reschedule', async (req: Request, res: Response) => {
   }
 });
 
-// ---------------------------------------------------------------------------
-// 10. Submit Payment Proof (WhatsApp Media Handler)
-// ---------------------------------------------------------------------------
+// ============================================================================
+// 15. Submit Payment Proof (Clean Architecture & Database-Backed)
+// ============================================================================
 router.post('/payments/submit-proof', async (req: Request, res: Response) => {
   try {
-    const { phone, bookingId, proofImageUrl, senderPhone, transactionRef } = req.body;
+    const { phone, bookingId, proofImageUrl, senderPhone, paymentMethod, transferredAmount } = req.body;
     const cleanPhone = normalizePhone(phone || senderPhone);
-    const finalProofUrl = proofImageUrl || 'https://trimmind.up.railway.app/uploads/receipt.png';
 
-    let targetBooking: any = null;
+    let resolvedBookingId = bookingId ? bookingId.trim().toUpperCase() : null;
 
-    if (bookingId) {
-      targetBooking = await getBookingById(bookingId.trim().toUpperCase());
-    } else if (cleanPhone) {
-      try {
-        const rows = await query<any[]>(
-          `SELECT id FROM bookings 
-           WHERE (REPLACE(REPLACE(customer_phone, ' ', ''), '+', '') LIKE ? OR customer_phone = ?)
-             AND status IN ('awaiting_payment', 'draft', 'pending_review')
-           ORDER BY created_at DESC LIMIT 1`,
-          [`%${cleanPhone.slice(-8)}%`, cleanPhone]
-        );
-        if (rows && rows.length > 0) {
-          targetBooking = await getBookingById(rows[0].id);
-        }
-      } catch {}
-
-      if (!targetBooking) {
-        targetBooking = liveSyncedBookings.find(
-          (b) =>
-            (b.customer_phone?.includes(cleanPhone.slice(-8)) || b.customerPhone?.includes(cleanPhone.slice(-8))) &&
-            (b.status === 'awaiting_payment' || b.status === 'pending_review')
-        );
+    if (!resolvedBookingId && cleanPhone) {
+      const session = await container.conversationSessionRepo.getByPhone(cleanPhone);
+      if (session?.activeBookingId) {
+        resolvedBookingId = session.activeBookingId;
       }
-
-      // If user typed a custom phone during chat that differs from WhatsApp sender ID,
-      // fallback to the most recent awaiting_payment booking in memory!
-      if (!targetBooking) {
-        targetBooking = liveSyncedBookings.find(
-          (b) => b.status === 'awaiting_payment' || b.status === 'pending_review'
-        );
-      }
-    } else {
-      targetBooking = liveSyncedBookings.find(
-        (b) => b.status === 'awaiting_payment' || b.status === 'pending_review'
-      );
     }
 
-    if (!targetBooking) {
-      const { bookingSessions } = await import('../services/whatsapp.service.js');
-      const activeSession = bookingSessions.get(cleanPhone) ||
-                            bookingSessions.get(`20${cleanPhone.replace(/^0+/, '')}`) ||
-                            bookingSessions.get(cleanPhone.replace(/^20/, '0'));
-
-      const fallbackId = `BK-${Math.floor(1000 + Math.random() * 9000)}`;
-      const resolvedName = activeSession?.customerName || (cleanPhone ? `أحمد (${cleanPhone.slice(-4)})` : 'عميل الصالون');
-      const resolvedService = activeSession?.serviceName || 'قص شعر كلاسيكي';
-      const resolvedServiceId = activeSession?.serviceId || 'srv-1';
-      const resolvedPrice = activeSession?.servicePrice || 180;
-      const resolvedBarber = activeSession?.barberName || 'كابتن محمد الحداد';
-      const resolvedBarberId = activeSession?.barberId || 'barber-mohamed';
-      const resolvedDeposit = activeSession?.depositAmount || (activeSession?.bookingType === 'vip' ? 100 : 50);
-      const resolvedBookingType = activeSession?.bookingType || 'normal';
-
-      const newDraftBooking = {
-        id: fallbackId,
-        customer_name: resolvedName,
-        customer_phone: cleanPhone || '01005437633',
-        customerName: resolvedName,
-        customerPhone: cleanPhone || '01005437633',
-        service_id: resolvedServiceId,
-        service_name: resolvedService,
-        serviceName: resolvedService,
-        barber_id: resolvedBarberId,
-        barber_name: resolvedBarber,
-        barberName: resolvedBarber,
-        branch_id: 'branch-elhdad',
-        booking_date: new Date().toISOString().split('T')[0],
-        starts_at: `${new Date().toISOString().split('T')[0]} 16:00:00`,
-        status: 'pending_review',
-        booking_fee_at_booking: resolvedDeposit,
-        total_at_booking: resolvedPrice,
-        totalAmount: resolvedPrice,
-        booking_type: resolvedBookingType,
-        payment_proof: JSON.stringify({
-          image_url: finalProofUrl,
-          sender_phone: cleanPhone,
-          submitted_at: new Date().toISOString(),
-          status: 'pending_review',
-          transferred_amount: resolvedDeposit,
-        })
-      };
-
-      liveSyncedBookings.push(newDraftBooking);
-      targetBooking = newDraftBooking;
-
-      try {
-        await query(
-          `INSERT INTO bookings (id, customer_name, customer_phone, service_id, barber_id, branch_id, booking_date, starts_at, status, booking_fee_at_booking, total_at_booking, booking_type, payment_proof, created_at, updated_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'pending_review', ?, ?, ?, ?, NOW(), NOW())`,
-          [
-            fallbackId,
-            newDraftBooking.customer_name,
-            newDraftBooking.customer_phone,
-            newDraftBooking.service_id,
-            newDraftBooking.barber_id,
-            newDraftBooking.branch_id,
-            newDraftBooking.booking_date,
-            newDraftBooking.starts_at,
-            newDraftBooking.booking_fee_at_booking,
-            newDraftBooking.total_at_booking,
-            newDraftBooking.booking_type,
-            newDraftBooking.payment_proof
-          ]
-        );
-      } catch {}
+    if (!resolvedBookingId && cleanPhone) {
+      const activeRows = await query<any[]>(
+        `SELECT id FROM bookings 
+         WHERE (customer_phone = ? OR customer_phone = ?) 
+           AND status IN ('awaiting_payment', 'custom_pricing_requested', 'draft', 'pending_review')
+         ORDER BY created_at DESC LIMIT 1`,
+        [cleanPhone, cleanPhone.replace(/^0/, '20')]
+      );
+      if (activeRows && activeRows.length > 0) {
+        resolvedBookingId = activeRows[0].id;
+      }
     }
 
-    const paymentProofObj = {
-      image_url: finalProofUrl,
-      sender_phone: cleanPhone || targetBooking.customer_phone,
-      transaction_ref: transactionRef || `WA-TX-${Math.floor(100000 + Math.random() * 900000)}`,
-      submitted_at: new Date().toISOString(),
-      status: 'pending_review',
-    };
+    if (!resolvedBookingId) {
+      return res.status(404).json({
+        success: false,
+        error: 'لم يتم العثور على أي حجز نشط بانتظار سداد العربون مرتبط برقمك. يرجى تزويد رقم الحجز.',
+      });
+    }
 
-    // Update booking to pending_review in MySQL
-    try {
-      await query(
-        `UPDATE bookings 
-         SET status = 'pending_review', payment_proof = ?, updated_at = NOW() 
-         WHERE id = ?`,
-        [JSON.stringify(paymentProofObj), targetBooking.id]
-      );
-    } catch {}
-
-    targetBooking.status = 'pending_review';
-    targetBooking.payment_proof = JSON.stringify(paymentProofObj);
-
-    // Realtime notification to receptionist & manager
-    broadcastToBranch(targetBooking.branch_id || 'branch-elhdad', 'PAYMENT_PROOF_SUBMITTED', {
-      bookingId: targetBooking.id,
-      customerName: targetBooking.customer_name || targetBooking.customerName,
-      customerPhone: targetBooking.customer_phone || targetBooking.customerPhone,
-      amount: targetBooking.booking_fee_at_booking || 50,
-      proofUrl: finalProofUrl,
+    const result = await container.submitPaymentProofUseCase.execute({
+      bookingId: resolvedBookingId,
+      senderPhone: cleanPhone,
+      imagePath: proofImageUrl || 'https://trimmind.up.railway.app/uploads/receipt.png',
+      paymentMethod: paymentMethod || 'instapay',
+      transferredAmount: Number(transferredAmount || 50),
     });
-    broadcastGlobal('PAYMENT_PROOF_SUBMITTED', {
-      bookingId: targetBooking.id,
-      customerName: targetBooking.customer_name || targetBooking.customerName,
-    });
+
+    if (!result.success) {
+      return res.status(400).json({ success: false, error: result.message });
+    }
 
     return res.json({
       success: true,
-      message: 'تم استلام صورة التحويل بنجاح وجاري مراجعتها من قبل قسم الاستقبال.',
+      message: result.message,
+      data: result.data,
+    });
+  } catch (err: any) {
+    return res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// ============================================================================
+// 16. Smart Waitlist Tools
+// ============================================================================
+router.post('/waitlist/join', async (req: Request, res: Response) => {
+  try {
+    const { branchId, barberId, serviceId, customerName, customerPhone, preferredDate, preferredTimeRange } = req.body;
+    const cleanPhone = normalizePhone(customerPhone);
+
+    const result = await container.joinWaitlistUseCase.execute({
+      branchId: branchId || 'branch-elhdad',
+      barberId,
+      serviceId,
+      customerName,
+      customerPhone: cleanPhone,
+      preferredDate,
+      preferredTimeWindow: preferredTimeRange || 'anytime',
+    });
+
+    return res.json({ success: true, data: result });
+  } catch (err: any) {
+    return res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+router.post('/waitlist/claim', async (req: Request, res: Response) => {
+  try {
+    const { offerToken } = req.body;
+    const result = await container.claimWaitlistOfferUseCase.execute(offerToken);
+    return res.json({ success: true, data: result });
+  } catch (err: any) {
+    return res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+router.post('/waitlist/status', async (req: Request, res: Response) => {
+  try {
+    const { phone } = req.body;
+    const cleanPhone = normalizePhone(phone);
+    const rows = await query<any[]>(
+      `SELECT * FROM smart_waitlist WHERE (customer_phone = ? OR customer_phone = ?) AND status IN ('waiting', 'offered') ORDER BY created_at DESC LIMIT 1`,
+      [cleanPhone, cleanPhone.replace(/^0/, '20')]
+    );
+    if (!rows || rows.length === 0) {
+      return res.json({ success: true, data: { inWaitlist: false } });
+    }
+    return res.json({ success: true, data: { inWaitlist: true, entry: rows[0] } });
+  } catch (err: any) {
+    return res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// ============================================================================
+// 17. No-Show Status Check
+// ============================================================================
+router.post('/noshow/check', async (req: Request, res: Response) => {
+  try {
+    const { phone, bookingId } = req.body;
+    const cleanPhone = normalizePhone(phone);
+    const rows = await query<any[]>(
+      `SELECT id, status, cancellation_reason, no_show_marked_at FROM bookings 
+       WHERE (id = ? OR customer_phone = ? OR customer_phone = ?) AND (status = 'cancelled' OR status = 'no_show')
+       ORDER BY created_at DESC LIMIT 1`,
+      [bookingId || '', cleanPhone, cleanPhone.replace(/^0/, '20')]
+    );
+
+    if (!rows || rows.length === 0) {
+      return res.json({ success: true, data: { isNoShow: false } });
+    }
+
+    const b = rows[0];
+    const isNoShow = b.status === 'no_show' || (b.cancellation_reason && b.cancellation_reason.includes('no-show'));
+    return res.json({
+      success: true,
       data: {
-        bookingId: targetBooking.id,
-        status: 'pending_review',
-        customerName: targetBooking.customer_name,
+        isNoShow,
+        bookingId: b.id,
+        reason: b.cancellation_reason,
       },
     });
   } catch (err: any) {
@@ -1140,16 +1316,16 @@ router.post('/payments/submit-proof', async (req: Request, res: Response) => {
   }
 });
 
-// ---------------------------------------------------------------------------
-// 11. Upcoming Bookings for Reminders (Cron Tool)
-// ---------------------------------------------------------------------------
+// ============================================================================
+// 18. Reminders & Cron Tools
+// ============================================================================
 router.post('/reminders/upcoming', async (req: Request, res: Response) => {
   try {
     const { hoursAhead = 24 } = req.body;
     const now = new Date();
     const futureLimit = new Date(now.getTime() + hoursAhead * 60 * 60 * 1000);
 
-    const rows = await query<any[]>(
+    const bookings = await query<any[]>(
       `SELECT b.*, s.name as service_name, bar.full_name as barber_name, br.name as branch_name
        FROM bookings b
        LEFT JOIN services s ON b.service_id = s.id
@@ -1157,388 +1333,71 @@ router.post('/reminders/upcoming', async (req: Request, res: Response) => {
        LEFT JOIN branches br ON b.branch_id = br.id
        WHERE b.status = 'confirmed'
          AND b.starts_at >= ? AND b.starts_at <= ?
-       ORDER BY b.starts_at ASC LIMIT 100`,
+         AND (b.reminder_sent IS NULL OR b.reminder_sent = 0)
+       ORDER BY b.starts_at ASC`,
       [now.toISOString(), futureLimit.toISOString()]
     );
 
-    return res.json({
-      success: true,
-      count: rows.length,
-      data: rows.map((b) => ({
-        bookingId: b.id,
-        customerName: b.customer_name,
-        customerPhone: b.customer_phone,
-        serviceName: b.service_name,
-        barberName: b.barber_name || 'كابتن الصالون',
-        branchName: b.branch_name,
-        startsAt: b.starts_at,
-        bookingType: b.booking_type,
-      })),
-    });
+    return res.json({ success: true, data: bookings });
   } catch (err: any) {
     return res.status(500).json({ success: false, error: err.message });
   }
 });
 
-// ---------------------------------------------------------------------------
-// 12. AI Manager Daily Report Data Aggregation (Real MySQL Data)
-// ---------------------------------------------------------------------------
-router.all('/manager/daily-report-data', async (req: Request, res: Response) => {
+router.post('/reminders/mark-sent', async (req: Request, res: Response) => {
   try {
-    const today = new Date().toISOString().split('T')[0];
-    const yesterday = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString().split('T')[0];
-
-    // 1. Manager contact info from Settings (highest priority), then Profiles
-    let managerPhone = '';
-    let managerName = 'المدير العام';
-
-    try {
-      const settingRows = await query<any[]>('SELECT setting_value FROM settings WHERE setting_key = "general" LIMIT 1');
-      if (settingRows && settingRows.length > 0) {
-        const val = typeof settingRows[0].setting_value === 'string' ? JSON.parse(settingRows[0].setting_value) : settingRows[0].setting_value;
-        if (val?.manager_report_phone) {
-          managerPhone = normalizePhone(val.manager_report_phone);
-        } else if (val?.whatsapp_number) {
-          managerPhone = normalizePhone(val.whatsapp_number);
-        } else if (val?.primary_phone) {
-          managerPhone = normalizePhone(val.primary_phone);
-        }
-      }
-    } catch {}
-
-    if (!managerPhone) {
-      const managerRows = await query<any[]>(
-        "SELECT phone, full_name FROM profiles WHERE role = 'manager' AND is_active = 1 ORDER BY is_super_admin DESC LIMIT 1"
-      );
-      if (managerRows && managerRows.length > 0) {
-        managerPhone = normalizePhone(managerRows[0].phone || '');
-        managerName = managerRows[0].full_name || managerName;
-      }
-    }
-
-    if (!managerPhone) {
-      managerPhone = '01285694670';
-    }
-
-    // 2. Today's bookings
-    const todayBookings = await query<any[]>(
-      `SELECT b.*, s.name as service_name, bar.full_name as barber_name, br.name as branch_name
-       FROM bookings b
-       LEFT JOIN services s ON b.service_id = s.id
-       LEFT JOIN barbers bar ON b.barber_id = bar.id
-       LEFT JOIN branches br ON b.branch_id = br.id
-       WHERE b.booking_date = ? OR (b.starts_at LIKE ?)
-       ORDER BY b.starts_at ASC`,
-      [today, `${today}%`]
-    );
-
-    const totalBookings = todayBookings.length;
-    const confirmed = todayBookings.filter((b) => b.status === 'confirmed' || b.status === 'in_service' || b.status === 'completed' || b.status === 'customer_arrived').length;
-    const pendingPayment = todayBookings.filter((b) => b.status === 'pending_review' || b.status === 'awaiting_payment').length;
-    const vipCount = todayBookings.filter((b) => b.booking_type === 'vip').length;
-
-    // Group by Barber
-    const barberStats: Record<string, number> = {};
-    for (const b of todayBookings) {
-      const name = b.barber_name || 'كابتن الصالون الرئيسي';
-      barberStats[name] = (barberStats[name] || 0) + 1;
-    }
-
-    // Time periods / peak hours
-    const periodStats = {
-      morning: 0,
-      afternoon: 0,
-      evening: 0,
-    };
-    for (const b of todayBookings) {
-      const timeStr = (b.starts_at || '').split('T')[1] || '';
-      const hour = parseInt(timeStr.split(':')[0], 10);
-      if (hour >= 10 && hour < 14) periodStats.morning++;
-      else if (hour >= 14 && hour < 18) periodStats.afternoon++;
-      else if (hour >= 18) periodStats.evening++;
-    }
-
-    let peakPeriod = 'متوازنة طوال اليوم';
-    if (periodStats.evening >= periodStats.afternoon && periodStats.evening >= periodStats.morning && periodStats.evening > 0) {
-      peakPeriod = `الفترة المسائية (6:00 م - 11:00 م) بواقع ${periodStats.evening} حجز`;
-    } else if (periodStats.afternoon >= periodStats.morning && periodStats.afternoon > 0) {
-      peakPeriod = `فترة الظهيرة (2:00 م - 6:00 م) بواقع ${periodStats.afternoon} حجز`;
-    } else if (periodStats.morning > 0) {
-      peakPeriod = `الفترة الصباحية (10:00 ص - 2:00 م) بواقع ${periodStats.morning} حجز`;
-    }
-
-    // 3. Active waitlist today
-    const waitlistRows = await query<any[]>(
-      "SELECT COUNT(*) as count FROM waitlist_entries WHERE preferred_date = ? AND status = 'waiting'",
-      [today]
-    );
-    const waitlistCount = waitlistRows?.[0]?.count || 0;
-
-    // 4. Yesterday's summary
-    const yesterdayBookings = await query<any[]>(
-      "SELECT status, cancellation_reason FROM bookings WHERE booking_date = ? OR starts_at LIKE ?",
-      [yesterday, `${yesterday}%`]
-    );
-    const yesterdayCompleted = yesterdayBookings.filter((b) => b.status === 'completed').length;
-    const yesterdayNoShows = yesterdayBookings.filter((b) => b.status === 'cancelled' && (b.cancellation_reason?.includes('no-show') || b.cancellation_reason?.includes('عدم حضور'))).length;
-
-    // 5. Today's estimated financials
-    let totalEstimatedRevenue = 0;
-    let totalDepositsRequired = 0;
-    for (const b of todayBookings) {
-      if (b.status !== 'cancelled' && b.status !== 'rejected') {
-        totalEstimatedRevenue += Number(b.total_at_booking || b.service_price_at_booking || 180);
-        totalDepositsRequired += Number(b.booking_fee_at_booking || 50);
-      }
-    }
-
-    return res.json({
-      success: true,
-      data: {
-        date: today,
-        managerPhone: managerPhone,
-        manager: {
-          name: managerName,
-          phone: managerPhone,
-        },
-        metrics: {
-          totalBookings,
-          confirmedBookings: confirmed,
-          expectedAttendance: confirmed,
-          vipBookings: vipCount,
-          pendingPaymentsCount: pendingPayment,
-          waitlistCount,
-          totalEstimatedRevenue,
-          totalDepositsRequired,
-          peakPeriod,
-          periodBreakdown: periodStats,
-          barberBreakdown: barberStats,
-          yesterday: {
-            date: yesterday,
-            completed: yesterdayCompleted,
-            noShows: yesterdayNoShows,
-          },
-        },
-      },
-    });
+    const { bookingId } = req.body;
+    await query('UPDATE bookings SET reminder_sent = 1, reminder_sent_at = NOW() WHERE id = ?', [bookingId]);
+    return res.json({ success: true, message: 'Reminder marked as sent' });
   } catch (err: any) {
     return res.status(500).json({ success: false, error: err.message });
   }
 });
 
-// ---------------------------------------------------------------------------
-// 13. Smart Waitlist: Join Waitlist
-// ---------------------------------------------------------------------------
-router.post('/waitlist/join', async (req: Request, res: Response) => {
-  try {
-    const { phone, customerName, branchId = 'branch-elhdad', barberId, serviceId = 'srv-haircut', preferredDate, preferredTimeWindow = 'afternoon' } = req.body;
-    const cleanPhone = normalizePhone(phone);
-    if (!cleanPhone || !customerName) {
-      return res.status(400).json({ success: false, error: 'يرجى تزويد الاسم ورقم الهاتف للانضمام لقائمة الانتظار.' });
-    }
-    const targetDate = preferredDate || new Date().toISOString().split('T')[0];
-    const waitlistRepo = new MySQLWaitlistRepository();
-    const realtimeNotifier = new SocketRealtimeNotifier();
-    const useCase = new JoinWaitlistUseCase(waitlistRepo, realtimeNotifier);
-
-    const entry = await useCase.execute({
-      branchId,
-      barberId: barberId || null,
-      customerName,
-      customerPhone: cleanPhone,
-      preferredDate: targetDate,
-      preferredTimeWindow,
-      serviceId,
-    });
-
-    return res.json({
-      success: true,
-      message: 'تمت إضافتك بنجاح إلى قائمة الانتظار الذكية! سنقوم بإبلاغك فور إلغاء أو توفر أي موعد شاغر.',
-      data: {
-        waitlistId: entry.id,
-        customerName: entry.customerName,
-        preferredDate: entry.preferredDate,
-        preferredTimeWindow: entry.preferredTimeWindow,
-        status: entry.status,
-      },
-    });
-  } catch (err: any) {
-    return res.status(500).json({ success: false, error: err.message });
-  }
-});
-
-// ---------------------------------------------------------------------------
-// 14. Smart Waitlist: Claim Offered Slot
-// ---------------------------------------------------------------------------
-router.post('/waitlist/claim', async (req: Request, res: Response) => {
-  try {
-    const { token } = req.body;
-    if (!token) {
-      return res.status(400).json({ success: false, error: 'كود العرض (token) مطلوب لتأكيد الحجز.' });
-    }
-    const waitlistRepo = new MySQLWaitlistRepository();
-    const bookingRepo = new MySQLBookingRepository();
-    const realtimeNotifier = new SocketRealtimeNotifier();
-    const useCase = new ClaimWaitlistOfferUseCase(waitlistRepo, bookingRepo, realtimeNotifier);
-
-    const result = await useCase.execute(token);
-    return res.json({
-      success: true,
-      message: 'تم تأكيد حجزك بنجاح عبر قائمة الانتظار الذكية! 💈🎉',
-      data: {
-        bookingId: result.booking.id,
-        customerName: result.booking.customerName,
-        startsAt: result.booking.startsAt,
-        total: result.booking.totalAtBooking,
-        depositRequired: result.booking.bookingFeeAtBooking,
-      },
-    });
-  } catch (err: any) {
-    return res.status(400).json({ success: false, error: err.message });
-  }
-});
-
-// ---------------------------------------------------------------------------
-// 15. Smart Waitlist: Check Customer Waitlist Status
-// ---------------------------------------------------------------------------
-router.post('/waitlist/status', async (req: Request, res: Response) => {
-  try {
-    const cleanPhone = normalizePhone(req.body.phone || '');
-    if (!cleanPhone) {
-      return res.status(400).json({ success: false, error: 'رقم الهاتف مطلوب.' });
-    }
-    const rows = await query<any[]>(
-      `SELECT w.*, s.name as service_name, bar.full_name as barber_name
-       FROM waitlist_entries w
-       LEFT JOIN services s ON w.service_id = s.id
-       LEFT JOIN barbers bar ON w.barber_id = bar.id
-       WHERE REPLACE(REPLACE(w.customer_phone, ' ', ''), '+', '') LIKE ?
-         AND w.status IN ('waiting', 'offered')
-       ORDER BY w.created_at DESC LIMIT 1`,
-      [`%${cleanPhone.slice(-9)}%`]
-    );
-
-    if (!rows || rows.length === 0) {
-      return res.json({
-        success: true,
-        data: { hasActiveEntry: false, message: 'لا توجد طلبات انتظار نشطة مسجلة بهذا الرقم.' },
-      });
-    }
-
-    const r = rows[0];
-    return res.json({
-      success: true,
-      data: {
-        hasActiveEntry: true,
-        entryId: r.id,
-        customerName: r.customer_name,
-        preferredDate: r.preferred_date,
-        preferredTimeWindow: r.preferred_time_window,
-        status: r.status,
-        offerToken: r.offer_token,
-        offerExpiresAt: r.offer_expires_at,
-        isOfferActive: r.status === 'offered' && r.offer_expires_at && new Date(r.offer_expires_at).getTime() > Date.now(),
-      },
-    });
-  } catch (err: any) {
-    return res.status(500).json({ success: false, error: err.message });
-  }
-});
-
-// ---------------------------------------------------------------------------
-// 16. No-Show: Check Overdue / No-Show Booking Status
-// ---------------------------------------------------------------------------
-router.post('/no-show/check-status', async (req: Request, res: Response) => {
-  try {
-    const { bookingId, phone } = req.body;
-    const cleanPhone = normalizePhone(phone);
-    let b: any = null;
-    if (bookingId) {
-      b = await getBookingById(bookingId.trim().toUpperCase());
-    } else if (cleanPhone) {
-      const rows = await query<any[]>(
-        `SELECT id FROM bookings WHERE (REPLACE(REPLACE(customer_phone, ' ', ''), '+', '') = ? OR customer_phone LIKE ?) ORDER BY created_at DESC LIMIT 1`,
-        [cleanPhone, `%${cleanPhone.slice(-9)}`]
-      );
-      if (rows && rows.length > 0) b = await getBookingById(rows[0].id);
-    }
-
-    if (!b) {
-      return res.status(404).json({ success: false, error: 'لم يتم العثور على الحجز المطلوب.' });
-    }
-
-    const isNoShow = b.status === 'cancelled' && (b.cancellation_reason?.includes('no-show') || b.cancellation_reason?.includes('عدم حضور'));
-    return res.json({
-      success: true,
-      data: {
-        bookingId: b.id,
-        customerName: b.customer_name,
-        status: b.status,
-        startsAt: b.starts_at,
-        isNoShow,
-        cancellationReason: b.cancellation_reason || null,
-        explanation: isNoShow
-          ? 'تم إلغاء هذا الحجز تلقائياً من النظام لعدم الحضور وتجاوز المهلة المحددة (35 دقيقة).'
-          : `حالة الحجز الحالية هي: ${b.status}`,
-      },
-    });
-  } catch (err: any) {
-    return res.status(500).json({ success: false, error: err.message });
-  }
-});
-
+// ============================================================================
+// 19. Smart Customer Recall & AI Insights
+// ============================================================================
 router.post('/recall/candidates', async (req: Request, res: Response) => {
   try {
-    const { branchId = 'branch-elhdad' } = req.body;
-    let daysThreshold = req.body.thresholdDays ? Number(req.body.thresholdDays) : null;
-
-    if (!daysThreshold) {
-      try {
-        const settingRows = await query<any[]>('SELECT setting_value FROM settings WHERE setting_key = "general" LIMIT 1');
-        if (settingRows && settingRows.length > 0) {
-          const val = typeof settingRows[0].setting_value === 'string' ? JSON.parse(settingRows[0].setting_value) : settingRows[0].setting_value;
-          if (val?.recall_days_threshold) {
-            daysThreshold = Number(val.recall_days_threshold);
-          }
-        }
-      } catch {}
-    }
-
-    if (!daysThreshold || isNaN(daysThreshold)) {
-      daysThreshold = 40;
-    }
-
-    const recallRepo = new MySQLRecallRepository();
-    const useCase = new FindRecallCandidatesUseCase(recallRepo);
-    const candidates = await useCase.execute(branchId, daysThreshold);
-
-    return res.json({
-      success: true,
-      thresholdDaysUsed: daysThreshold,
-      count: candidates.length,
-      data: candidates,
-    });
+    const { branchId = 'branch-elhdad', thresholdDays = 30 } = req.body;
+    const candidates = await container.findRecallCandidatesUseCase.execute(branchId, Number(thresholdDays));
+    return res.json({ success: true, data: candidates });
   } catch (err: any) {
     return res.status(500).json({ success: false, error: err.message });
   }
 });
 
-// ---------------------------------------------------------------------------
-// 18. AI Customer Recall: Log Campaign Send
-// ---------------------------------------------------------------------------
-router.post('/recall/log-send', async (req: Request, res: Response) => {
+router.post('/recall/campaign/trigger', async (req: Request, res: Response) => {
   try {
-    const { branchId = 'branch-elhdad', phone, customerName, messageText } = req.body;
-    const cleanPhone = normalizePhone(phone);
-    const recallRepo = new MySQLRecallRepository();
-    const campaignId = await recallRepo.createCampaign(branchId, 21, 'AI Automated Customer Recall via n8n', 'system-ai');
-    await recallRepo.recordSend(campaignId, cleanPhone, customerName || 'عميل الصالون', messageText || '');
+    const { branchId = 'branch-elhdad', thresholdDays = 30, candidatePhones = [], customMessageTemplate, actorId } = req.body;
+    const result = await container.sendRecallCampaignUseCase.execute(
+      branchId,
+      Number(thresholdDays),
+      Array.isArray(candidatePhones) ? candidatePhones : [],
+      customMessageTemplate,
+      actorId
+    );
+    return res.json({ success: true, data: result });
+  } catch (err: any) {
+    return res.status(500).json({ success: false, error: err.message });
+  }
+});
 
-    return res.json({
-      success: true,
-      message: 'تم تسجيل رسالة الاستعادة (Recall) بنجاح في قاعدة البيانات.',
-      data: { campaignId, phone: cleanPhone },
-    });
+router.post('/insights/generate', async (req: Request, res: Response) => {
+  try {
+    const { branchId = 'branch-elhdad', periodDays = 30 } = req.body;
+    const report = await container.generateInsightsReportUseCase.execute(branchId, Number(periodDays));
+    return res.json({ success: true, data: report });
+  } catch (err: any) {
+    return res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+router.post('/insights/ask', async (req: Request, res: Response) => {
+  try {
+    const { branchId = 'branch-elhdad', question } = req.body;
+    const answer = await container.askInsightsAssistantUseCase.execute(branchId, question);
+    return res.json({ success: true, data: { answer } });
   } catch (err: any) {
     return res.status(500).json({ success: false, error: err.message });
   }

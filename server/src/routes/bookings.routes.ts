@@ -704,101 +704,36 @@ router.patch('/:id/payment-proof', optionalAuth, async (req: AuthenticatedReques
 router.post('/:id/customize-and-dispatch', optionalAuth, async (req: AuthenticatedRequest, res: Response) => {
   try {
     const bookingId = req.params.id;
-    const { customLineItems, totalAmount, discount, notes, barberId, barberName, serviceName, startsAt } = req.body;
+    const {
+      customLineItems = [],
+      totalAmount,
+      discount = 0,
+      notes,
+      barberId,
+      barberName,
+      serviceName,
+      depositRequired = 50,
+    } = req.body;
 
-    let booking: any = null;
-    try {
-      booking = await getBookingById(bookingId);
-    } catch {}
-    if (!booking) {
-      booking = liveSyncedBookings.find((b) => b.id === bookingId);
-    }
-
-    const calculatedTotal = Number(totalAmount || (booking?.total_at_booking || 180));
-    const calculatedDiscount = Number(discount || 0);
-    const assignedBarberName = barberName || booking?.barber_name || 'محمد الحداد';
-    const assignedServiceName = serviceName || booking?.service_name || 'باقة مخصصة';
-    const startsAtVal = startsAt || booking?.starts_at || new Date().toISOString();
-
-    // 1. Update Booking in MySQL
-    await query(
-      `UPDATE bookings 
-       SET total_at_booking = ?, discount_at_booking = ?, service_name = ?, barber_id = ?, barber_name = ?, 
-           custom_line_items = ?, notes = ?, starts_at = ?, status = 'confirmed', updated_at = NOW() 
-       WHERE id = ?`,
-      [
-        calculatedTotal,
-        calculatedDiscount,
-        assignedServiceName,
-        barberId || booking?.barber_id || null,
-        assignedBarberName,
-        customLineItems ? JSON.stringify(customLineItems) : null,
-        notes || booking?.notes || null,
-        startsAtVal,
-        bookingId,
-      ]
-    ).catch(() => {});
-
-    // Update in memory if present
-    if (booking) {
-      booking.status = 'confirmed';
-      booking.total_at_booking = calculatedTotal;
-      booking.service_name = assignedServiceName;
-      booking.barber_name = assignedBarberName;
-      booking.starts_at = startsAtVal;
-      booking.custom_line_items = customLineItems;
-    }
-
-    // 2. Financial Record for Deposit
-    const depositVal = booking?.booking_fee_at_booking || (booking?.booking_type === 'vip' ? 100 : 50);
-    query(
-      `INSERT INTO financial_records (id, booking_id, branch_id, barber_id, amount, type, payment_method, reference_number, notes, recorded_by, created_at)
-       VALUES (?, ?, ?, ?, ?, 'deposit', 'vodafone_cash', ?, 'عربون حجز واتساب مخصص ومعتمد', 'receptionist', NOW())`,
-      [uuidv4(), bookingId, booking?.branch_id || 'branch-elhdad', barberId || booking?.barber_id || null, depositVal, bookingId]
-    ).catch(() => {});
-
-    // 3. Dispatch Customized Official Invoice to Customer WhatsApp
-    const customerPhone = booking?.customer_phone || booking?.customerPhone;
-    if (customerPhone) {
-      try {
-        const { sendWhatsAppText } = await import('../services/whatsapp.service.js');
-        const clientName = booking.customer_name || booking.customerName || 'عزيزنا العميل';
-        const remainingVal = Math.max(0, calculatedTotal - depositVal);
-        const startsAtFormatted = startsAtVal.replace('T', ' ').substring(0, 16);
-
-        const trackingUrl = `https://trimmind.up.railway.app/track?q=${bookingId}`;
-        const msg = `👑 تم تأكيد حجزك بنجاح! 💈✨
-
-📋 رقم الحجز: ${bookingId}
-💈 الكابتن: ${assignedBarberName}
-✂️ الخدمة: ${assignedServiceName}
-📅 الموعد: ${startsAtFormatted}
-👑 VIP – صالون الحداد
-
-💰 الإجمالي: ${calculatedTotal} ج
-💳 العربون: ${depositVal} ج
-💵 المتبقي: ${remainingVal} ج
-
-📍 تابع دورك لحظة بلحظة:
-${trackingUrl}
-
-🔔 هنبلغك قبل دورك بـ5 دقائق.
-نتشرف بزيارتك ❤️`;
-
-        await sendWhatsAppText(customerPhone, msg);
-      } catch (err) {
-        console.error('Custom invoice WhatsApp dispatch error:', err);
-      }
-    }
-
-    // 4. Broadcast Real-time Live State
-    broadcastToBranch(booking?.branch_id || 'branch-elhdad', 'SYNC_STATE', booking);
-    broadcastGlobal('SYNC_STATE');
+    const { container } = await import('../index.js');
+    const result = await container.applyCustomPricingUseCase.execute({
+      bookingId,
+      items: customLineItems,
+      subtotal: Number(totalAmount || 0) + Number(discount || 0),
+      discount: Number(discount || 0),
+      totalPrice: Number(totalAmount || 180),
+      depositRequired: Number(depositRequired || 50),
+      remainingBalance: Math.max(0, Number(totalAmount || 180) - Number(depositRequired || 50)),
+      barberId,
+      barberName,
+      serviceName,
+      actorName: (req as any).user?.name || 'موظف الاستقبال',
+    });
 
     return res.json({
       success: true,
-      message: 'تم تسعير واعتماد الحجز وإرسال الفاتورة الرسمية للعميل عبر الواتساب بنجاح',
-      data: booking,
+      message: result.message,
+      data: result.booking,
     });
   } catch (error: any) {
     return res.status(500).json({ success: false, error: error.message });

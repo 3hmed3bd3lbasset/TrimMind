@@ -36,8 +36,29 @@ export interface IBookingRepository {
   findBySecureToken(token: string): Promise<Booking | null>;
   search(query: string, branchId?: string): Promise<Booking[]>;
   updateStatus(bookingId: string, status: BookingStatus, note?: string, actorId?: string): Promise<Booking>;
+  updateCustomPricing(data: {
+    bookingId: string;
+    serviceName: string;
+    totalAmount: number;
+    depositRequired: number;
+    discount: number;
+    customLineItems: any[];
+    barberId?: string | null;
+    barberName?: string | null;
+  }): Promise<Booking>;
+  updateDraft(data: {
+    bookingId: string;
+    serviceId?: string;
+    serviceName?: string;
+    additionalServiceIds?: string[];
+    barberId?: string | null;
+    barberName?: string | null;
+    startsAt?: string;
+    notes?: string;
+  }): Promise<Booking>;
   reviewPaymentProof(bookingId: string, status: 'approved' | 'rejected', reason?: string, reviewerId?: string): Promise<Booking>;
   findOverdueConfirmed(graceMinutes: number): Promise<Booking[]>;
   markNoShow(bookingId: string): Promise<void>;
   cancel(bookingId: string, reason?: string, actorId?: string): Promise<void>;
 }
+

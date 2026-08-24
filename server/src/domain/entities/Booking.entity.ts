@@ -1,5 +1,6 @@
 export type BookingStatus =
   | 'draft'
+  | 'custom_pricing_requested'
   | 'awaiting_payment'
   | 'payment_submitted'
   | 'pending_review'

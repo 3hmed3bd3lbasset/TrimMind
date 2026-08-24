@@ -112,7 +112,7 @@ CREATE TABLE IF NOT EXISTS `bookings` (
     `service_id` VARCHAR(64) NOT NULL,
     `additional_service_ids` JSON,
     `booking_type` ENUM('normal', 'vip') DEFAULT 'normal',
-    `status` ENUM('draft', 'awaiting_payment', 'payment_submitted', 'pending_review', 'confirmed', 'customer_arrived', 'in_service', 'completed', 'rejected', 'cancelled', 'expired', 'no_show') DEFAULT 'awaiting_payment',
+    `status` ENUM('draft', 'awaiting_payment', 'custom_pricing_requested', 'payment_submitted', 'pending_review', 'confirmed', 'customer_arrived', 'in_service', 'completed', 'rejected', 'cancelled', 'expired', 'no_show') DEFAULT 'awaiting_payment',
     `starts_at` VARCHAR(50) NOT NULL,
     `ends_at` VARCHAR(50),
     `booking_date` DATE,
@@ -322,6 +322,39 @@ CREATE TABLE IF NOT EXISTS `webhook_events` (
     `payload` JSON,
     `processed_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     INDEX idx_source_event (`source`, `event_type`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- 21. جلسات محادثة الواتساب والذكاء الاصطناعي الدائمة (Persistent Conversation Sessions)
+CREATE TABLE IF NOT EXISTS `conversation_sessions` (
+    `id` VARCHAR(64) PRIMARY KEY,
+    `customer_phone` VARCHAR(20) NOT NULL,
+    `whatsapp_remote_jid` VARCHAR(64) NULL,
+    `channel` ENUM('whatsapp') DEFAULT 'whatsapp',
+    `state` VARCHAR(40) NOT NULL DEFAULT 'IDLE',
+    `active_booking_id` VARCHAR(64) NULL,
+    `pending_entities` JSON NULL,
+    `last_intent` VARCHAR(40) NULL,
+    `human_handoff_active` TINYINT(1) DEFAULT 0,
+    `human_handoff_expires_at` TIMESTAMP NULL,
+    `last_message_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    INDEX idx_cs_phone (`customer_phone`),
+    FOREIGN KEY (`active_booking_id`) REFERENCES `bookings`(`id`) ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- 22. رسائل المحادثة الدائمة مع Idempotency Gate (Conversation Messages)
+CREATE TABLE IF NOT EXISTS `conversation_messages` (
+    `id` VARCHAR(64) PRIMARY KEY,
+    `session_id` VARCHAR(64) NOT NULL,
+    `whatsapp_message_id` VARCHAR(128) NULL,
+    `role` ENUM('customer', 'assistant', 'system') NOT NULL,
+    `content` TEXT NOT NULL,
+    `extracted_intent` JSON NULL,
+    `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    INDEX idx_cm_session (`session_id`),
+    UNIQUE KEY uq_cm_wa_msg (`whatsapp_message_id`),
+    FOREIGN KEY (`session_id`) REFERENCES `conversation_sessions`(`id`) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 SET FOREIGN_KEY_CHECKS = 1;
