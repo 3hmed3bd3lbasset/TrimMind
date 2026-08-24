@@ -16,12 +16,11 @@ const allowedOrigins = [
 
 export const corsMiddleware: RequestHandler = cors({
   origin: (origin, callback) => {
-    // Allow requests without origin (same-origin, static files, curl, mobile apps)
+    // Allow requests without origin (same-origin, static files, mobile apps, server-to-server)
     if (!origin) {
       return callback(null, true);
     }
-    
-    // Check against allowed origins list or railway/local dev domains
+
     const isAllowed =
       allowedOrigins.includes(origin) ||
       origin.endsWith('.railway.app') ||
@@ -37,9 +36,22 @@ export const corsMiddleware: RequestHandler = cors({
   },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept', 'x-agent-secret', 'x-api-key'],
+  allowedHeaders: [
+    'Content-Type',
+    'Authorization',
+    'X-Requested-With',
+    'Accept',
+    'x-agent-secret',
+    'x-api-key',
+    'x-hub-signature-256',
+    'x-signature-256',
+    'x-webhook-signature',
+    'x-webhook-timestamp',
+    'x-webhook-nonce',
+  ],
 });
 
+// Military-Grade Helmet & Content Security Policy (Anti-Clickjacking, Anti-XSS, Anti-MIME Sniffing)
 export const helmetMiddleware = helmet({
   contentSecurityPolicy: {
     directives: {
@@ -47,7 +59,7 @@ export const helmetMiddleware = helmet({
       scriptSrc: ["'self'", "'unsafe-inline'"],
       styleSrc: ["'self'", "'unsafe-inline'", 'https://fonts.googleapis.com'],
       fontSrc: ["'self'", 'https://fonts.gstatic.com', 'data:'],
-      imgSrc: ["'self'", 'data:', 'https://images.unsplash.com', 'blob:'],
+      imgSrc: ["'self'", 'data:', 'https://images.unsplash.com', 'blob:', 'https://*.railway.app'],
       connectSrc: [
         "'self'",
         clientUrl,
@@ -55,14 +67,20 @@ export const helmetMiddleware = helmet({
         'wss:',
         'https://generativelanguage.googleapis.com',
         'https://*.googleapis.com',
+        'https://*.railway.app',
       ],
+      frameAncestors: ["'none'"], // Total Clickjacking Immunity
+      objectSrc: ["'none'"],
+      baseUri: ["'self'"],
+      formAction: ["'self'"],
     },
   },
   crossOriginEmbedderPolicy: false,
   crossOriginResourcePolicy: { policy: 'cross-origin' },
-  frameguard: { action: 'sameorigin' },
+  frameguard: { action: 'deny' }, // Anti-Clickjacking
   hidePoweredBy: true,
   hsts: isProd ? { maxAge: 31536000, includeSubDomains: true, preload: true } : false,
   noSniff: true,
   xssFilter: true,
+  referrerPolicy: { policy: 'strict-origin-when-cross-origin' },
 });

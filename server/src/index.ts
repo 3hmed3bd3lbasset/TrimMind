@@ -17,6 +17,9 @@ import { apiLimiter } from './middleware/rateLimiter.js';
 import { errorHandler } from './middleware/errorHandler.js';
 import { initSocketIO } from './socket/realtime.js';
 import { initCleanupCron } from './services/cleanup.service.js';
+import { ipJailGuard, honeypotRouter } from './middleware/honeypot.js';
+import { verifyLedgerIntegrity } from './services/financialLedger.service.js';
+import { requireAuth, requireRoles } from './middleware/auth.js';
 
 // Route handlers
 import authRoutes from './routes/auth.routes.js';
@@ -38,6 +41,7 @@ import recallRoutes from './routes/recall.routes.js';
 import insightsRoutes from './routes/insights.routes.js';
 import { initWhatsApp, getWhatsAppState, getDebugLogs } from './services/whatsapp.service.js';
 import { initNoShowProtectionCron } from './services/noshow.service.js';
+import { getUploadDir, getPersistentDb, savePersistentDb } from './services/persistentStorage.service.js';
 
 dotenv.config();
 
@@ -46,9 +50,15 @@ app.set('trust proxy', 1);
 const server = http.createServer(app);
 const PORT = process.env.PORT || 5000;
 const CLIENT_URL = process.env.CLIENT_URL || 'http://localhost:5173';
-import { getUploadDir, getPersistentDb, savePersistentDb } from './services/persistentStorage.service.js';
 
-// 1. Core Security Middlewares
+// ============================================================================
+// 1. Ultra-Fast Zero-Trust IP Jail Pre-Flight (Fast-Drop Blacklisted Bots in 0.05ms)
+// ============================================================================
+app.use(ipJailGuard);
+
+// ============================================================================
+// 2. Core Military-Grade Security Middlewares
+// ============================================================================
 app.use(helmetMiddleware);
 app.use(corsMiddleware);
 app.use(cookieParser());
@@ -57,18 +67,28 @@ app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 app.use(sanitizeMiddleware);
 
-// 2. Global Rate Limiter
+// ============================================================================
+// 3. Honeypot Traps for Automated Bot Reconnaissance & Blacklisting
+// ============================================================================
+app.use(honeypotRouter);
+
+// ============================================================================
+// 4. Global Distributed Rate Limiter
+// ============================================================================
 app.use('/api', apiLimiter);
 
-// 3. Static Uploads Serving directly from persistent Railway Volume
+// ============================================================================
+// 5. Static Uploads Serving (Protected against Directory Traversal)
+// ============================================================================
 const uploadsPath = getUploadDir();
-// Block sensitive auth credentials from public static access
 app.use('/uploads/whatsapp_auth', (_req, res) => {
   res.status(403).json({ success: false, error: 'Forbidden' });
 });
 app.use('/uploads', express.static(uploadsPath));
 
-// 4. API Routes
+// ============================================================================
+// 6. Application API Routes
+// ============================================================================
 app.use('/api/auth', authRoutes);
 app.use('/api/bookings', bookingsRoutes);
 app.use('/api/queue', queueRoutes);
@@ -87,6 +107,17 @@ app.use('/api/whatsapp-session', whatsappSessionRoutes);
 app.use('/api/waitlist', waitlistRoutes);
 app.use('/api/recall', recallRoutes);
 app.use('/api/insights', insightsRoutes);
+
+// Tamper-Evident Financial Ledger Integrity Check (Manager Only)
+app.get('/api/financial/verify-ledger', requireAuth, requireRoles('manager'), async (req, res) => {
+  try {
+    const branchId = req.query.branchId as string | undefined;
+    const report = await verifyLedgerIntegrity(branchId);
+    return res.json({ success: true, data: report });
+  } catch (error: any) {
+    return res.status(500).json({ success: false, error: error.message });
+  }
+});
 
 // Persistent Sync & Bootstrap Endpoints
 app.get('/api/sync/bootstrap', (_req, res) => {
@@ -125,7 +156,7 @@ app.get('/api/debug-logs', (_req, res) => {
   });
 });
 
-// 5. Serve React Frontend SPA build on the exact same port (Unified Host for Railway)
+// 7. Serve React Frontend SPA build on the exact same port (Unified Host for Railway)
 const candidateDistPaths = [
   path.resolve(__dirname, '../../dist'),
   path.resolve(process.cwd(), '../dist'),
@@ -145,10 +176,10 @@ if (fs.existsSync(path.join(clientDistPath, 'index.html'))) {
   console.log(`📦 Serving React Frontend directly from ${clientDistPath}`);
 }
 
-// 6. Global Secure Error Handler
+// 8. Global Secure Error Handler
 app.use(errorHandler);
 
-// 6. Initialize Realtime WebSockets & Cron Tasks
+// 9. Initialize Realtime WebSockets & Cron Tasks
 initSocketIO(server, CLIENT_URL);
 initCleanupCron();
 initNoShowProtectionCron();
@@ -165,7 +196,7 @@ async function startServer() {
     console.log('====================================================');
     console.log(`💈 ELITE SALON PRODUCTION BACKEND SERVER IS RUNNING`);
     console.log(`📡 URL: http://localhost:${PORT}`);
-    console.log(`🔒 Security: Helmet, CORS, RateLimiting, Bcrypt, JWT Active`);
+    console.log(`🔒 Security: Zero-Trust IP Jail, MagicBytes, HashLedger, Helmet, CORS, RateLimiting Active`);
     console.log(`⚡ Realtime: WebSockets Socket.io Ready`);
     console.log(`📱 Initializing WhatsApp Integration Engine...`);
     console.log('====================================================');

@@ -194,6 +194,8 @@ export async function ensureInitialDbData() {
       'ALTER TABLE bookings ADD COLUMN custom_line_items JSON NULL',
       'ALTER TABLE bookings ADD COLUMN no_show_marked_at TIMESTAMP NULL',
       'ALTER TABLE payment_proofs MODIFY COLUMN image_path LONGTEXT NULL',
+      'ALTER TABLE financial_records ADD COLUMN previous_hash VARCHAR(64) DEFAULT "0000000000000000000000000000000000000000000000000000000000000000"',
+      'ALTER TABLE financial_records ADD COLUMN record_hash VARCHAR(64) NULL',
     ];
 
     for (const colQuery of safeColumns) {

@@ -5,70 +5,63 @@ import fs from 'fs';
 import { v4 as uuidv4 } from 'uuid';
 import { uploadLimiter } from '../middleware/rateLimiter.js';
 import { getUploadDir } from '../services/persistentStorage.service.js';
+import { validateImageSignature, stripJpegExif } from '../services/imageSecurity.service.js';
 
 const router = Router();
 
-const MIME_TO_EXT: Record<string, string> = {
-  'image/jpeg': '.jpg',
-  'image/jpg': '.jpg',
-  'image/png': '.png',
-  'image/webp': '.webp',
-};
-
-// Multer Storage Configuration (targeting persistent volume)
-const storage = multer.diskStorage({
-  destination: (_req, _file, cb) => {
-    cb(null, getUploadDir());
-  },
-  filename: (_req, file, cb) => {
-    const safeExt = MIME_TO_EXT[file.mimetype.toLowerCase()] || '.jpg';
-    const safeName = `proof_${Date.now()}_${uuidv4().slice(0, 8)}${safeExt}`;
-    cb(null, safeName);
-  },
-});
-
-// File filter (Only JPEG, PNG, WEBP allowed)
-const fileFilter: multer.Options['fileFilter'] = (_req, file, cb) => {
-  const allowedMimes = Object.keys(MIME_TO_EXT);
-  const origExt = path.extname(file.originalname).toLowerCase();
-  const allowedExts = ['.jpg', '.jpeg', '.png', '.webp'];
-
-  if (allowedMimes.includes(file.mimetype.toLowerCase()) && (allowedExts.includes(origExt) || origExt === '')) {
-    cb(null, true);
-  } else {
-    cb(new Error('صيغة الملف غير مدعومة. يرجى رفع صورة بصيغة PNG أو JPG أو WEBP فقط.'));
-  }
-};
+// In-Memory Storage for Deep Inspection before writing to disk
+const memoryStorage = multer.memoryStorage();
 
 const upload = multer({
-  storage,
-  fileFilter,
+  storage: memoryStorage,
   limits: {
     fileSize: 5 * 1024 * 1024, // 5 MB max
     files: 1,
   },
 });
 
-// POST /api/upload (Public upload for payment receipt screenshots)
+// POST /api/upload (Enterprise Upload with Magic Bytes Inspection & EXIF Stripping)
 router.post('/', uploadLimiter, upload.single('file'), (req, res: Response) => {
   try {
-    if (!req.file) {
+    if (!req.file || !req.file.buffer) {
       return res.status(400).json({ success: false, error: 'لم يتم اختيار أي ملف لرفعه' });
     }
 
-    const publicPath = `/uploads/${req.file.filename}`;
+    // 1. Magic Bytes & Polyglot Payload Inspection
+    const validation = validateImageSignature(req.file.buffer);
+    if (!validation.isValid || !validation.safeExt) {
+      return res.status(400).json({
+        success: false,
+        error: validation.rejectionReason || 'الملف المرفوع غير صالح أو يحتوي على كود غير مصرح به',
+      });
+    }
+
+    // 2. EXIF & GPS Location Metadata Stripping (Privacy Protection)
+    let processedBuffer = req.file.buffer;
+    if (validation.detectedMime === 'image/jpeg') {
+      processedBuffer = stripJpegExif(req.file.buffer);
+    }
+
+    // 3. Deterministic UUID Filename (Prevents Path Traversal / Execution attacks)
+    const safeFilename = `proof_${Date.now()}_${uuidv4().replace(/-/g, '')}${validation.safeExt}`;
+    const destinationPath = path.join(getUploadDir(), safeFilename);
+
+    // 4. Secure Write to Persistent Storage
+    fs.writeFileSync(destinationPath, processedBuffer);
+
+    const publicPath = `/uploads/${safeFilename}`;
     return res.status(201).json({
       success: true,
-      message: 'تم رفع الصورة بنجاح',
+      message: 'تم فحص الصورة واعتمادها وحفظها بأمان',
       data: {
-        filename: req.file.filename,
+        filename: safeFilename,
         path: publicPath,
-        size: req.file.size,
-        mimetype: req.file.mimetype,
+        size: processedBuffer.length,
+        mimetype: validation.detectedMime,
       },
     });
   } catch (error: any) {
-    return res.status(400).json({ success: false, error: error.message || 'فشل رفع الملف' });
+    return res.status(400).json({ success: false, error: error.message || 'فشل معالجة ورفع الصورة' });
   }
 });
 
