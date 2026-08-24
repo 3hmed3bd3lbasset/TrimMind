@@ -6,6 +6,7 @@ import { MySQLConversationSessionRepository } from '../adapters/repositories/MyS
 
 const router = Router();
 const sessionRepo = new MySQLConversationSessionRepository();
+const processedMessageIds = new Set<string>();
 
 const ROLE_KEYS: Record<string, string> = {
   customer: process.env.GEMINI_API_KEY_CUSTOMER || process.env.GEMINI_API_KEY || '',
@@ -28,6 +29,21 @@ router.post('/chat', aiLimiter, optionalAuth, async (req: AuthenticatedRequest, 
       pushName,
       text,
     } = req.body;
+
+    // 1. Instant Idempotency Gate (Blocks duplicate message processing instantly)
+    if (messageId) {
+      const msgIdStr = String(messageId).trim();
+      if (processedMessageIds.has(msgIdStr)) {
+        console.log(`[AI_CHAT_DEDUP] Duplicate messageId blocked: ${msgIdStr}`);
+        res.json({ success: true, text: '', isDuplicate: true });
+        return;
+      }
+      processedMessageIds.add(msgIdStr);
+      if (processedMessageIds.size > 10000) {
+        const oldest = processedMessageIds.values().next().value;
+        if (oldest) processedMessageIds.delete(oldest);
+      }
+    }
 
     const effectiveRole = req.user ? req.user.role : 'customer';
     const apiKey = ROLE_KEYS[effectiveRole] || ROLE_KEYS.customer;
