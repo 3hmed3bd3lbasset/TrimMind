@@ -33,6 +33,7 @@ export class MySQLConversationSessionRepository implements IConversationSessionR
 
   private async ensureTable(): Promise<void> {
     if (this.tableEnsured) return;
+    this.tableEnsured = true;
     try {
       await query(`
         CREATE TABLE IF NOT EXISTS conversation_sessions (
@@ -49,11 +50,16 @@ export class MySQLConversationSessionRepository implements IConversationSessionR
           last_message_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
           created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
           updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-          INDEX idx_cs_phone (customer_phone),
-          INDEX idx_cs_active_booking (active_booking_id)
-        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+          INDEX idx_cs_phone (customer_phone)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
       `);
+    } catch {}
 
+    try {
+      await query('ALTER TABLE conversation_sessions ADD COLUMN whatsapp_remote_jid VARCHAR(64) NULL AFTER customer_phone');
+    } catch {}
+
+    try {
       await query(`
         CREATE TABLE IF NOT EXISTS conversation_messages (
           id VARCHAR(64) PRIMARY KEY,
@@ -65,12 +71,9 @@ export class MySQLConversationSessionRepository implements IConversationSessionR
           created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
           INDEX idx_cm_session (session_id),
           UNIQUE KEY uq_cm_wa_msg (whatsapp_message_id)
-        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
       `);
-      this.tableEnsured = true;
-    } catch {
-      this.tableEnsured = true;
-    }
+    } catch {}
   }
 
   public async getOrCreate(customerPhone: string, remoteJid?: string): Promise<ConversationSession> {
@@ -80,18 +83,22 @@ export class MySQLConversationSessionRepository implements IConversationSessionR
     // 1. Search by immutable remoteJid first (supports @lid, international, and standard JIDs)
     let rows: any[] = [];
     if (remoteJid) {
-      rows = await query<any[]>(
-        'SELECT * FROM conversation_sessions WHERE whatsapp_remote_jid = ? ORDER BY created_at DESC LIMIT 1',
-        [remoteJid]
-      );
+      try {
+        rows = await query<any[]>(
+          'SELECT * FROM conversation_sessions WHERE whatsapp_remote_jid = ? ORDER BY created_at DESC LIMIT 1',
+          [remoteJid]
+        );
+      } catch {}
     }
 
     // 2. Fallback to clean phone search if not matched by remoteJid
     if ((!rows || rows.length === 0) && cleanPhone) {
-      rows = await query<any[]>(
-        'SELECT * FROM conversation_sessions WHERE customer_phone = ? ORDER BY created_at DESC LIMIT 1',
-        [cleanPhone]
-      );
+      try {
+        rows = await query<any[]>(
+          'SELECT * FROM conversation_sessions WHERE customer_phone = ? ORDER BY created_at DESC LIMIT 1',
+          [cleanPhone]
+        );
+      } catch {}
     }
 
     if (rows && rows.length > 0) {
