@@ -365,6 +365,7 @@ ${barbersListStr}`;
       isDuplicate: false,
       isContinuingConversation,
       historyLength: finalContents.length,
+      debugHistory: finalContents.map(c => ({ role: c.role, text: c.parts[0]?.text?.slice(0, 30) })),
     });
   } catch (err: any) {
     console.error('AI chat endpoint error:', err);
