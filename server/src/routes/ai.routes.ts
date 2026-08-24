@@ -15,7 +15,14 @@ const ROLE_KEYS: Record<string, string> = {
   barber: process.env.GEMINI_API_KEY_BARBER || process.env.GEMINI_API_KEY || '',
 };
 
-const candidateModels = ['gemini-2.0-flash-lite', 'gemini-2.0-flash', 'gemini-1.5-flash', 'gemini-flash-latest'];
+const candidateModels = [
+  'gemini-1.5-flash',
+  'gemini-1.5-flash-latest',
+  'gemini-2.0-flash',
+  'gemini-2.0-flash-lite-preview-02-05',
+  'gemini-1.5-pro',
+  'gemini-pro',
+];
 
 router.post('/chat', aiLimiter, optionalAuth, async (req: AuthenticatedRequest, res: Response): Promise<void> => {
   try {
@@ -303,6 +310,7 @@ ${servicesCatalogStr}
 ${barbersListStr}`;
 
     let responseText = '';
+    let lastGeminiError: string | null = null;
 
     for (const model of candidateModels) {
       if (responseText) break;
@@ -328,18 +336,27 @@ ${barbersListStr}`;
             responseText = data.candidates[0].content.parts[0].text;
             break;
           }
+        } else {
+          const errText = await apiRes.text();
+          lastGeminiError = `Model ${model} status ${apiRes.status}: ${errText}`;
+          console.error(`[GEMINI_API_ERROR] ${lastGeminiError}`);
         }
-      } catch (err) {
-        // try next candidate model
+      } catch (err: any) {
+        lastGeminiError = `Model ${model} threw: ${err.message}`;
+        console.error(`[GEMINI_FETCH_ERR] ${lastGeminiError}`);
       }
     }
 
     if (!responseText) {
-      // Dynamic deterministic fallback based on live database services
-      const firstFew = liveServices.slice(0, 6).map((s) => `• **${s.name}:** ${s.price} ج.م`).join('\n');
-      responseText = isContinuingConversation
-        ? `تم تسجيل طلبك بخصوص باقاتنا الملكية. تحب نأكد الحجز وموعد الجلسة الآن؟`
-        : `أهلاً بك في صالون **TrimMind VIP**! 💈👑\n\nإليك كتالوج خدماتنا وباقاتنا الرسمية المتاحة:\n\n${firstFew}\n\nيسعدنا حجز موعدك واختيار الكابتن المفضل لحضرتك في أي وقت! ✨`;
+      // Intelligent dynamic fallback when AI API is unavailable
+      if (userText.match(/^(ازيك|السلام عليكم|سلام|مرحبا|هاي|صباح|مساء)/i)) {
+        responseText = `يا هلا بيك يا فندم، منور صالون TrimMind VIP! 💈👑 أقدر أساعدك بإيه النهاردة في الحجز أو الخدمات؟`;
+      } else if (userText.match(/^(ايوا|اه|تمام|ماشي|اوك|حاضر)/i)) {
+        responseText = `تحت أمرك يا فندم! تحب نحجز لحضرتك موعد معين أو تختار كابتن محدد من فريقنا؟`;
+      } else {
+        const firstFew = liveServices.slice(0, 5).map((s) => `• **${s.name}:** ${s.price} ج.م`).join('\n');
+        responseText = `أهلاً بك في صالون **TrimMind VIP**! 💈👑\n\nخدماتنا المتاحة:\n${firstFew}\n\nتحب نحدد موعد لطلبك؟`;
+      }
     }
 
     // Clean response text: remove metadata leaks and leading redundant greetings on continuing turns
