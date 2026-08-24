@@ -586,10 +586,7 @@ async function forwardToN8nWebhook(
       },
     };
 
-    const targetUrl =
-      process.env.N8N_WEBHOOK_URL ||
-      process.env.N8N_WHATSAPP_WEBHOOK_URL ||
-      'https://primary-production-45dc.up.railway.app/webhook/whatsapp-webhook';
+    const targetUrl = N8N_WEBHOOK_URL;
 
     logDebug('FORWARDING_TO_N8N', { url: targetUrl, textSnippet: text?.substring(0, 40) });
 
