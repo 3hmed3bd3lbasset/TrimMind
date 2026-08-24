@@ -29,7 +29,52 @@ export class MySQLConversationSessionRepository implements IConversationSessionR
     });
   }
 
+  private tableEnsured = false;
+
+  private async ensureTable(): Promise<void> {
+    if (this.tableEnsured) return;
+    try {
+      await query(`
+        CREATE TABLE IF NOT EXISTS conversation_sessions (
+          id VARCHAR(64) PRIMARY KEY,
+          customer_phone VARCHAR(20) NOT NULL,
+          whatsapp_remote_jid VARCHAR(64) NULL,
+          channel ENUM('whatsapp') DEFAULT 'whatsapp',
+          state VARCHAR(40) NOT NULL DEFAULT 'IDLE',
+          active_booking_id VARCHAR(64) NULL,
+          pending_entities JSON NULL,
+          last_intent VARCHAR(40) NULL,
+          human_handoff_active TINYINT(1) DEFAULT 0,
+          human_handoff_expires_at TIMESTAMP NULL,
+          last_message_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+          updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+          INDEX idx_cs_phone (customer_phone),
+          INDEX idx_cs_active_booking (active_booking_id)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+      `);
+
+      await query(`
+        CREATE TABLE IF NOT EXISTS conversation_messages (
+          id VARCHAR(64) PRIMARY KEY,
+          session_id VARCHAR(64) NOT NULL,
+          whatsapp_message_id VARCHAR(128) NULL,
+          role ENUM('customer','assistant','system') NOT NULL,
+          content TEXT NOT NULL,
+          extracted_intent JSON NULL,
+          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+          INDEX idx_cm_session (session_id),
+          UNIQUE KEY uq_cm_wa_msg (whatsapp_message_id)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+      `);
+      this.tableEnsured = true;
+    } catch {
+      this.tableEnsured = true;
+    }
+  }
+
   public async getOrCreate(customerPhone: string, remoteJid?: string): Promise<ConversationSession> {
+    await this.ensureTable();
     const cleanPhone = customerPhone.replace(/\D+/g, '');
     const rows = await query<any[]>(
       'SELECT * FROM conversation_sessions WHERE customer_phone = ? ORDER BY created_at DESC LIMIT 1',
