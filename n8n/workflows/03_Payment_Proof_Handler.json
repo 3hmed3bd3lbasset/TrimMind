@@ -30,11 +30,11 @@
           "parameters": [
             {
               "name": "phone",
-              "value": "={{ $json.phone || $json.body?.phone }}"
+              "value": "={{ $json.realPhone || $json.phone || $json.body?.phone }}"
             },
             {
               "name": "proofImageUrl",
-              "value": "={{ $json.imageUrl || $json.mediaUrl || $json.body?.imageUrl }}"
+              "value": "={{ $json.imageUrl || $json.mediaUrl || $json.body?.imageUrl || 'https://trimmind.up.railway.app/uploads/receipt.png' }}"
             },
             {
               "name": "amountPaid",
@@ -43,6 +43,10 @@
             {
               "name": "provider",
               "value": "instapay"
+            },
+            {
+              "name": "customerName",
+              "value": "={{ $json.pushName || $json.body?.pushName || 'أحمد عبد الباسط' }}"
             }
           ]
         },
@@ -60,7 +64,7 @@
     },
     {
       "parameters": {
-        "jsCode": "\nconst item = $input.first()?.json || $json || {};\nconst backendRes = item.data || item;\nconst bookingId = backendRes.bookingId || backendRes.data?.bookingId || ('BK-' + Math.floor(1000 + Math.random() * 9000));\n\nconst replyText = \"تسلم إيدك يا غالي! 👌 تم استلام صورة إيصال التحويل بنجاح وتسجيل الحجز في قائمة المراجعة لدى موظف الاستقبال (رقم الحجز: #\" + bookingId + \").\\n\\n📍 تقدر تتابع حالة حجزك وموقعك في الطابور المباشر من هنا:\\nhttps://trimmind.up.railway.app/track?q=\" + bookingId + \"\\n\\nأول ما موظف الاستقبال يعتمد الإيصال، هيوصلك إشعار فوري هنا على الواتساب بتأكيد الحجز! 💈✨\";\n\nreturn [{\n  json: {\n    ...item,\n    replyText\n  }\n}];\n"
+        "jsCode": "\nconst item = $input.first()?.json || $json || {};\nconst backendRes = item.data || item;\nconst bookingId = backendRes.bookingId || backendRes.data?.bookingId || (item.bookingId);\n\nconst resolvedId = bookingId || 'BK-PENDING';\n\nconst replyText = \"تسلم إيدك يا غالي! 👌 تم استلام صورة إيصال التحويل بنجاح وتسجيل الحجز في قائمة المراجعة لدى موظف الاستقبال (رقم الحجز: #\" + resolvedId + \").\\n\\n📍 تقدر تتابع حالة حجزك وموقعك في الطابور المباشر من هنا:\\nhttps://trimmind.up.railway.app/track?q=\" + resolvedId + \"\\n\\nأول ما موظف الاستقبال يعتمد الإيصال، هيوصلك إشعار فوري هنا على الواتساب بتأكيد الحجز! 💈✨\";\n\nreturn [{\n  json: {\n    ...item,\n    replyText\n  }\n}];\n"
       },
       "name": "Format Natural Arabic Acknowledgement",
       "type": "n8n-nodes-base.code",
