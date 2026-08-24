@@ -211,8 +211,32 @@ router.post('/chat', aiLimiter, optionalAuth, async (req: AuthenticatedRequest, 
     }
     const customerNameSnippet = cleanPushName ? `اسم العميل: أستاذ ${cleanPushName}` : '';
 
+    // Format Real-Time Cairo Date and Day of Week
+    const cairoDate = new Date();
+    const cairoFormatted = new Intl.DateTimeFormat('ar-EG', {
+      timeZone: 'Africa/Cairo',
+      weekday: 'long',
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric',
+      hour: 'numeric',
+      minute: 'numeric',
+      hour12: true
+    }).format(cairoDate);
+
+    const daysAr = ['الأحد', 'الإثنين', 'الثلاثاء', 'الأربعاء', 'الخميس', 'الجمعة', 'السبت'];
+    const cairoDayIndex = new Date(cairoDate.toLocaleString('en-US', { timeZone: 'Africa/Cairo' })).getDay();
+    const cairoDayName = daysAr[cairoDayIndex];
+
     const serverSystemInstruction = isContinuingConversation
       ? `أنت موظف استقبال حقيقي في صالون (TrimMind - صالون الحداد VIP)، مش بوت. بتكلم العميل باللهجة المصرية العادية، بنفس أسلوبه، وردودك قصيرة وعملية زي رسايل واتساب حقيقية.
+
+⏰ التاريخ والتوقيت الحالي في مصر (توقيت القاهرة الرسمي):
+- اليوم والتوقيت الآن: **${cairoFormatted}**
+- اليوم هو: **يوم ${cairoDayName}**
+- قواعد قاطعة لمعرفة الأيام والمواعيد:
+  • إذا سأل العميل: "النهاردة إيه؟" أو "اليوم إيه أصلاً؟" ⬅️ جاوبه فوراً بدقة تامة: "النهاردة ${cairoDayName} يا فندم".
+  • احسب "النهاردة"، "بكرة"، "بعد بكرة"، وتواريخ ومواعيد الحجز بدقة بناءً على يوم ${cairoDayName} دون أي تخمين أو اختراع لأيام وهمية.
 
 🚫 قواعد قاطعة وإلزامية:
 - ❌ متبدأش أي رسالة بتحية أو نداء أو مجاملة افتتاحية إطلاقاً (التحية في أول رسالة بالمحادثة فقط). ادخل في الموضوع فوراً.
@@ -254,6 +278,13 @@ ${servicesCatalogStr}
 ${barbersListStr}`
       : `أنت موظف استقبال حقيقي في صالون (TrimMind - صالون الحداد VIP)، مش بوت. بتكلم العميل باللهجة المصرية العادية، بنفس أسلوبه.
 ${customerNameSnippet}
+
+⏰ التاريخ والتوقيت الحالي في مصر (توقيت القاهرة الرسمي):
+- اليوم والتوقيت الآن: **${cairoFormatted}**
+- اليوم هو: **يوم ${cairoDayName}**
+- قواعد قاطعة لمعرفة الأيام والمواعيد:
+  • إذا سأل العميل: "النهاردة إيه؟" أو "اليوم إيه أصلاً؟" ⬅️ جاوبه فوراً بدقة تامة: "النهاردة ${cairoDayName} يا فندم".
+  • احسب "النهاردة"، "بكرة"، "بعد بكرة"، وتواريخ ومواعيد الحجز بدقة بناءً على يوم ${cairoDayName} دون أي تخمين أو اختراع لأيام وهمية.
 
 - اسمع قبل ما تعرض: لو العميل قال طلب عام، اسأله سؤال توضيحي قصير ولا ترمي كل باقات الأسعار دفعة واحدة إلا لو طلب الأسعار صراحة.
 - لو العميل مستعجل ⬅️ رشّح VIP (خدمة أسرع وأولوية). لو رايق ⬅️ ابدأ بالخدمة العادية أولاً.
