@@ -34,6 +34,19 @@ export class MySQLConversationSessionRepository implements IConversationSessionR
   private async ensureTable(): Promise<void> {
     if (this.tableEnsured) return;
     this.tableEnsured = true;
+
+    try {
+      await query(`
+        CREATE TABLE IF NOT EXISTS webhook_events (
+          id VARCHAR(128) PRIMARY KEY,
+          source VARCHAR(64) NOT NULL,
+          event_type VARCHAR(64),
+          payload JSON,
+          processed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+      `);
+    } catch {}
+
     try {
       await query(`
         CREATE TABLE IF NOT EXISTS conversation_sessions (
@@ -69,17 +82,13 @@ export class MySQLConversationSessionRepository implements IConversationSessionR
           content TEXT NOT NULL,
           extracted_intent JSON NULL,
           created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-          INDEX idx_cm_session (session_id),
-          UNIQUE KEY uq_cm_wa_msg (whatsapp_message_id)
+          INDEX idx_cm_session (session_id)
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
       `);
     } catch {}
 
     try {
       await query('ALTER TABLE conversation_messages ADD COLUMN whatsapp_message_id VARCHAR(128) NULL AFTER session_id');
-    } catch {}
-    try {
-      await query('ALTER TABLE conversation_messages ADD UNIQUE KEY uq_cm_wa_msg (whatsapp_message_id)');
     } catch {}
   }
 
@@ -226,17 +235,27 @@ export class MySQLConversationSessionRepository implements IConversationSessionR
     const messageId = `cm-${uuidv4()}`;
     const intentJson = message.extractedIntent ? JSON.stringify(message.extractedIntent) : null;
 
-    // 1. Explicit duplicate check by whatsappMessageId
+    // 1. Idempotency Gate via webhook_events & conversation_messages
     if (message.whatsappMessageId) {
       try {
-        const existing = await query<any[]>(
-          'SELECT id FROM conversation_messages WHERE whatsapp_message_id = ? LIMIT 1',
+        const existingEvent = await query<any[]>(
+          'SELECT id FROM webhook_events WHERE id = ? LIMIT 1',
           [message.whatsappMessageId]
         );
-        if (existing && existing.length > 0) {
+        if (existingEvent && existingEvent.length > 0) {
           return { isDuplicate: true, messageId: message.whatsappMessageId };
         }
-      } catch {}
+
+        // Record in webhook_events with PRIMARY KEY constraint
+        await query(
+          'INSERT INTO webhook_events (id, source, event_type, processed_at) VALUES (?, ?, ?, NOW())',
+          [message.whatsappMessageId, 'whatsapp_chat', 'customer_message']
+        );
+      } catch (evtErr: any) {
+        if (evtErr?.code === 'ER_DUP_ENTRY' || evtErr?.errno === 1062 || String(evtErr?.message || '').includes('Duplicate entry')) {
+          return { isDuplicate: true, messageId: message.whatsappMessageId };
+        }
+      }
     }
 
     try {
@@ -254,11 +273,6 @@ export class MySQLConversationSessionRepository implements IConversationSessionR
 
       return { isDuplicate: false, messageId };
     } catch (err: any) {
-      // Check for MySQL UNIQUE duplicate entry error (ER_DUP_ENTRY / 1062)
-      if (err?.code === 'ER_DUP_ENTRY' || err?.errno === 1062 || String(err?.message || '').includes('Duplicate entry')) {
-        return { isDuplicate: true, messageId: message.whatsappMessageId || '' };
-      }
-      
       // Fallback insert without whatsapp_message_id column if table was from older migration
       try {
         await query(
