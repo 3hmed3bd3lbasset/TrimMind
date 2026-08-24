@@ -24,6 +24,11 @@ export async function createBooking(payload: any, actor?: any, ipAddress?: strin
     notes: payload.notes,
     paymentProof: payload.paymentProof,
     totalAmount: payload.totalAmount,
+    source: payload.source || 'web',
+    aiBrief: payload.aiBrief,
+    confidenceScore: payload.confidenceScore,
+    needsHumanAttention: payload.needsHumanAttention,
+    customLineItems: payload.customLineItems,
   }, actor?.id);
 
   const resObj = {

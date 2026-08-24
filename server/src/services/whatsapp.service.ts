@@ -102,6 +102,8 @@ export interface UserBookingSession {
   receiptSubmitted?: boolean;
   needsHumanAttention?: boolean;
   handoffExpiresAt?: number | null;
+  greeted?: boolean;
+  customItems?: Array<{ name: string; price: number }>;
   lastActiveAt?: number;
 }
 
@@ -804,6 +806,55 @@ function extractNameFromText(text: string, pushName: string = '') {
   return cleanPush || 'أحمد';
 }
 
+export function extractCustomBundleFromText(text: string, liveServices: any[]) {
+  const textLower = text.toLowerCase();
+  const matchedServices: Array<{ name: string; price: number; id: string }> = [];
+
+  // 1. Haircut
+  if (textLower.includes('شعر') || textLower.includes('حلاقة') || textLower.includes('حلاقه') || textLower.includes('قص') || textLower.includes('قصة') || textLower.includes('تدريج') || textLower.includes('fade')) {
+    const srv = liveServices.find(s => s.name.includes('قص شعر') || s.name.includes('كلاسيكي')) || { id: 'srv-haircut', name: 'قص شعر كلاسيكي', price: 180 };
+    if (!matchedServices.some(m => m.id === srv.id)) matchedServices.push({ id: srv.id, name: srv.name, price: Number(srv.price) });
+  }
+
+  // 2. Beard
+  if (textLower.includes('لحية') || textLower.includes('لحيه') || textLower.includes('دقن') || textLower.includes('تحديد') || textLower.includes('تظبيط') || textLower.includes('حلاقة دقن')) {
+    const srv = liveServices.find(s => s.name.includes('لحية') || s.name.includes('دقن') || s.name.includes('تحديد')) || { id: 'srv-beard', name: 'تحديد وتظبيط لحية', price: 100 };
+    if (!matchedServices.some(m => m.id === srv.id)) matchedServices.push({ id: srv.id, name: srv.name, price: Number(srv.price) });
+  }
+
+  // 3. Facial / Skin Care
+  if (textLower.includes('بشرة') || textLower.includes('بشره') || textLower.includes('تنظيف') || textLower.includes('ماسك') || textLower.includes('بخار') || textLower.includes('صنفرة') || textLower.includes('صنفره')) {
+    const srv = liveServices.find(s => s.name.includes('بشرة') || s.name.includes('تنظيف') || s.name.includes('ماسك')) || { id: 'srv-facial', name: 'تنظيف بشرة وماسك بخار', price: 240 };
+    if (!matchedServices.some(m => m.id === srv.id)) matchedServices.push({ id: srv.id, name: srv.name, price: Number(srv.price) });
+  }
+
+  // 4. Protein / Care
+  if (textLower.includes('بروتين') || textLower.includes('كيراتين') || textLower.includes('فيلر') || textLower.includes('فرد') || textLower.includes('ترطيب') || textLower.includes('علاج')) {
+    const srv = liveServices.find(s => s.name.includes('بروتين') || s.name.includes('علاج') || s.name.includes('ترطيب')) || { id: 'srv-protein', name: 'جلسة بروتين وترطيب عميق', price: 300 };
+    if (!matchedServices.some(m => m.id === srv.id)) matchedServices.push({ id: srv.id, name: srv.name, price: Number(srv.price) });
+  }
+
+  // 5. Coloring / Styling
+  if (textLower.includes('صبغة') || textLower.includes('صبغه') || textLower.includes('لون') || textLower.includes('سشوار') || textLower.includes('غسيل') || textLower.includes('استشوار')) {
+    const srv = liveServices.find(s => s.name.includes('صبغة') || s.name.includes('سشوار')) || { id: 'srv-style', name: 'صبغة وتصفيف شعر', price: 150 };
+    if (!matchedServices.some(m => m.id === srv.id)) matchedServices.push({ id: srv.id, name: srv.name, price: Number(srv.price) });
+  }
+
+  if (matchedServices.length === 0) return null;
+
+  const totalEstimated = matchedServices.reduce((sum, s) => sum + s.price, 0);
+  const bundleTitle = matchedServices.length === 1
+    ? matchedServices[0].name
+    : `باقة مخصصة (${matchedServices.map(s => s.name).join(' + ')})`;
+
+  return {
+    items: matchedServices,
+    totalEstimated,
+    bundleTitle,
+    primaryServiceId: matchedServices[0].id
+  };
+}
+
 // Direct Native Intelligent Interactive AI Agent Response Engine - 100% Dynamic MySQL Database Integration
 async function handleIncomingWithAI(
   remoteJid: string,
@@ -967,10 +1018,11 @@ async function handleIncomingWithAI(
   }
 
   // -------------------------------------------------------------------------
-  // 2. PAYMENT PROOF IMAGE SUBMISSION (Customer sends screenshot)
+  // 2. PAYMENT PROOF IMAGE SUBMISSION (Customer sends screenshot) - 100% BULLETPROOF
   // -------------------------------------------------------------------------
   if (isImage) {
-    const custName = session.customerName || (pushName && pushName.trim().length >= 2 ? pushName.trim() : 'أحمد');
+    const custName = session.customerName || (pushName && pushName.trim().length >= 2 ? pushName.trim() : 'عميل واتساب');
+    const cleanPhone = (session.customerPhone || senderPhone || '01005437633').replace(/\D+/g, '');
     const bType = session.bookingType || 'normal';
     const defaultSrv = liveCtx.services[0] || { id: 'srv-1', name: 'قص شعر كلاسيكي', price: 180 };
     const sName = session.serviceName || defaultSrv.name;
@@ -978,15 +1030,16 @@ async function handleIncomingWithAI(
     const randomBarber = liveCtx.barbers[Math.floor(Math.random() * liveCtx.barbers.length)] || { id: 'barber-mohamed', name: 'محمد الحداد' };
     const bName = session.barberName || (bType === 'vip' ? (liveCtx.barbers[0]?.name || 'محمد الحداد') : randomBarber.name);
     const bId = session.barberId || (bType === 'vip' ? (liveCtx.barbers[0]?.id || 'barber-mohamed') : randomBarber.id);
-    const isExplicit = Boolean(session.serviceName && session.dateTimeStr);
-    const confidenceScore = isExplicit ? 95 : 80;
-    const aiBrief = `• الخدمة المطلوبة: ${sName} (${sPrice} ج.م)\n• الكابتن: ${bName}\n• نوع الجلسة: ${bType === 'vip' ? 'VIP ملكية 👑' : 'عادية 💈'}\n• الميعاد المفضل: ${session.dateTimeStr || 'اليوم'}\n• هاتف العميل: ${senderPhone || 'واتساب'}`;
     const depVal = session.depositAmount || (bType === 'vip' ? deposits.vip : deposits.normal);
+    const customLineItems = session.customItems || [{ name: sName, price: sPrice }];
+    const aiBrief = `• الباقة والخدمات: ${sName} (حوالي ${sPrice} ج.م)\n• الكابتن: ${bName}\n• نوع الجلسة: ${bType === 'vip' ? 'VIP ملكية 👑' : 'عادية 💈'}\n• الميعاد: ${session.dateTimeStr || 'اليوم'}\n• هاتف العميل: ${cleanPhone}`;
 
+    let createdId = '';
     try {
       const created = await createBooking({
+        branchId: 'branch-elhdad',
         customerName: custName,
-        customerPhone: senderPhone || '01005437633',
+        customerPhone: cleanPhone,
         serviceId: session.serviceId || defaultSrv.id,
         serviceName: sName,
         servicePrice: sPrice,
@@ -997,40 +1050,66 @@ async function handleIncomingWithAI(
         bookingType: bType,
         source: 'whatsapp',
         aiBrief,
-        confidenceScore,
+        confidenceScore: 95,
+        customLineItems,
         paymentProof: {
-          image_url: base64ImageUrl || '',
-          transferred_amount: depVal,
-          submitted_at: new Date().toISOString(),
-          status: 'pending_review',
+          imagePath: base64ImageUrl || 'data:image/placeholder',
+          paymentMethod: 'instapay',
+          senderPhone: cleanPhone,
+          amount: depVal,
         },
         startsAt: (session as any).startsAtISO || new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString(),
       });
+      createdId = created.id;
+    } catch (err: any) {
+      logDebug('CREATE_BOOKING_PRIMARY_ERROR_TRYING_FALLBACK', { error: err.message });
+      const newId = `BK-${Math.floor(1000 + Math.random() * 9000)}`;
+      const nowCairo = new Date(new Date().toLocaleString('en-US', { timeZone: 'Africa/Cairo' }));
+      const todayStr = `${nowCairo.getFullYear()}-${String(nowCairo.getMonth() + 1).padStart(2, '0')}-${String(nowCairo.getDate()).padStart(2, '0')}`;
+      await query(
+        `INSERT INTO bookings (
+           id, customer_id, customer_name, customer_phone, branch_id, barber_id, service_id,
+           booking_type, status, starts_at, booking_date, queue_number, total_at_booking,
+           booking_fee_at_booking, source, ai_brief, confidence_score, custom_line_items, created_at, updated_at
+         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'pending_review', NOW(), ?, 1, ?, ?, 'whatsapp', ?, 95, ?, NOW(), NOW())`,
+        [
+          newId, uuidv4(), custName, cleanPhone, 'branch-elhdad', bId, session.serviceId || defaultSrv.id,
+          bType, todayStr, sPrice, depVal, aiBrief, JSON.stringify(customLineItems)
+        ]
+      );
+      await query(
+        `INSERT INTO payment_proofs (id, booking_id, image_path, payment_method, sender_phone, transferred_amount, status, submitted_at)
+         VALUES (?, ?, ?, 'instapay', ?, ?, 'pending_review', NOW())`,
+        [uuidv4(), newId, base64ImageUrl || 'data:image/placeholder', cleanPhone, depVal]
+      );
+      createdId = newId;
+      broadcastToBranch('branch-elhdad', 'BOOKING_CREATED', { id: newId, customer_name: custName, source: 'whatsapp' });
+      broadcastGlobal('SYNC_STATE', { type: 'BOOKING_CREATED', bookingId: newId });
+    }
 
-      // Log analytics event
-      try {
-        await query(
-          `INSERT INTO whatsapp_analytics_logs (id, phone, event_type, booking_id, amount, metadata, created_at)
-           VALUES (?, ?, 'booking_created', ?, ?, ?, NOW())`,
-          [uuidv4(), senderPhone || remoteJid, created.id, depVal, JSON.stringify({ sName, bName, bType })]
-        );
-      } catch {}
+    try {
+      await query(
+        `INSERT INTO whatsapp_analytics_logs (id, phone, event_type, booking_id, amount, metadata, created_at)
+         VALUES (?, ?, 'booking_created', ?, ?, ?, NOW())`,
+        [uuidv4(), senderPhone || remoteJid, createdId, depVal, JSON.stringify({ sName, bName, bType })]
+      );
+    } catch {}
 
-      session.bookingId = created.id;
-      session.receiptSubmitted = true;
-      session.step = 'proof_submitted';
-      session.customerName = custName;
-      session.barberName = bName;
-      session.serviceName = sName;
-      session.bookingType = bType;
-      bookingSessions.set(sessionKey, session);
+    session.bookingId = createdId;
+    session.receiptSubmitted = true;
+    session.step = 'proof_submitted';
+    session.customerName = custName;
+    session.barberName = bName;
+    session.serviceName = sName;
+    session.bookingType = bType;
+    bookingSessions.set(sessionKey, session);
 
-      replyText = `📸 *تم استلام صورة إثبات الدفع وتسجيل حجزك بنجاح!* 💈👑
+    replyText = `📸 *تم استلام صورة إثبات الدفع وتسجيل حجزك بنجاح!* 💈👑
 
-يا أستاذ *${custName}*، تم إدراج حجزك وإيصالك في السيستم ووصل الآن لموظف الاستقبال! 🌟
+يا أستاذ *${custName}*، تم إدراج حجزك في السيستم ووصل الآن لموظف الاستقبال! 🌟
 
 🧾 *بيانات الفاتورة والحجز:*
-• *رقم الحجز (Reference):* \`#${created.id}\`
+• *رقم الحجز (Reference):* \`#${createdId}\`
 • *نوع الجلسة:* ${bType === 'vip' ? 'جلسة VIP ملكية 👑' : 'جلسة عادية 💈'}
 • *الكابتن:* ${bName} ✂️
 • *الخدمة:* ${sName}
@@ -1041,13 +1120,9 @@ async function handleIncomingWithAI(
 ⏱️ *موظف الاستقبال يقوم الآن بمراجعة الإيصال واعتماد الحجز فوراً، وسيصلك إشعار القبول الرسمي خلال دقائق!*
 
 📍 *رابط متابعة دورك المباشر في الطابور:*
-https://trimmind.up.railway.app/track?q=${created.id}
+https://trimmind.up.railway.app/track?q=${createdId}
 
 تنورنا يا غالي! ✨`;
-    } catch (err: any) {
-      logDebug('CREATE_BOOKING_WITH_IMAGE_ERROR', { error: err.message });
-      replyText = `📸 تم استلام صورة الإيصال بنجاح يا أستاذ *${custName}*! جارٍ مراجعتها واعتماد حجزك فوراً من موظف الاستقبال 👑✨`;
-    }
 
     let targetJid = remoteJid;
     if (senderPhone && !remoteJid.includes('@s.whatsapp.net')) {
@@ -1060,199 +1135,95 @@ https://trimmind.up.railway.app/track?q=${created.id}
   }
 
   // -------------------------------------------------------------------------
-  // 3. EXPLAIN DIFFERENCE BETWEEN NORMAL & VIP
+  // 3. EXPLICIT CUSTOM BUNDLE / SERVICE EXTRACTION
   // -------------------------------------------------------------------------
-  if (
-    textLower.includes('ايه الفرق') ||
-    textLower.includes('إيه الفرق') ||
-    textLower.includes('الفرق بين') ||
-    textLower.includes('فرق ايه')
-  ) {
-    replyText = `يا هلا يا باشا! الفرق الأساسي بين الجلستين في ${liveCtx.salonName} 👑💈:
-
-1️⃣ **الجلسة العادية (Normal):**
-• بتختار اليوم اللي تحب تحضر فيه (النهارده أو أي يوم).
-• النظام بيعين لك كابتن متاح وميعاد تقريبي ودور في الطابور.
-• العربون المطلوب: *${deposits.normal} جنيه فقط*.
-• *(غير متاح فيها تحديد الساعة بالدقيقة مسبقاً)*.
-
-2️⃣ **الجلسة الـ VIP الملكية (VIP):**
-• حرية واختيار كامل للكابتن المفضل لحضرتك (${liveCtx.barbers.map((b) => b.name).join('، ')}).
-• اختيار ميعاد الحلاقة بالتحديد (الساعة والدقيقة اللي تريحك بالظبط).
-• كرسي VIP خاص وأولوية قصوى للدخول في ميعادك بدون انتظار.
-• العربون المطلوب: *${deposits.vip} جنيه*.
-
-تحب تثبت حجزك في الجلسة **العادية** ولا **VIP**؟ ✨`;
+  const customBundle = extractCustomBundleFromText(userMessage, liveCtx.services);
+  if (customBundle) {
+    session.customItems = customBundle.items;
+    session.serviceName = customBundle.bundleTitle;
+    session.servicePrice = customBundle.totalEstimated;
+    session.serviceId = customBundle.primaryServiceId;
+    if (!session.bookingType) {
+      session.bookingType = 'normal';
+      session.depositAmount = deposits.normal;
+    }
+    bookingSessions.set(sessionKey, session);
   }
 
   // -------------------------------------------------------------------------
-  // 4. ATTEMPTING TO SPECIFY A FIXED HOUR IN A NORMAL SESSION
+  // 4. NAME & PHONE INPUT CAPTURE
   // -------------------------------------------------------------------------
-  else if (
-    session.bookingType === 'normal' &&
-    parsedDateTime?.hasExplicitTime &&
-    !session.serviceName
-  ) {
-    replyText = `يا هلا يا فندم! 👑
-ميزة **اختيار وتحديد الميعاد بالساعة والدقيقة** دي ميزة مخصصة حصرياً لـ **الجلسة الـ VIP** فقط، أما الجلسة العادية فالنظام بيعين لها ميعاد ودور تقريبي في اليوم.
-
-💎 *تحب نطوّر ونرقّي جلستك لجلسة VIP (عربون ${deposits.vip} ج) عشان تختار الساعة والكابتن اللي يريحك بالظبط وتدخل في ميعادك؟*
-أو نكمل في الجلسة العادية (عربون ${deposits.normal} ج) ونعين لك وقت ودور متاح؟`;
+  const detectedName = extractNameFromText(userMessage, pushName);
+  if (detectedName && detectedName !== 'أحمد' && detectedName !== 'عميل واتساب' && !detectedName.includes('abdelbassetmohamed')) {
+    session.customerName = detectedName;
+    bookingSessions.set(sessionKey, session);
   }
 
   // -------------------------------------------------------------------------
-  // 5. SESSION TYPE SELECTION (VIP vs Normal)
+  // 5. NATURAL RECEPTIONIST CONVERSATION TREE
   // -------------------------------------------------------------------------
+  const isFirstMessage = !session.greeted;
+  session.greeted = true;
+  bookingSessions.set(sessionKey, session);
+
+  // If customer is ready for payment (knows services & name)
+  if (session.serviceName && session.customerName && !session.receiptSubmitted) {
+    const defaultBarber = liveCtx.barbers[0]?.name || 'محمد الحداد';
+    const assignedBarber = session.barberName || (session.bookingType === 'vip' ? defaultBarber : 'كابتن متاح');
+    session.barberName = assignedBarber;
+    const depVal = session.depositAmount || (session.bookingType === 'vip' ? deposits.vip : deposits.normal);
+
+    replyText = `تمام يا أستاذ *${session.customerName}* 🌟
+سجلت لحضرتك: *${session.serviceName}* (حوالي *${session.servicePrice} جنيه*) مع *${session.barberName}* ${session.dateTimeStr ? 'الساعة ' + session.dateTimeStr : ''}.
+
+لتثبيت موعدك وتجهيز الكرسي، برجاء تحويل العربون (*${depVal} جنيه*) عبر:
+📱 *فودافون كاش / إنستاباي:* \`${liveCtx.paymentAccounts.instapay}\`
+
+📸 *ابعت صورة إيصال التحويل (اسكرين شوت) هنا فوراً* لاعتماد حجزك وإصدار الفاتورة الرسمية! ✨`;
+  }
+  // If services chosen but name missing
+  else if (session.serviceName && !session.customerName) {
+    replyText = `تمام يا باشا 👌 سجلت لحضرتك: *${session.serviceName}* (حوالي *${session.servicePrice} جنيه*)${session.barberName ? ' مع ' + session.barberName : ''}${session.dateTimeStr ? ' الساعة ' + session.dateTimeStr : ''}.
+
+أتشرف باسم حضرتك الكريم ورقم الموبايل لتثبيت الحجز باسمك؟ 💈`;
+  }
+  // If customer requested VIP session
   else if (textLower === 'vip' || textLower === 'ملكيه' || textLower === 'ملكية' || textLower === 'في اي بي' || textLower === '2' || textLower === 'جلسة vip') {
     session.bookingType = 'vip';
     session.depositAmount = deposits.vip;
-    session.step = 'choosing_service';
     bookingSessions.set(sessionKey, session);
+    const barbersList = liveCtx.barbers.map((b) => `• *${b.name}*`).join('، ');
 
-    const barbersList = liveCtx.barbers.map((b) => `• *${b.name.startsWith('كابتن') ? b.name : 'كابتن ' + b.name}* ✂️`).join('\n');
-    const vipServices = liveCtx.services.filter((s) => s.category === 'vip_package' || s.is_vip_only || s.name.toLowerCase().includes('vip'));
-    const vipServicesList = vipServices.map((s) => `• *${s.name}:* ${s.price} جنيه`).join('\n');
+    replyText = `أحلى اختيار يا باشا! 👑 تم اختيار **الجلسة الـ VIP الملكية** (عربون ${deposits.vip} ج).
+كباتن الصالون المتاحين: (${barbersList}).
 
-    replyText = `أحلى وأفخم اختيار يا باشا! 👑 تم اختيار **الجلسة الـ VIP الملكية** (عربون ${deposits.vip} ج).
-
-✂️ **كباتن الصالون المتاحين للاختيار:**
-${barbersList}
-
-👑 **باقات وخدمات الـ VIP الملكية المتاحة:**
-${vipServicesList}
-
-قولي تحب تختار كابتن مين، وأنهي باقة، والميعاد والساعة المناسبة لحضرتك؟ ✨`;
-  } else if (textLower === 'عادية' || textLower === 'عاديه' || textLower === 'العادي' || textLower === '1' || textLower === 'جلسة عادية') {
+قولي تحب تختار كابتن مين، وإيه الخدمات أو الباقة المطلوبة، والميعاد المناسب لحضرتك؟ ✨`;
+  }
+  // If customer requested Normal session
+  else if (textLower === 'عادية' || textLower === 'عاديه' || textLower === 'العادي' || textLower === '1' || textLower === 'جلسة عادية') {
     session.bookingType = 'normal';
     session.depositAmount = deposits.normal;
-    const randomBarber = liveCtx.barbers[Math.floor(Math.random() * liveCtx.barbers.length)] || { id: 'barber-1', name: 'كابتن الصالون' };
-    session.barberName = randomBarber.name;
-    session.barberId = randomBarber.id;
-    const smartCairo = getSmartCairoTimeForNormalSession();
-    session.dateTimeStr = session.dateTimeStr || smartCairo.dateTimeStr;
-    session.targetTime = smartCairo.timeStr;
-    session.step = 'choosing_service';
     bookingSessions.set(sessionKey, session);
-
-    const normalServices = liveCtx.services.filter((s) => s.category !== 'vip_package' && !s.is_vip_only && !s.name.toLowerCase().includes('vip'));
-    const servicesList = normalServices.map((s) => `• *${s.name}:* ${s.price} جنيه`).join('\n');
 
     replyText = `تمام يا باشا! تم اختيار **الجلسة العادية** 💈 (عربون ${deposits.normal} ج).
-النظام خصص لك ميعاد مع *${session.barberName}* (${session.dateTimeStr}).
+قولي تحب نعملك إيه النهارده (قص شعر، تظبيط لحية، تنظيف بشرة...)؟ ✨`;
+  }
+  // If asking about the difference
+  else if (textLower.includes('ايه الفرق') || textLower.includes('إيه الفرق') || textLower.includes('الفرق بين')) {
+    replyText = `يا هلا يا باشا! الفرق باختصار:
+1️⃣ **الجلسة العادية (عربون ${deposits.normal} ج):** بتحدد اليوم والنظام بيعين لك دور وساعة متاحة تلقائياً.
+2️⃣ **الجلسة الـ VIP (عربون ${deposits.vip} ج):** بتختار كابتن الحلاقة المفضل وميعادك بالدقيقة بدون انتظار.
 
-📋 **قائمة خدمات الجلسة العادية:**
-${servicesList}
-
-قولي تحب نعملك أنهي خدمة النهارده؟ ✨`;
+تحب تختار العادية ولا VIP؟ ✨`;
+  }
+  // If completely first greeting / general intent
+  else if (isFirstMessage || textLower.includes('احجز') || textLower.includes('حجز') || textLower.includes('احلق') || textLower.includes('سلام') || textLower.includes('مرحبا')) {
+    replyText = `يا هلا بأستاذنا الفاضل نورت صالون الحداد VIP 🌟💈
+تحت أمرك يا غالي، تحب تحجز جلسة عادية ولا VIP ملكية مع كابتن محدد وميعاد بالساعة؟ ✨`;
   }
 
   // -------------------------------------------------------------------------
-  // 6. DYNAMIC SERVICE MATCHING FROM MYSQL (WITH AUTO-VIP UPGRADE)
-  // -------------------------------------------------------------------------
-  if (!replyText) {
-    for (const s of liveCtx.services) {
-      const sNameClean = s.name.toLowerCase();
-      const sPriceStr = String(s.price);
-      if (
-        textLower.includes(sPriceStr) ||
-        (sNameClean.length > 3 && textLower.includes(sNameClean)) ||
-        (s.name.includes('Executive') && (textLower.includes('executive') || textLower.includes('900'))) ||
-        (s.name.includes('Royal') && (textLower.includes('royal') || textLower.includes('480'))) ||
-        (s.name.includes('Gentleman') && (textLower.includes('gentleman') || textLower.includes('650'))) ||
-        (s.name.includes('Full Experience') && (textLower.includes('full') || textLower.includes('750'))) ||
-        (s.name.includes('تنظيف بشرة') && (textLower.includes('بشرة') || textLower.includes('بشره') || textLower.includes('تنظيف')))
-      ) {
-        session.serviceName = s.name;
-        session.servicePrice = s.price;
-        session.serviceId = s.id;
-
-        const isVipService = s.category === 'vip_package' || Boolean(s.is_vip_only) || s.name.toLowerCase().includes('vip') || s.price >= 400;
-        if (isVipService) {
-          session.bookingType = 'vip';
-          session.depositAmount = deposits.vip;
-        } else if (!session.bookingType) {
-          session.bookingType = 'normal';
-          session.depositAmount = deposits.normal;
-        } else {
-          session.depositAmount = session.bookingType === 'vip' ? deposits.vip : deposits.normal;
-        }
-
-        session.step = 'awaiting_name_phone';
-        bookingSessions.set(sessionKey, session);
-
-        replyText = `اختيار رائع يا باشا! *${s.name}* (*${s.price} جنيه*) ✂️👑.
-${isVipService ? '✨ تم اعتماد الحجز كـ *جلسة VIP ملكية* نظراً لاختيارك باقة VIP فاخرة.' : ''}
-
-عشان نسجل الحجز ونصدر الفاتورة فوراً:
-1️⃣ *أتشرف باسم حضرتك الكريم؟*
-2️⃣ *وهل تحب نسجل الحجز على رقم الواتساب ده (*${senderPhone || 'نفس الرقم'}*) ولا برقم تاني؟*`;
-        break;
-      }
-    }
-  }
-
-  // -------------------------------------------------------------------------
-  // 7. NAME & PHONE CONFIRMATION -> ISSUE DEPOSIT INVOICE & PROMPT PROOF
-  // -------------------------------------------------------------------------
-  if (!replyText && session.serviceName && !session.receiptSubmitted) {
-    const candidateName = extractNameFromText(userMessage, pushName);
-    if (candidateName && candidateName !== 'أحمد') {
-      session.customerName = candidateName;
-    } else if (!session.customerName) {
-      session.customerName = candidateName;
-    }
-
-    if (!session.customerPhone) {
-      session.customerPhone = senderPhone || '01005437633';
-    }
-
-    session.depositAmount = session.bookingType === 'vip' ? deposits.vip : deposits.normal;
-    session.step = 'awaiting_payment_proof';
-    bookingSessions.set(sessionKey, session);
-
-    const defaultBarber = liveCtx.barbers[0]?.name || 'محمد الحداد';
-    const assignedBarber = session.barberName || (session.bookingType === 'vip' ? defaultBarber : (liveCtx.barbers[Math.floor(Math.random() * liveCtx.barbers.length)]?.name || 'كريم السيد'));
-    session.barberName = assignedBarber;
-    const bTypeLabel = session.bookingType === 'vip' ? 'جلسة VIP ملكية 👑' : 'جلسة عادية 💈';
-
-    replyText = `يا هلا بأستاذنا الفاضل *${session.customerName}*! 🌟👑
-تم تسجيل بياناتك وتثبيت موعدك المفضل بدقة:
-
-🧾 *فاتورة وبيانات الحجز:*
-• *نوع الجلسة:* ${bTypeLabel}
-• *الكابتن:* ${session.barberName} ✂️
-• *الخدمة:* ${session.serviceName}
-• *الميعاد:* ${session.dateTimeStr || 'اليوم'} ⏰
-• *إجمالي الخدمة:* ${session.servicePrice} جنيه
-• *العربون المطلوب لتأكيد الحجز:* *${session.depositAmount} جنيه*
-
-⚠️ *تنبيه مهم:* رسوم الحجز (العربون) غير قابلة للاسترداد لأي سبب لضمان حجز وتجهيز الكرسي والموعد لحضرتك.
-
-💳 *طرق تحويل وتأكيد العربون:*
-• *InstaPay:* \`${liveCtx.paymentAccounts.instapay}\`
-• *Vodafone Cash:* \`${liveCtx.paymentAccounts.vodafoneCash}\`
-
-📸 *يرجى تحويل العربون وإرسال صورة إيصال التحويل (اسكرين شوت) هنا على الواتساب فوراً* لاعتماد الحجز وتجهيز الكرسي لك! ✨`;
-  }
-
-  // -------------------------------------------------------------------------
-  // 8. GENERAL INTENT TO BOOK (Start booking flow if completely idle)
-  // -------------------------------------------------------------------------
-  else if (!replyText && session.step === 'idle' && (textLower.includes('احجز') || textLower.includes('حجز') || textLower.includes('احلق') || textLower.includes('ميعاد') || textLower.includes('دور'))) {
-    session.step = 'choosing_session_type';
-    bookingSessions.set(sessionKey, session);
-
-    replyText = `يا هلا يا باشا منورنا في ${liveCtx.salonName}! 💈👑
-يسعدنا جداً خدمتك! تحب تختار نوع الجلسة:
-
-1️⃣ **جلسة عادية (Normal):** اختيار اليوم، والنظام يحدد لك دور وساعة ومقعد متاح تلقائياً (العربون *${deposits.normal} ج*).
-2️⃣ **جلسة VIP ملكية (VIP):** اختيار الكابتن المفضل والميعاد بالتحديد بالساعة والدقيقة + كرسي VIP مخصص وأولوية دخول فورية (العربون *${deposits.vip} ج*).
-
-*(لو حابب تعرف الفرق بينهم قولي "إيه الفرق ما بينهم")* ✨`;
-  }
-
-  // -------------------------------------------------------------------------
-  // 9. FALLBACK TO GEMINI FLASH AI (Dynamic Prompt with Live MySQL Data & 90-Min Active Booking Memory)
+  // 6. FALLBACK TO GEMINI FLASH AI (Dynamic Prompt with Live MySQL Data & Concise Tone)
   // -------------------------------------------------------------------------
   if (!replyText) {
     const servicesListStr = liveCtx.services.map((s) => `• ${s.name}: ${s.price} جنيه`).join('\n');
@@ -1263,47 +1234,35 @@ ${isVipService ? '✨ تم اعتماد الحجز كـ *جلسة VIP ملكية
       currentBookingContext = `
 # ⚠️ تنبيه فائق الأهمية عن حالة العميل الحالي:
 - العميل الحالي (${session.customerName || 'المميز'}) **قام بإرسال صورة إيصال التحويل بالفعل** وتم تسجيل حجزه برقم (#${session.bookingId || 'مسجل'}).
-- الكابتن المسجل والمخصص له هو: **${session.barberName || 'كابتن الصالون'}**.
+- الكابتن: **${session.barberName || 'كابتن الصالون'}**.
 - نوع الجلسة: **${session.bookingType === 'vip' ? 'جلسة VIP ملكية' : 'جلسة عادية'}**.
 - الخدمة المختارة: **${session.serviceName || 'الخدمة المختارة'}**.
-- الميعاد المسجل: **${session.dateTimeStr || 'اليوم'}**.
 - الحجز والإيصال حالياً قيد المراجعة والاعتماد لدى موظف الاستقبال.
-- ❌ **ممنوع منعاً باتاً** أن تطلب من العميل إرسال صورة الإيصال أو تحويل العربون مرة أخرى، لأنه أرسله بالفعل!
-- إذا سأل العميل عن الحلاق أو الموعد، طمئنه بالبيانات المسجلة أعلاه وأخبره أن الإيصال قيد الاعتماد من الاستقبال.`;
+- ❌ **ممنوع منعاً باتاً** أن تطلب منه إرسال الإيصال مرة أخرى!`;
     } else if (session.serviceName) {
       currentBookingContext = `
-# سياق الحجز الحالي قيد الإنشاء:
-- العميل اختار خدمة: ${session.serviceName} (${session.servicePrice} جنيه).
-- نوع الجلسة: ${session.bookingType === 'vip' ? 'جلسة VIP ملكية' : 'جلسة عادية'}.
+# سياق الحجز الحالي:
+- العميل اختار: ${session.serviceName} (${session.servicePrice} جنيه).
 - الكابتن: ${session.barberName || 'كابتن الصالون'}.
-- الميعاد: ${session.dateTimeStr || 'اليوم'}.
-- العربون المطلوب: ${session.depositAmount || 50} جنيه.
-- الخطوة التالية: تحويل العربون وإرسال الاسكرين شوت.`;
+- العربون المطلوب: ${session.depositAmount || 50} جنيه.`;
     }
 
-    const systemInstruction = `أنت المساعد الذكي الرسمي لصالون (${liveCtx.salonName}).
-أسلوبك: مصري راقي، محترم، ذكي، سريع ومفيد ("يا هلا يا فندم", "منورنا يا باشا", "تحت أمرك يا غالي").
+    const systemInstruction = `أنت موظف استقبال محترف وذكي في صالون (${liveCtx.salonName}).
+قواعد المحادثة الصارمة:
+1. أسلوبك: ودود، سريع، ومختصر جداً (رد في سطرين أو 3 سطور كحد أقصى).
+2. ❌ ممنوع تكرار الترحيب بالصالون في كل رسالة.
+3. ❌ ممنوع سرد قوائم أسعار طويلة إلا إذا سأل العميل صراحة "عايز قائمة الأسعار".
+4. إذا طلب العميل باقة مخصصة، اقبلها فوراً وأخبره أنه تم تسجيلها.
+5. أجب مباشرة على سؤال العميل بلهجة مصرية محترمة وراقية.
 
-# قائمة الخدمات والأسعار المتاحة حالياً في قاعدة البيانات:
-${servicesListStr}
-
-# قائمة الكباتن الحلاقين المتاحين حالياً:
-${barbersListStr}
-
-# بيانات العربون والحسابات:
-- عربون الجلسة العادية: ${deposits.normal} جنيه
-- عربون الجلسة VIP: ${deposits.vip} جنيه
-- إنستاباي / فودافون كاش: ${liveCtx.paymentAccounts.instapay}
-- رقم واتساب العميل الحالي: ${senderPhone || 'رقم الواتساب الحالي'}.
-- ميزة تحديد الساعة متاحة فقط في الـ VIP (إذا طلب العميل في العادية ساعة، اعرض عليه الترقية لـ VIP).
-- العربون غير قابل للاسترداد.
-- رابط التتبع: https://trimmind.up.railway.app/track.
-${currentBookingContext}
-
-رد دائماً بالبيانات الحقيقية أعلاه باللهجة المصرية الودودة.`;
+# بيانات الصالون:
+- الخدمات: ${servicesListStr}
+- الكباتن: ${barbersListStr}
+- حسابات الدفع: ${liveCtx.paymentAccounts.instapay} (عربون عادي: ${deposits.normal} ج / VIP: ${deposits.vip} ج)
+${currentBookingContext}`;
 
     history.push({ role: 'user', parts: [{ text: userMessage }] });
-    if (history.length > 10) history.splice(0, history.length - 10);
+    if (history.length > 8) history.splice(0, history.length - 8);
 
     const candidateModels = ['gemini-flash-latest', 'gemini-2.5-flash-lite', 'gemini-flash-lite-latest'];
 

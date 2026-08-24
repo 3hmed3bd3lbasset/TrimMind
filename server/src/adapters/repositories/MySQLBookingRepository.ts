@@ -147,10 +147,10 @@ export class MySQLBookingRepository implements IBookingRepository {
         proofEntity = {
           id: uuidv4(),
           booking_id: bookingId,
-          image_path: data.paymentProof.imagePath || 'data:image/placeholder',
+          image_path: data.paymentProof.imagePath || (data.paymentProof as any).image_url || (data.paymentProof as any).imageUrl || 'data:image/placeholder',
           payment_method: (data.paymentProof.paymentMethod || 'instapay') as any,
           sender_phone: data.paymentProof.senderPhone || cleanPhone,
-          transferred_amount: Number(data.paymentProof.amount || bookingFee),
+          transferred_amount: Number(data.paymentProof.amount || (data.paymentProof as any).transferred_amount || bookingFee),
           status: 'pending_review' as const,
           submitted_at: new Date().toISOString(),
         };
