@@ -169,6 +169,8 @@ interface SalonStore {
     barberId: string;
     chairId: string;
     serviceId: string;
+    serviceName?: string;
+    customPrice?: number;
     notes?: string;
   }) => Booking;
 
@@ -1038,8 +1040,10 @@ export const useSalonStore = create<SalonStore>()(
 
       addWalkInBooking: (payload) => {
         const { services, bookings, chairs, currentUser, auditLogs, barbers } = get();
+        const isCustom = payload.serviceId === 'srv-custom' || Boolean(payload.customPrice);
         const service = services.find((s) => s.id === payload.serviceId);
-        const servicePrice = service?.price || 180;
+        const servicePrice = isCustom ? Number(payload.customPrice || 180) : (service?.price || 180);
+        const serviceName = isCustom ? (payload.serviceName || 'خدمة وباقة مخصصة') : (service?.name || 'قص شعر وتصفيف كلاسيكي');
         const bookingId = `WLK-${Math.floor(1000 + Math.random() * 9000)}`;
 
         const newBooking: Booking = {
@@ -1051,17 +1055,25 @@ export const useSalonStore = create<SalonStore>()(
           barber_id: payload.barberId,
           chair_id: payload.chairId,
           service_id: payload.serviceId,
-          booking_type: 'normal',
+          service_name: serviceName,
+          booking_type: isCustom && serviceName.toLowerCase().includes('vip') ? 'vip' : 'normal',
+          source: 'walk_in' as any,
           status: 'in_service',
           starts_at: new Date().toISOString(),
           ends_at: new Date(Date.now() + 30 * 60 * 1000).toISOString(),
           service_price_at_booking: servicePrice,
-          booking_fee_at_booking: 0,
+          booking_fee_at_booking: servicePrice,
           discount_at_booking: 0,
           items_total_at_booking: 0,
           total_at_booking: servicePrice,
+          payment_proof: {
+            status: 'approved',
+            payment_method: 'cash',
+            transferred_amount: servicePrice,
+            reviewed_at: new Date().toISOString(),
+          } as any,
           secure_token: `WLK-${bookingId.slice(4)}-TOKEN`,
-          notes: payload.notes || 'حجز فوري مباشر من الصالون (Walk-in)',
+          notes: payload.notes || `حجز فوري مباشر من الصالون - ${serviceName}`,
           created_at: new Date().toISOString(),
           updated_at: new Date().toISOString(),
         };
@@ -1099,7 +1111,7 @@ export const useSalonStore = create<SalonStore>()(
           action: 'CREATE_WALK_IN',
           target_table: 'bookings',
           target_id: bookingId,
-          metadata: { client: payload.customerName, service: service?.name },
+          metadata: { client: payload.customerName, service: serviceName, price: servicePrice },
           created_at: new Date().toISOString(),
         };
 
@@ -1108,6 +1120,15 @@ export const useSalonStore = create<SalonStore>()(
           chairs: updatedChairs,
           auditLogs: [newLog, ...auditLogs],
         });
+
+        broadcastEvent('SYNC_STATE');
+
+        // Persist to backend API immediately
+        fetch('/api/sync/bookings', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ booking: newBooking }),
+        }).catch(() => {});
 
         return newBooking;
       },
