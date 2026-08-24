@@ -211,17 +211,14 @@ router.post('/chat', aiLimiter, optionalAuth, async (req: AuthenticatedRequest, 
     }
     const customerNameSnippet = cleanPushName ? `اسم العميل: أستاذ ${cleanPushName}` : '';
 
-    const serverSystemInstruction = `أنت المساعد الذكي الرسمي لصالون TrimMind VIP.
-أسلوبك: راقي، مهذب، فوري، ومباشر جداً باللهجة المصرية الراقية.
-${customerNameSnippet}
+    const serverSystemInstruction = isContinuingConversation
+      ? `أنت نظام ومساعد الحجز الذكي لصالون TrimMind VIP في محادثة مباشرة مستمرة مع العميل.
+أسلوبك: عملي، سريع، ذكي، ومباشر جداً باللهجة المصرية الراقية.
 
-🚫 قواعد حاسمة لمنع تكرار التحية ومنع كتابة أسماء إنجليزية أو إيموجي في التحية:
-- ممنوع منعاً باتاً كتابة أي إيموجيات أو أقواس أو أحرف إنجليزية في اسم العميل (ممنوع كتابة: "(AHMED ABDELBASET 🦅⚡)").
-${isContinuingConversation ? `
-- 🚨 هذه محادثة جارية ومستمرة (ليست أول رسالة)!
-- ❌ ممنوع منعاً باتاً وأكيداً كتابة أي تحية أو ترحيب أو مجاملة افتتاحية إطلاقاً (ممنوع: "أهلاً", "يا هلا", "مرحباً", "نورتنا", "تحت أمرك", "منور صالون", "يا فندم", "ولا يهمك", أو مناداة العميل باسمه في أول الرسالة).
-- ادخل في الرد أو الإجراء فوراً ومباشرة بدون أي مقدمات إطلاقاً!` : `
-- هذه أول رسالة فقط: رحب بالعميل بلطف واختصار في جملة واحدة ثم اسأله عن رغبته.`}
+🚫 قواعد قاطعة وإلزامية:
+- ❌ ممنوع منعاً باتاً كتابة أي تحية أو ترحيب أو مجاملة افتتاحية إطلاقاً (ممنوع: "أهلاً", "يا هلا", "مرحباً", "نورتنا", "تحت أمرك", "منور صالون", "يا فندم", "ولا يهمك", "تشرفنا").
+- ❌ ممنوع كتابة أي إيموجيات أو أقواس أو أحرف إنجليزية مشوهة في اسم العميل.
+- ادخل في الرد أو الإجراء فوراً ومباشرة بدون أي مقدمات إطلاقاً!
 
 🧠 قواعد ذكية جداً لتتبع الحجز وعدم النسيان (Smart Booking State Continuity):
 - راجع تاريخ المحادثة بالكامل خطوة بخطوة:
@@ -238,6 +235,23 @@ ${isContinuingConversation ? `
 
   • إذا سأل العميل أو أجاب باختصار (مثل: "أي واحد", "اختارلي أنت", "تمام"):
     التقط اختياره وتقدم خطوة للأمام في مسار الحجز مباشرة دون الرجوع للوراء أو إعادة عرض الخيارات السابقة من الصفر.
+
+⚠️ قواعد الأسعار والعربون الرسمية:
+- جميع الأسعار بالجنيه المصري (ج.م / جنيه) فقط.
+- عربون الجلسة العادية: **${deposits.normal} ج.م**.
+- عربون الجلسة الملكية VIP: **${deposits.vip} ج.م**.
+
+📋 كتالوج الخدمات والأسعار الحقيقي:
+${servicesCatalogStr}
+
+✂️ طاقم الكباتن:
+${barbersListStr}`
+      : `أنت المساعد الذكي الرسمي لصالون TrimMind VIP.
+أسلوبك: راقي، مهذب، سريع، ومفيد باللهجة المصرية الراقية.
+${customerNameSnippet}
+
+- هذه أول رسالة فقط: رحب بالعميل بلطف واختصار في جملة واحدة ثم اسأله عن الخدمة أو الكابتن المطلوب.
+- ممنوع كتابة أي إيموجيات أو أقواس أو أحرف إنجليزية في اسم العميل.
 
 ⚠️ قواعد الأسعار والعربون الرسمية:
 - جميع الأسعار بالجنيه المصري (ج.م / جنيه) فقط.
@@ -293,33 +307,29 @@ ${customContext ? `\nسياق إضافي: ${String(customContext).slice(0, 500)}
         : `أهلاً بك في صالون **TrimMind VIP**! 💈👑\n\nإليك كتالوج خدماتنا وباقاتنا الرسمية المتاحة:\n\n${firstFew}\n\nيسعدنا حجز موعدك واختيار الكابتن المفضل لحضرتك في أي وقت! ✨`;
     }
 
-    // Strip redundant repeated greeting prefixes on continuing conversation turns
-    if (isContinuingConversation && responseText) {
-      const greetingPatterns = [
-        /^(أهلاً\s*ب?حضرتك|أهلاً\s*بك|أهلاً|مرحباً|يا\s*هلا\s*(بيك|بك|بحضرتك|يا\s*فندم|يا\s*بطل)?|نورتنا|منورنا\s*(دايماً)?|منور\s*صالون[^\n]*|تشرفنا\s*(دايماً)?\s*(بخدمتك)?|تحت\s*أمرك\s*(يا\s*فندم)?|ولا\s*يهمك\s*(يا\s*فندم)?|يا\s*فندم|يا\s*غالي)[^\n.!?،]*[\n.!?،\s]*/i,
-        /^[^\n]*في\s*صالون\s*TrimMind[^\n]*[\n.!?،\s]*/i,
-        /^[^\n]*تشرفنا\s*دائماً\s*بخدمتك[^\n]*[\n.!?،\s]*/i,
-        /^[^\n]*منورنا\s*دايماً[^\n]*[\n.!?،\s]*/i,
-        /^[^\n]*نورت\s*صالون[^\n]*[\n.!?،\s]*/i,
-        /^[^\n]*بما\s*أننا\s*تحدثنا\s*مسبقاً[،\s]*/i,
-      ];
+    // Clean response text: remove metadata leaks and leading redundant greetings on continuing turns
+    if (responseText) {
+      responseText = responseText
+        .replace(/\([A-Za-z0-9_\s\u00A0-\uFFFF]*[🦅⚡][^\)]*\)/g, '')
+        .replace(/\([A-Z\s]{3,}\)/g, '')
+        .trim();
 
-      let changed = true;
-      let iterations = 0;
-      while (changed && iterations < 6) {
-        changed = false;
-        iterations++;
-        for (const pattern of greetingPatterns) {
-          if (pattern.test(responseText)) {
-            responseText = responseText.replace(pattern, '').trim();
-            changed = true;
-          }
+      if (isContinuingConversation) {
+        const greetingSentenceRegex = /^(أهلاً\s*ب?حضرتك|أهلاً\s*بك|أهلاً|مرحباً|يا\s*هلا\s*(بيك|بك|بحضرتك|يا\s*فندم|يا\s*بطل)?|نورتنا|منورنا\s*(دايماً)?|منور\s*صالون[^\n]*|تشرفنا\s*(دايماً)?\s*(بخدمتك)?|تحت\s*أمرك\s*(يا\s*فندم)?|ولا\s*يهمك\s*(يا\s*فندم)?|يا\s*فندم|يا\s*غالي)[^.\n!?]*(?:[.\n!?،]\s*|\s+)/i;
+
+        let iterations = 0;
+        while (greetingSentenceRegex.test(responseText) && iterations < 5) {
+          responseText = responseText.replace(greetingSentenceRegex, '').trim();
+          iterations++;
         }
-      }
-    }
 
-    // Remove any leftover (NAME 🦅⚡) artifacts from model output
-    responseText = responseText.replace(/\([A-Z\s]+[^\)]*\)/g, '').replace(/\s{2,}/g, ' ').trim();
+        responseText = responseText.replace(/^في\s*صالون\s*TrimMind[^\n.!?]*[.\n!?،\s]*/i, '').trim();
+        responseText = responseText.replace(/^نورت\s*صالون[^\n.!?]*[.\n!?،\s]*/i, '').trim();
+        responseText = responseText.replace(/^تشرفنا\s*دائماً\s*بخدمتك[.\n!?،\s]*/i, '').trim();
+      }
+
+      responseText = responseText.replace(/\s{2,}/g, ' ').trim();
+    }
 
     // 4. Save Assistant Response in Persistent MySQL History
     if (sessionId && responseText) {
