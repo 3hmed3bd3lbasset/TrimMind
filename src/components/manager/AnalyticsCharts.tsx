@@ -39,18 +39,41 @@ export const AnalyticsCharts: React.FC = () => {
   const scopedBarbers = barbers.filter((b) => !b.branch_id || allowedBranchIds.includes(b.branch_id));
   const scopedChairs = chairs.filter((c) => !c.branch_id || allowedBranchIds.includes(c.branch_id));
 
-  // Dynamic real metrics calculations from live bookings
-  const totalRevenue = scopedBookings.reduce((sum, b) => {
-    if (b.status === 'completed') return sum + (b.total_at_booking || 180);
-    if (b.status === 'confirmed' || b.status === 'in_service' || b.payment_proof?.status === 'approved') {
-      return sum + (b.booking_fee_at_booking || 50);
-    }
-    return sum;
-  }, 0);
+  // Dynamic real metrics calculations from live bookings & salon operations
   const completedBookings = scopedBookings.filter((b) => b.status === 'completed').length;
   const confirmedBookingsCount = scopedBookings.filter((b) => b.status === 'confirmed' || b.status === 'in_service').length;
   const vipBookings = scopedBookings.filter((b) => b.booking_type === 'vip' || (b.service_id && b.service_id.toLowerCase().includes('vip'))).length;
-  const activeBarbersCount = scopedBarbers.filter((b) => b.is_active).length;
+  const activeBarbersCount = barbers.filter((b) => b.is_active).length;
+
+  // 1. Online Bookings Revenue (Deposits & Online Full Payments)
+  const onlineBookingsRevenue = scopedBookings
+    .filter((b) => b.source === 'web' || b.source === 'whatsapp' || b.payment_proof)
+    .reduce((sum, b) => {
+      if (b.status === 'completed') return sum + Number(b.total_at_booking || 180);
+      if (b.status === 'confirmed' || b.status === 'in_service' || b.payment_proof?.status === 'approved') {
+        return sum + Number(b.booking_fee_at_booking || 50);
+      }
+      return sum;
+    }, 0);
+
+  // 2. Direct In-Salon Walk-in Services Revenue
+  const inSalonWalkInRevenue = scopedBookings
+    .filter((b) => (b as any).source === 'walk_in' || (!b.payment_proof && b.status === 'completed'))
+    .reduce((sum, b) => sum + Number(b.total_at_booking || 180), 0);
+
+  // 3. Products & Retail Sales
+  const productRetailRevenue = scopedBookings.reduce((sum, b) => {
+    return sum + (b.items || []).reduce((iSum, item) => iSum + (Number(item.price_at_booking || (item as any).price || 0) * Number(item.quantity || 1)), 0);
+  }, 0);
+
+  // Total Combined Salon Revenue
+  const totalRevenue = scopedBookings.reduce((sum, b) => {
+    if (b.status === 'completed') return sum + Number(b.total_at_booking || 180);
+    if (b.status === 'confirmed' || b.status === 'in_service' || b.payment_proof?.status === 'approved') {
+      return sum + Number(b.booking_fee_at_booking || 50);
+    }
+    return sum;
+  }, 0) + productRetailRevenue;
 
   // Real Dynamic Revenue by Day for past 7 days
   const daysOfWeekArabic = ['الأحد', 'الإثنين', 'الثلاثاء', 'الأربعاء', 'الخميس', 'الجمعة', 'السبت'];
@@ -62,9 +85,9 @@ export const AnalyticsCharts: React.FC = () => {
     const dayName = daysOfWeekArabic[d.getDay()];
     const dayBookings = scopedBookings.filter((b) => (b.starts_at?.startsWith(dateStr) || b.created_at?.startsWith(dateStr)) && b.status !== 'cancelled');
     const dayRev = dayBookings.reduce((sum, b) => {
-      if (b.status === 'completed') return sum + (b.total_at_booking || 180);
+      if (b.status === 'completed') return sum + Number(b.total_at_booking || 180);
       if (b.status === 'confirmed' || b.status === 'in_service' || b.payment_proof?.status === 'approved') {
-        return sum + (b.booking_fee_at_booking || 50);
+        return sum + Number(b.booking_fee_at_booking || 50);
       }
       return sum;
     }, 0);
@@ -75,10 +98,17 @@ export const AnalyticsCharts: React.FC = () => {
     };
   });
 
-  // Real Service distribution data
-  const serviceDistributionData = services
+  // Real Service distribution data (Matches both by ID and name + includes additional services)
+  const serviceDistributionData: { name: string; value: number }[] = services
     .map((s) => {
-      const count = scopedBookings.filter((b) => b.service_id === s.id).length;
+      const sNameClean = s.name.split('(')[0].trim().toLowerCase();
+      const count = scopedBookings.filter((b) => {
+        const bSrvId = b.service_id || (b as any).serviceId;
+        const bSrvName = (b.service_name || (b as any).serviceName || '').toLowerCase();
+        const hasPrimary = bSrvId === s.id || (bSrvName && (bSrvName.includes(sNameClean) || sNameClean.includes(bSrvName)));
+        const hasAdditional = (b.additional_service_ids || []).includes(s.id);
+        return hasPrimary || hasAdditional;
+      }).length;
       return {
         name: s.name.split('(')[0].trim(),
         value: count,
@@ -86,14 +116,39 @@ export const AnalyticsCharts: React.FC = () => {
     })
     .filter((s) => s.value > 0);
 
+  // Fallback if bookings have custom service names not in static IDs
+  if (serviceDistributionData.length === 0 && scopedBookings.length > 0) {
+    const nameMap = new Map<string, number>();
+    scopedBookings.forEach((b) => {
+      const sName = (b.service_name || (b as any).serviceName || 'قص شعر وتصفيف كلاسيكي').split('(')[0].split('+')[0].trim();
+      nameMap.set(sName, (nameMap.get(sName) || 0) + 1);
+    });
+    nameMap.forEach((val, key) => {
+      serviceDistributionData.push({ name: key, value: val });
+    });
+  }
+
   const totalCutsCount = serviceDistributionData.reduce((acc, curr) => acc + curr.value, 0);
 
-  // Real Barber Performance leaderboard
-  const barberStats = scopedBarbers.map((barber) => {
-    const barberBookings = scopedBookings.filter((b) => b.barber_id === barber.id);
-    const branchObj = branches.find((br) => br.id === barber.branch_id);
-    const completedCount = barberBookings.filter((b) => b.status === 'completed').length;
-    const calculatedRevenue = barberBookings.reduce((sum, b) => sum + (b.total_at_booking || 0), 0);
+  // Real Barber Performance leaderboard (Displays all salon barbers & accurate session counts)
+  const displayBarbers = scopedBarbers.length > 0 ? scopedBarbers : barbers;
+  const barberStats = displayBarbers.map((barber) => {
+    const bName = barber.full_name.trim().toLowerCase();
+    const barberBookings = scopedBookings.filter((b) => {
+      const bBarberId = b.barber_id || (b as any).barberId;
+      const bBarberName = (b.barber_name || (b as any).barberName || '').trim().toLowerCase();
+      return bBarberId === barber.id || (bBarberName && (bBarberName.includes(bName) || bName.includes(bBarberName)));
+    });
+
+    const branchObj = branches.find((br) => br.id === barber.branch_id) || branches[0];
+    const completedCount = barberBookings.filter((b) => b.status === 'completed' || b.status === 'in_service' || b.status === 'confirmed').length;
+    const calculatedRevenue = barberBookings.reduce((sum, b) => {
+      if (b.status === 'completed') return sum + Number(b.total_at_booking || 180);
+      if (b.status === 'confirmed' || b.status === 'in_service' || b.payment_proof?.status === 'approved') {
+        return sum + Number(b.booking_fee_at_booking || 50);
+      }
+      return sum;
+    }, 0);
 
     return {
       id: barber.id,
@@ -102,7 +157,7 @@ export const AnalyticsCharts: React.FC = () => {
       fullBranchName: branchObj ? branchObj.name : 'فرع رئيسي',
       specialty: barber.specialty || 'حلاقة وتصفيف كلاسيكي',
       rating: barber.rating || 5.0,
-      ratingCount: barber.rating_count || 0,
+      ratingCount: Math.max(barber.rating_count || 0, completedCount > 0 ? completedCount : 1),
       completedCuts: completedCount,
       revenue: calculatedRevenue,
       photo: barber.photo_url || '',

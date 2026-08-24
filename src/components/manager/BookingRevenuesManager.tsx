@@ -102,8 +102,9 @@ export const BookingRevenuesManager: React.FC = () => {
 
   // Helper to calculate actual collected deposit vs pending balance
   const getBookingFinancials = (b: Booking) => {
-    const totalServicePrice = Number(b.total_at_booking || b.service_price_at_booking || 180);
-    const depositAmount = Number(b.payment_proof?.transferred_amount || b.booking_fee_at_booking || 50);
+    const srv = services.find((s) => s.id === b.service_id || s.name === b.service_name);
+    const totalServicePrice = Number(b.total_at_booking || b.service_price_at_booking || srv?.price || 180);
+    const depositAmount = Number(b.payment_proof?.transferred_amount || b.booking_fee_at_booking || (b.booking_type === 'vip' ? 100 : 50));
 
     // If completed: full bill is collected (deposit + remaining)
     if (b.status === 'completed') {
@@ -115,7 +116,7 @@ export const BookingRevenuesManager: React.FC = () => {
       };
     }
 
-    // If confirmed / in_service: only the 50 EGP deposit has been collected in treasury!
+    // If confirmed / in_service: deposit has been collected in treasury!
     return {
       collected: depositAmount,
       pending: Math.max(0, totalServicePrice - depositAmount),

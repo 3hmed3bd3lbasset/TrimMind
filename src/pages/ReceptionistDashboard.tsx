@@ -96,29 +96,38 @@ export default function ReceptionistDashboard() {
         const res = await fetch(`/api/bookings?branchId=${encodeURIComponent(branchId)}`);
         const json = await res.json();
         if (json.success && Array.isArray(json.data) && isMounted) {
-          const remoteBookings: Booking[] = json.data.map((b: any) => ({
-            id: b.id || b.bookingId,
-            customer_id: b.customer_id || 'usr-remote',
-            customer_name: b.customer_name || b.customerName || 'عميل الصالون',
-            customer_phone: b.customer_phone || b.customerPhone || '',
-            branch_id: b.branch_id || b.branchId || branchId,
-            barber_id: b.barber_id || b.barberId || null,
-            chair_id: b.chair_id || b.chairId || null,
-            service_id: b.service_id || b.serviceId || 'srv-haircut',
-            booking_type: b.booking_type || 'normal',
-            status: b.status || 'pending_review',
-            starts_at: b.starts_at || b.startsAt || new Date().toISOString(),
-            service_price_at_booking: b.service_price_at_booking || b.total_at_booking || 80,
-            booking_fee_at_booking: b.booking_fee_at_booking || 50,
-            discount_at_booking: 0,
-            items_total_at_booking: 0,
-            total_at_booking: b.total_at_booking || 80,
-            secure_token: b.secure_token || `TK-${b.id}`,
-            queue_number: b.queue_number || 1,
-            payment_proof: typeof b.payment_proof === 'string' ? JSON.parse(b.payment_proof) : b.payment_proof,
-            created_at: b.created_at || new Date().toISOString(),
-            updated_at: b.updated_at || new Date().toISOString(),
-          }));
+          const { services: catalogServices } = useSalonStore.getState();
+          const remoteBookings: Booking[] = json.data.map((b: any) => {
+            const matchedSrv = catalogServices.find((s) => s.id === b.service_id || s.name === b.service_name || s.name === b.serviceName);
+            const resolvedTotal = Number(b.total_at_booking || b.totalAmount || b.service_price_at_booking || matchedSrv?.price || 180);
+            const resolvedDeposit = Number(b.booking_fee_at_booking || b.depositRequired || (b.booking_type === 'vip' ? 100 : 50));
+
+            return {
+              id: b.id || b.bookingId,
+              customer_id: b.customer_id || 'usr-remote',
+              customer_name: b.customer_name || b.customerName || 'عميل الصالون',
+              customer_phone: b.customer_phone || b.customerPhone || '',
+              branch_id: b.branch_id || b.branchId || branchId,
+              barber_id: b.barber_id || b.barberId || null,
+              chair_id: b.chair_id || b.chairId || null,
+              service_id: b.service_id || b.serviceId || 'srv-haircut',
+              booking_type: b.booking_type || 'normal',
+              status: b.status || 'pending_review',
+              starts_at: b.starts_at || b.startsAt || new Date().toISOString(),
+              service_price_at_booking: Number(b.service_price_at_booking || matchedSrv?.price || resolvedTotal),
+              booking_fee_at_booking: resolvedDeposit,
+              discount_at_booking: Number(b.discount_at_booking || 0),
+              items_total_at_booking: Number(b.items_total_at_booking || 0),
+              total_at_booking: resolvedTotal,
+              secure_token: b.secure_token || `TK-${b.id}`,
+              queue_number: b.queue_number || 1,
+              additional_service_ids: b.additional_service_ids || b.additionalServiceIds || [],
+              items: b.items || b.selectedProducts || [],
+              payment_proof: typeof b.payment_proof === 'string' ? JSON.parse(b.payment_proof) : b.payment_proof,
+              created_at: b.created_at || new Date().toISOString(),
+              updated_at: b.updated_at || new Date().toISOString(),
+            };
+          });
 
           const { bookings: currentLocal } = useSalonStore.getState();
           const merged = [
