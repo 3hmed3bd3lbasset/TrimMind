@@ -191,12 +191,20 @@ export const AIChatDrawer: React.FC = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   };
 
+  // Lock body scroll when drawer is open (must be called unconditionally at top)
+  useBodyScrollLock(isAiDrawerOpen);
+
+  // Close on Escape key
   useEffect(() => {
-    if (isAiDrawerOpen) {
-      setQuota(getAiQuotaStatus(currentUser.role));
-      scrollToBottom();
-    }
-  }, [messages, isAiDrawerOpen, currentUser.role]);
+    if (!isAiDrawerOpen) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        setAiDrawerOpen(false);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isAiDrawerOpen, setAiDrawerOpen]);
 
   if (!isAiDrawerOpen) return null;
 
@@ -230,20 +238,6 @@ export const AIChatDrawer: React.FC = () => {
       setIsLoading(false);
     }
   };
-
-  // Lock body scroll when drawer is open
-  useBodyScrollLock(isAiDrawerOpen);
-
-  useEffect(() => {
-    if (!isAiDrawerOpen) return;
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
-        setAiDrawerOpen(false);
-      }
-    };
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isAiDrawerOpen, setAiDrawerOpen]);
 
   const handleClearChat = () => {
     setMessages([getInitialGreeting(currentUser)]);
