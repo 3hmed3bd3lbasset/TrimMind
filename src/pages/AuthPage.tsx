@@ -107,36 +107,13 @@ export default function AuthPage() {
       console.log('Server auth check notice, falling back to local staff profiles:', apiErr?.message);
     }
 
-    // 2. Staff Profiles & Barbers Store Authentication
+    // 2. Staff Profiles Store Authentication
     const cleanPhoneDigits = cleanId.replace(/\D+/g, '');
-    let matchedProfile = profiles.find(
+    const matchedProfile = profiles.find(
       (p) =>
         (p.email && p.email.toLowerCase().trim() === cleanId.toLowerCase().trim()) ||
         (p.phone && cleanPhoneDigits.length >= 7 && p.phone.replace(/\D+/g, '') === cleanPhoneDigits)
     );
-
-    // If not found in profiles, check barbers
-    if (!matchedProfile) {
-      const matchedBarber = barbers.find(
-        (b) =>
-          (b.email && b.email.toLowerCase().trim() === cleanId.toLowerCase().trim()) ||
-          (b.phone && cleanPhoneDigits.length >= 7 && b.phone.replace(/\D+/g, '') === cleanPhoneDigits)
-      );
-      if (matchedBarber) {
-        matchedProfile = {
-          id: `usr-barber-${matchedBarber.id}`,
-          full_name: matchedBarber.full_name,
-          phone: matchedBarber.phone,
-          email: matchedBarber.email,
-          role: 'barber',
-          barber_id: matchedBarber.id,
-          branch_id: matchedBarber.branch_id,
-          password: matchedBarber.password || 'barber123456',
-          created_at: matchedBarber.created_at || new Date().toISOString(),
-          updated_at: new Date().toISOString(),
-        };
-      }
-    }
 
     if (matchedProfile) {
       const envManagerPass = (import.meta as any).env?.VITE_INITIAL_MANAGER_PASSWORD || (import.meta as any).env?.VITE_MANAGER_PASSWORD;
@@ -157,16 +134,13 @@ export default function AuthPage() {
         setSelectedBranchId(matchedProfile.assigned_branch_ids[0]);
       }
 
-      let roleArabicTitle = 'عضو طاقم العمل';
-      if (matchedProfile.role === 'barber') roleArabicTitle = 'كابتن حلاقة';
-      else if (matchedProfile.role === 'receptionist') roleArabicTitle = 'موظف استقبال';
+      let roleArabicTitle = 'عضو الإدارة';
+      if (matchedProfile.role === 'receptionist') roleArabicTitle = 'موظف استقبال';
       else if (matchedProfile.role === 'manager') roleArabicTitle = matchedProfile.is_super_admin ? 'المدير الأساسي (المالك)' : 'مدير فرع وشريك';
 
       toast.success(`أهلاً بك يا ${matchedProfile.full_name}! (${roleArabicTitle})`);
 
-      if (matchedProfile.role === 'barber') {
-        navigate('/barber');
-      } else if (matchedProfile.role === 'receptionist') {
+      if (matchedProfile.role === 'receptionist') {
         navigate('/receptionist');
       } else if (matchedProfile.role === 'manager') {
         navigate('/manager');
@@ -197,16 +171,12 @@ export default function AuthPage() {
         ? currentUser.is_super_admin
           ? 'المدير العام (المالك)'
           : 'مدير فرع وشريك'
-        : currentUser.role === 'receptionist'
-        ? 'موظف استقبال'
-        : 'كابتن حلاقة';
+        : 'موظف استقبال';
 
     const dashboardPath =
       currentUser.role === 'manager'
         ? '/manager'
-        : currentUser.role === 'receptionist'
-        ? '/receptionist'
-        : '/barber';
+        : '/receptionist';
 
     return (
       <div className="min-h-[75vh] flex items-center justify-center px-4 py-12 font-sans text-ink">
@@ -214,10 +184,8 @@ export default function AuthPage() {
           <div className="w-16 h-16 rounded-2xl bg-forest/10 border border-forest/20 text-forest mx-auto flex items-center justify-center shadow-clinic-1">
             {currentUser.role === 'manager' ? (
               <Shield className="w-8 h-8" />
-            ) : currentUser.role === 'receptionist' ? (
-              <UserCheck className="w-8 h-8" />
             ) : (
-              <Scissors className="w-8 h-8" />
+              <UserCheck className="w-8 h-8" />
             )}
           </div>
 
@@ -265,13 +233,13 @@ export default function AuthPage() {
             <Scissors className="w-7 h-7" />
           </div>
           <span className="text-[10px] font-mono font-bold text-terra uppercase tracking-wider block">
-            SECURE STAFF & MANAGEMENT ACCESS
+            SECURE MANAGEMENT & RECEPTION ACCESS
           </span>
           <h1 className="font-serif text-2xl sm:text-3xl font-bold text-ink">
-            تسجيل دخول طاقم العمل
+            تسجيل دخول الإدارة والاستقبال
           </h1>
           <p className="text-xs text-ink-mute leading-relaxed max-w-xs mx-auto">
-            البوابة المخصصة للمديرين والشركاء، موظفي الاستقبال، وكباتن الحلاقة
+            البوابة المخصصة لمديري الفروع والشركاء وموظفي الاستقبال
           </p>
         </div>
 

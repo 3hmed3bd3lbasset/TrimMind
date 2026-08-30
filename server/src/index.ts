@@ -39,9 +39,13 @@ import whatsappSessionRoutes from './routes/whatsappSession.routes.js';
 import waitlistRoutes from './routes/waitlist.routes.js';
 import recallRoutes from './routes/recall.routes.js';
 import insightsRoutes from './routes/insights.routes.js';
+import telegramRoutes from './routes/telegram.routes.js';
 import { initWhatsApp, getWhatsAppState, getDebugLogs } from './services/whatsapp.service.js';
 import { initNoShowProtectionCron } from './services/noshow.service.js';
 import { getUploadDir, getPersistentDb, savePersistentDb } from './services/persistentStorage.service.js';
+import { startTelegramBot } from './services/telegramBot.service.js';
+import { sendDailyManagerReport, initReminderService } from './services/reminder.service.js';
+import { ensureInitialDbData } from './services/cleanup.service.js';
 
 import { AppContainer } from './container.js';
 export const container = new AppContainer();
@@ -115,6 +119,21 @@ app.use('/api/whatsapp-session', whatsappSessionRoutes);
 app.use('/api/waitlist', waitlistRoutes);
 app.use('/api/recall', recallRoutes);
 app.use('/api/insights', insightsRoutes);
+app.use('/api/telegram', telegramRoutes);
+
+// Daily WhatsApp Manager Report (On-Demand Trigger for Manager)
+app.post('/api/reports/daily/send-whatsapp', requireAuth, requireRoles('manager'), async (_req, res) => {
+  try {
+    const reportResult = await sendDailyManagerReport();
+    return res.json({
+      success: true,
+      message: 'تم إرسال التقرير اليومي بنجاح إلى رقم واتساب الإدارة',
+      data: reportResult,
+    });
+  } catch (err: any) {
+    return res.status(500).json({ success: false, error: err?.message });
+  }
+});
 
 // Tamper-Evident Financial Ledger Integrity Check (Manager Only)
 app.get('/api/financial/verify-ledger', requireAuth, requireRoles('manager'), async (req, res) => {
@@ -192,9 +211,6 @@ initSocketIO(server, CLIENT_URL);
 initCleanupCron();
 initNoShowProtectionCron();
 
-import { initReminderService } from './services/reminder.service.js';
-import { ensureInitialDbData } from './services/cleanup.service.js';
-
 // Start Server
 async function startServer() {
   await testDbConnection();
@@ -207,9 +223,11 @@ async function startServer() {
     console.log(`🔒 Security: Zero-Trust IP Jail, MagicBytes, HashLedger, Helmet, CORS, RateLimiting Active`);
     console.log(`⚡ Realtime: WebSockets Socket.io Ready`);
     console.log(`📱 Initializing WhatsApp Integration Engine...`);
+    console.log(`🤖 Initializing Telegram Bot Service...`);
     console.log('====================================================');
     initWhatsApp();
     initReminderService();
+    startTelegramBot().catch((err) => console.warn('Telegram bot init notice:', err?.message));
   });
 }
 

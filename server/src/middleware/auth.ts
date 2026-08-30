@@ -275,7 +275,7 @@ export function defaultDenyAuthMiddleware(req: AuthenticatedRequest, res: Respon
     (reqPath.startsWith('/api/bookings/') && reqPath.endsWith('/payment-proof') && method === 'POST') ||
     (reqPath.startsWith('/api/bookings/') && reqPath.endsWith('/rate') && method === 'POST') ||
     (reqPath.startsWith('/api/bookings/') && reqPath.endsWith('/cancel') && method === 'POST') ||
-    (reqPath.startsWith('/api/agent-tools') || reqPath.startsWith('/api/whatsapp')) // Managed by requireAgentAuth
+    (reqPath.startsWith('/api/agent-tools') || reqPath.startsWith('/api/whatsapp') || reqPath.startsWith('/api/telegram')) // Managed by requireAgentAuth / Telegram API
   ) {
     return optionalAuth(req, res, next);
   }

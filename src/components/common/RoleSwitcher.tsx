@@ -77,19 +77,6 @@ export const RoleSwitcher: React.FC = () => {
             </button>
 
             <button
-              onClick={() => handleRoleChange('barber')}
-              className={`flex items-center gap-1 px-3 py-1.5 rounded-full font-bold transition-all ${
-                currentUser.role === 'barber'
-                  ? 'bg-forest text-paper shadow-sm'
-                  : 'text-ink-soft hover:bg-paper-warm'
-              }`}
-              title="شاشة كابتن الحلاقة"
-            >
-              <Scissors className="w-3.5 h-3.5" />
-              <span>كابتن</span>
-            </button>
-
-            <button
               onClick={() => handleRoleChange('receptionist')}
               className={`flex items-center gap-1 px-3 py-1.5 rounded-full font-bold transition-all ${
                 currentUser.role === 'receptionist'

@@ -131,20 +131,7 @@ export const Navbar: React.FC<NavbarProps> = ({ onOpenAiDrawer }) => {
               </a>
             )}
 
-            {/* Barber Link - Only when logged in as Barber */}
-            {currentUser.role === 'barber' && (
-              <Link
-                to="/barber"
-                className={`flex items-center gap-1.5 px-3.5 py-2 rounded-full text-sm font-bold transition-all ${
-                  isActive('/barber')
-                    ? 'text-forest bg-forest/10 border border-forest/30'
-                    : 'text-forest hover:bg-paper-warm'
-                }`}
-              >
-                <Scissors className="w-4 h-4" />
-                <span>لوحة الكابتن</span>
-              </Link>
-            )}
+
 
             {/* Receptionist Link - Only when logged in as Receptionist */}
             {currentUser.role === 'receptionist' && (
@@ -329,15 +316,7 @@ export const Navbar: React.FC<NavbarProps> = ({ onOpenAiDrawer }) => {
               شاشة الانتظار (TV ↗)
             </a>
           )}
-          {currentUser.role === 'barber' && (
-            <Link
-              to="/barber"
-              onClick={() => setMobileMenuOpen(false)}
-              className="block px-4 py-2.5 rounded-xl text-sm text-forest font-bold hover:bg-paper"
-            >
-              لوحة الكابتن الحلاق
-            </Link>
-          )}
+
           {currentUser.role === 'receptionist' && (
             <Link
               to="/receptionist"

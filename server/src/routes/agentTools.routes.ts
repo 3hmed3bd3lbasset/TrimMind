@@ -7,7 +7,7 @@ import { getBranchQueue } from '../services/queue.service.js';
 import { broadcastToBranch, broadcastGlobal } from '../socket/realtime.js';
 import { AGENT_API_SECRET } from '../config/jwt.js';
 import { agentToolsLimiter } from '../middleware/rateLimiter.js';
-import { container } from '../index.js';
+import { container } from '../container.js';
 
 const router = Router();
 

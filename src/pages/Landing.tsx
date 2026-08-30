@@ -130,32 +130,53 @@ export default function Landing() {
                     </span>
                   </div>
 
-                  {/* Branch Toggle Switcher */}
-                  <div className="grid grid-cols-2 gap-1.5 p-1 bg-paper-warm/90 rounded-2xl border border-border">
-                    {branches.map((branch) => {
-                      const isSelected = (selectedHeroBranchId || branches[0]?.id) === branch.id;
-                      return (
-                        <button
-                          key={branch.id}
-                          type="button"
-                          onClick={() => {
-                            setSelectedHeroBranchId(branch.id);
-                            setSelectedBranchId(branch.id);
-                          }}
-                          className={`px-3 py-2 rounded-xl text-xs font-bold transition-all flex flex-col items-center justify-center gap-0.5 ${
-                            isSelected
-                              ? 'bg-forest text-paper shadow-clinic-1'
-                              : 'text-ink-soft hover:text-ink hover:bg-white/70'
-                          }`}
-                        >
-                          <span className="truncate w-full text-center">{branch.name.split('-')[0].trim()}</span>
-                          <span className={`text-[9px] font-normal ${isSelected ? 'text-paper/80' : 'text-ink-mute'}`}>
-                            {branch.name.includes('-') ? branch.name.split('-')[1].trim() : 'صالون VIP'}
-                          </span>
-                        </button>
-                      );
-                    })}
-                  </div>
+                  {/* Branch Toggle Switcher / Single Branch Full Width Banner */}
+                  {branches.length <= 1 ? (
+                    <div className="w-full p-3.5 rounded-2xl bg-forest text-paper shadow-clinic-1 flex items-center justify-between border border-forest/30">
+                      <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 rounded-xl bg-white/10 border border-white/20 flex items-center justify-center text-paper shrink-0">
+                          <Building2 className="w-5 h-5" />
+                        </div>
+                        <div className="text-right">
+                          <p className="font-serif font-bold text-sm sm:text-base text-paper leading-tight">
+                            {branches[0]?.name.split('-')[0].trim() || 'فرع الحداد الرئيسي'}
+                          </p>
+                          <p className="text-[10px] text-paper/80 font-mono">
+                            {branches[0]?.name.includes('-') ? branches[0].name.split('-')[1].trim() : 'ELHDAD SALON VIP'}
+                          </p>
+                        </div>
+                      </div>
+                      <span className="px-3 py-1 rounded-full bg-white/15 text-paper text-[11px] font-bold border border-white/20 shrink-0">
+                        الفرع المعتمد ✓
+                      </span>
+                    </div>
+                  ) : (
+                    <div className="grid grid-cols-2 gap-1.5 p-1 bg-paper-warm/90 rounded-2xl border border-border">
+                      {branches.map((branch) => {
+                        const isSelected = (selectedHeroBranchId || branches[0]?.id) === branch.id;
+                        return (
+                          <button
+                            key={branch.id}
+                            type="button"
+                            onClick={() => {
+                              setSelectedHeroBranchId(branch.id);
+                              setSelectedBranchId(branch.id);
+                            }}
+                            className={`w-full px-3 py-2.5 rounded-xl text-xs font-bold transition-all flex flex-col items-center justify-center gap-0.5 ${
+                              isSelected
+                                ? 'bg-forest text-paper shadow-clinic-1'
+                                : 'text-ink-soft hover:text-ink hover:bg-white/70'
+                            }`}
+                          >
+                            <span className="truncate w-full text-center text-xs sm:text-sm font-serif font-bold">{branch.name.split('-')[0].trim()}</span>
+                            <span className={`text-[10px] font-normal ${isSelected ? 'text-paper/80' : 'text-ink-mute'}`}>
+                              {branch.name.includes('-') ? branch.name.split('-')[1].trim() : 'صالون VIP'}
+                            </span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
                 </div>
 
                 {/* Quick Selection Details */}

@@ -32,30 +32,6 @@ export class MySQLProfileRepository implements IProfileRepository {
       );
     }
 
-    // Check barbers table
-    const barberRows = await query<any[]>(
-      'SELECT * FROM barbers WHERE phone = ? AND is_active = 1 LIMIT 1',
-      [cleanPhone]
-    );
-
-    if (barberRows && barberRows.length > 0) {
-      const b = barberRows[0];
-      return new Profile(
-        `usr-barber-${b.id}`,
-        b.full_name,
-        b.phone,
-        null,
-        b.password_hash || b.password,
-        'barber',
-        false,
-        b.branch_id,
-        b.id,
-        [],
-        Boolean(b.is_active),
-        b.created_at
-      );
-    }
-
     return null;
   }
 

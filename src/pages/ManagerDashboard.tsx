@@ -38,7 +38,9 @@ import {
   ChevronLeft,
   ArrowRight,
   MessageSquare,
+  Send,
 } from 'lucide-react';
+import toast from 'react-hot-toast';
 
 export default function ManagerDashboard() {
   const { currentUser, branches } = useSalonStore();
@@ -125,7 +127,7 @@ export default function ManagerDashboard() {
     {
       id: 'barbers',
       label: 'الحلاقين وفريق العمل',
-      desc: 'إدارة وتوزيع الكباتن والتقييمات وكلمات المرور',
+      desc: 'إدارة وتوزيع كباتن الصالون والتقييمات والصور',
       icon: UserCheck,
       category: 'فريق العمل',
     },
@@ -294,22 +296,53 @@ export default function ManagerDashboard() {
           )}
         </div>
 
-        {/* Right Side: Animated Hub Button */}
-        <button
-          type="button"
-          onClick={() => setIsSettingsMenuOpen(!isSettingsMenuOpen)}
-          className={`flex items-center gap-2 px-4 py-2 rounded-xl font-bold text-xs transition-all shadow-xs ${
-            isSettingsMenuOpen
-              ? 'bg-terra text-paper shadow-clinic-1 scale-[1.02]'
-              : 'bg-paper-warm hover:bg-white text-ink border border-border'
-          }`}
-        >
-          <Sliders className="w-4 h-4 text-forest" />
-          <span>إعدادات وإدارة المنظومة</span>
-          <span className="px-1.5 py-0.5 rounded-full bg-forest text-paper text-[10px] font-mono">
-            {SECTIONS.length} أقسام
-          </span>
-        </button>
+        {/* Right Side: Quick WhatsApp Daily Report & Animated Hub Button */}
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={async () => {
+              const toastId = toast.loading('جاري توليد وإرسال التقرير اليومي إلى واتساب الإدارة...');
+              try {
+                const res = await fetch('/api/reports/daily/send-whatsapp', {
+                  method: 'POST',
+                  headers: {
+                    'Content-Type': 'application/json',
+                    Authorization: `Bearer ${sessionStorage.getItem('access_token') || ''}`,
+                  },
+                });
+                const data = await res.json();
+                if (data && data.success) {
+                  toast.success('تم إرسال التقرير اليومي بنجاح إلى رقم واتساب الإدارة! 📊', { id: toastId });
+                } else {
+                  toast.error(data?.error || 'تعذر إرسال التقرير اليومي', { id: toastId });
+                }
+              } catch (err: any) {
+                toast.error('حدث خطأ أثناء الاتصال بالسيرفر', { id: toastId });
+              }
+            }}
+            className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs transition-all shadow-xs active:scale-95"
+            title="إرسال التقرير اليومي الشامل على واتساب الإدارة الآن"
+          >
+            <Send className="w-3.5 h-3.5" />
+            <span>تقرير واتساب الإدارة 📊</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setIsSettingsMenuOpen(!isSettingsMenuOpen)}
+            className={`flex items-center gap-2 px-4 py-2 rounded-xl font-bold text-xs transition-all shadow-xs ${
+              isSettingsMenuOpen
+                ? 'bg-terra text-paper shadow-clinic-1 scale-[1.02]'
+                : 'bg-paper-warm hover:bg-white text-ink border border-border'
+            }`}
+          >
+            <Sliders className="w-4 h-4 text-forest" />
+            <span>إعدادات وإدارة المنظومة</span>
+            <span className="px-1.5 py-0.5 rounded-full bg-forest text-paper text-[10px] font-mono">
+              {SECTIONS.length} أقسام
+            </span>
+          </button>
+        </div>
       </div>
 
       {/* Grid Drawer for Management Hub */}

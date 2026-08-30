@@ -284,18 +284,6 @@ export const INITIAL_PROFILES: Profile[] = [
     created_at: new Date().toISOString(),
     updated_at: new Date().toISOString(),
   },
-  {
-    id: 'usr-barber-mohamed',
-    full_name: 'محمد الحداد',
-    phone: '01285694670',
-    email: 'barber@salon.com',
-    password: 'Admin@123456',
-    role: 'barber',
-    barber_id: 'barber-mohamed',
-    branch_id: 'branch-elhdad',
-    created_at: new Date().toISOString(),
-    updated_at: new Date().toISOString(),
-  },
 ];
 
 export const INITIAL_BOOKINGS: Booking[] = [];

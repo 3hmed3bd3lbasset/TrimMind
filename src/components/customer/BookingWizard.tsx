@@ -31,6 +31,9 @@ import {
   X,
   AlertTriangle,
   Copy,
+  Send,
+  ExternalLink,
+  Home,
 } from 'lucide-react';
 import { Link, useNavigate } from 'react-router-dom';
 
@@ -1182,7 +1185,7 @@ export const BookingWizard: React.FC = () => {
               </div>
             </div>
 
-            {/* Elegant 5-Minute Review & Live Tracking Notice */}
+            {/* Elegant 5-Minute Review Notice */}
             <div className="bg-amber-500/10 border border-amber-500/25 p-3.5 rounded-2xl flex items-start gap-3 text-right">
               <div className="w-8 h-8 rounded-xl bg-amber-500/20 text-amber-900 flex items-center justify-center shrink-0 mt-0.5">
                 <Clock className="w-4 h-4 text-amber-800" />
@@ -1192,17 +1195,69 @@ export const BookingWizard: React.FC = () => {
                   مراجعة واعتماد الحجز خلال 5 دقائق
                 </p>
                 <p className="text-[11px] text-amber-900/90 leading-relaxed">
-                  يقوم فريق الاستقبال حالياً بمراجعة إيصال التحويل وتأكيد الموعد رسمياً في غضون <strong>5 دقائق</strong>. نشكرك على التحلي بالصبر، ويمكنك متابعة حالة الحجز وطابور الانتظار لحظياً من خلال زر <strong>"تتبع الحجز والانتظار"</strong> بالأسفل.
+                  يقوم فريق الاستقبال حالياً بمراجعة إيصال التحويل وتأكيد الموعد رسمياً. نشكرك على التحلي بالصبر.
                 </p>
               </div>
             </div>
 
-            <div className="flex gap-2 pt-2">
-              <Link to="/track" className="btn-clinic-primary flex-1 py-3 text-xs text-center font-bold shadow-clinic-1">
-                تتبع الحجز والانتظار الآن
-              </Link>
-              <button onClick={() => window.print()} className="btn-clinic-ghost text-xs font-bold">
-                طباعة
+            {/* Telegram Queue & Turn Tracking Card */}
+            <div className="bg-gradient-to-br from-sky-500/10 via-blue-500/10 to-indigo-500/10 border border-sky-500/30 p-4 rounded-2xl space-y-3 text-right">
+              <div className="flex items-center gap-2.5">
+                <div className="w-9 h-9 rounded-xl bg-[#229ED9] text-white flex items-center justify-center shadow-xs shrink-0">
+                  <Send className="w-4 h-4 -rotate-45 ml-0.5" />
+                </div>
+                <div>
+                  <h4 className="font-serif font-bold text-sky-950 text-xs">
+                    استعلام عن الدور ولحظة دخولك عبر بوت التلجرام
+                  </h4>
+                  <p className="text-[10.5px] text-sky-900/80 font-mono">
+                    Official Telegram Queue Bot (@TrimMind_bot)
+                  </p>
+                </div>
+              </div>
+
+              <p className="text-[11px] text-sky-950 leading-relaxed">
+                💡 يمكنك الآن متابعة <strong>موقعك في الطابور المباشر</strong> وعدد العملاء المنتظرين قبلك والاستفسار عن أي خدمة في أي وقت عبر بوت التلجرام الرسمي للصالون.
+              </p>
+
+              <a
+                href={`https://t.me/TrimMind_bot?start=${confirmedBooking.id}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="w-full py-3 px-4 rounded-xl bg-[#229ED9] hover:bg-[#1e8ec3] text-white text-xs font-bold transition-all flex items-center justify-center gap-2 shadow-clinic-1 hover:shadow-clinic-2 cursor-pointer active:scale-98"
+              >
+                <Send className="w-4 h-4 -rotate-45" />
+                <span>متابعة الدور والاستعلام عبر بوت التلجرام 📲</span>
+                <ExternalLink className="w-3.5 h-3.5 opacity-80" />
+              </a>
+            </div>
+
+            {/* Action Buttons: Web Tracking, Print, Cancel / Close */}
+            <div className="space-y-2 pt-2">
+              <div className="flex gap-2">
+                <Link
+                  to={`/track?q=${confirmedBooking.id}`}
+                  className="btn-clinic-primary flex-1 py-3 text-xs text-center font-bold shadow-clinic-1"
+                >
+                  تتبع الحجز على الموقع
+                </Link>
+                <button
+                  type="button"
+                  onClick={() => window.print()}
+                  className="btn-clinic-ghost text-xs font-bold px-4"
+                >
+                  طباعة
+                </button>
+              </div>
+
+              {/* Cancel / Dismiss / Return Home Button */}
+              <button
+                type="button"
+                onClick={() => navigate('/')}
+                className="w-full py-2.5 rounded-xl border border-border hover:bg-paper-warm text-ink-mute hover:text-ink text-xs font-bold transition-all flex items-center justify-center gap-1.5"
+              >
+                <X className="w-3.5 h-3.5" />
+                <span>إغلاق / إنهاء والعودة للرئيسية</span>
               </button>
             </div>
           </div>

@@ -1141,21 +1141,9 @@ export const useSalonStore = create<SalonStore>((set, get) => ({
           rating_count: 1,
           created_at: new Date().toISOString(),
         };
-        const barberProfile: Profile = {
-          id: `usr-barber-${barberId}`,
-          full_name: barber.full_name,
-          phone: barber.phone,
-          email: barber.email,
-          password: barber.password,
-          role: 'barber',
-          barber_id: barberId,
-          branch_id: barber.branch_id,
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString(),
-        };
         set((state) => ({
           barbers: [...state.barbers, newBarber],
-          profiles: [...state.profiles.filter((p) => p.barber_id !== barberId), barberProfile],
+          profiles: state.profiles.filter((p) => p.barber_id !== barberId && p.role !== 'barber'),
         }));
         broadcastEvent('SYNC_STATE');
         api.createBarber(newBarber).catch((e) => console.warn('API createBarber notice:', e?.message));
@@ -1165,20 +1153,6 @@ export const useSalonStore = create<SalonStore>((set, get) => ({
           barbers: state.barbers.map((b) =>
             b.id === id ? { ...b, ...updates, updated_at: new Date().toISOString() } : b
           ),
-          profiles: state.profiles.map((p) => {
-            if (p.barber_id === id) {
-              return {
-                ...p,
-                full_name: updates.full_name !== undefined ? updates.full_name : p.full_name,
-                phone: updates.phone !== undefined ? updates.phone : p.phone,
-                email: updates.email !== undefined ? updates.email : p.email,
-                password: updates.password !== undefined ? updates.password : p.password,
-                branch_id: updates.branch_id !== undefined ? updates.branch_id : p.branch_id,
-                updated_at: new Date().toISOString(),
-              };
-            }
-            return p;
-          }),
         }));
         broadcastEvent('SYNC_STATE');
         api.updateBarber(id, updates).catch((e) => console.warn('API updateBarber notice:', e?.message));

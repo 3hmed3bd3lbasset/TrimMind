@@ -33,6 +33,8 @@ import {
   AlertTriangle,
   XCircle,
   X,
+  Send,
+  ExternalLink,
 } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { RatingModal } from './RatingModal';
@@ -639,6 +641,36 @@ export const TrackBookingSection: React.FC = () => {
               </div>
             </div>
           </div>
+
+          {/* Telegram Live Turn Tracking Banner */}
+          {selectedBooking.status !== 'cancelled' && (
+            <div className="bg-gradient-to-br from-sky-500/10 via-blue-500/10 to-indigo-500/10 border border-sky-500/30 p-4 rounded-2xl flex flex-col sm:flex-row items-center justify-between gap-3 text-right">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-[#229ED9] text-white flex items-center justify-center shadow-xs shrink-0">
+                  <Send className="w-5 h-5 -rotate-45 ml-0.5" />
+                </div>
+                <div>
+                  <h4 className="font-serif font-bold text-sky-950 text-xs">
+                    متابعة الدور وتنبيهات الحضور عبر بوت التلجرام
+                  </h4>
+                  <p className="text-[11px] text-sky-900/80">
+                    يمكنك تلقي إشعارات دورك ولحظة استدعاء الكرسي مباشرة عبر تيليجرام
+                  </p>
+                </div>
+              </div>
+
+              <a
+                href={`https://t.me/TrimMind_bot?start=${selectedBooking.id}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="w-full sm:w-auto py-2.5 px-5 rounded-xl bg-[#229ED9] hover:bg-[#1e8ec3] text-white text-xs font-bold transition-all flex items-center justify-center gap-2 shadow-sm shrink-0 active:scale-98"
+              >
+                <Send className="w-3.5 h-3.5 -rotate-45" />
+                <span>فتح في بوت التلجرام</span>
+                <ExternalLink className="w-3 h-3 opacity-80" />
+              </a>
+            </div>
+          )}
 
           {/* Completed Rating Banner */}
           {selectedBooking.status === 'completed' && (

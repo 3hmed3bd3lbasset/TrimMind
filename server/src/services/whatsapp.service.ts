@@ -523,10 +523,9 @@ export async function initWhatsApp(): Promise<WhatsAppState> {
 
         const pushName = msg.pushName || '';
 
-        logDebug('PROCESSING_MSG_FOR_AI', { senderPhone, remoteJid, text, pushName });
-
-        // 1. Forward to n8n AI Orchestration Gateway (Single unified path)
-        forwardToN8nWebhook(msg, base64ImageUrl, senderPhone, text);
+        // Automated Clean Redirection to Web Booking Platform & Telegram Bot
+        const redirectMessage = `أهلاً بك يا ${pushName || 'فندم'} في صالون TrimMind VIP 💈👑\n\nنحيطكم علماً بأن حجز المواعيد والاستعلام عن الدور والأسعار متاح بالكامل عبر منصتنا الإلكترونية وبوت التلجرام الرسمي:\n\n🌐 رابط الحجز المباشر: https://trimmind.up.railway.app/booking\n🤖 بوت التلجرام للاستعلام ومتابعة الدور: https://t.me/TrimMind_bot\n\nيسعدنا تشريفكم دائماً بأرقى مستوى خدمة ملكية! ✨`;
+        sendWhatsAppText(senderPhone || remoteJid, redirectMessage).catch(() => {});
       }
     });
 
