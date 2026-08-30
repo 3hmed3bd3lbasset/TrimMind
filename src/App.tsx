@@ -26,37 +26,61 @@ function RoleGuard({
   allowedRoles: UserRole[];
   children: React.ReactNode;
 }) {
-  const { currentUser, setCurrentUser } = useSalonStore();
-  const [isCheckingAuth, setIsCheckingAuth] = React.useState(!allowedRoles.includes(currentUser.role));
+  const currentUser = useSalonStore((state) => state.currentUser);
+  const setCurrentUser = useSalonStore((state) => state.setCurrentUser);
+  const [authState, setAuthState] = React.useState<'checking' | 'authorized' | 'unauthorized'>(() => {
+    return allowedRoles.includes(currentUser.role) ? 'authorized' : 'checking';
+  });
 
   React.useEffect(() => {
-    if (!allowedRoles.includes(currentUser.role)) {
-      api.getMe()
-        .then((res: any) => {
-          if (res && res.success && res.data) {
-            setCurrentUser(res.data);
-          }
-        })
-        .catch(() => {})
-        .finally(() => {
-          setIsCheckingAuth(false);
-        });
-    } else {
-      setIsCheckingAuth(false);
-    }
-  }, [currentUser.role]);
+    let isMounted = true;
 
-  if (isCheckingAuth) {
+    // If store already has a verified role matching requirements, keep authorized
+    if (allowedRoles.includes(currentUser.role)) {
+      setAuthState('authorized');
+      return;
+    }
+
+    // Verify session with server backend
+    api.getMe()
+      .then((res: any) => {
+        if (!isMounted) return;
+        if (res && res.success && res.data) {
+          const user = res.data;
+          setCurrentUser(user);
+          if (allowedRoles.includes(user.role)) {
+            setAuthState('authorized');
+          } else {
+            setAuthState('unauthorized');
+          }
+        } else {
+          setAuthState('unauthorized');
+        }
+      })
+      .catch(() => {
+        if (isMounted) setAuthState('unauthorized');
+      });
+
+    return () => {
+      isMounted = false;
+    };
+  }, [currentUser.role, allowedRoles]);
+
+  if (authState === 'checking') {
     return (
       <div className="min-h-screen bg-paper flex items-center justify-center text-ink-soft text-sm font-bold">
-        جاري التحقق من الصلاحيات وأمان الجلسة...
+        <div className="flex flex-col items-center gap-3">
+          <div className="w-8 h-8 border-3 border-forest border-t-transparent rounded-full animate-spin"></div>
+          <span>جاري التحقق من الصلاحيات وأمان الجلسة...</span>
+        </div>
       </div>
     );
   }
 
-  if (!allowedRoles.includes(currentUser.role)) {
+  if (authState === 'unauthorized') {
     return <Navigate to="/auth" replace />;
   }
+
   return <>{children}</>;
 }
 
