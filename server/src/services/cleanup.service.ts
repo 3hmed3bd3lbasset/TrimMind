@@ -160,7 +160,9 @@ export async function ensureInitialDbData() {
         generated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         INDEX idx_branch_period (branch_id, period_start, period_end)
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+    `);
 
+    await query(`
       CREATE TABLE IF NOT EXISTS webhook_events (
         id VARCHAR(128) PRIMARY KEY,
         source VARCHAR(64) NOT NULL,
@@ -169,7 +171,9 @@ export async function ensureInitialDbData() {
         processed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         INDEX idx_source_event (source, event_type)
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+    `);
 
+    await query(`
       CREATE TABLE IF NOT EXISTS whatsapp_analytics_logs (
         id VARCHAR(64) PRIMARY KEY,
         phone VARCHAR(32) NOT NULL,
@@ -182,7 +186,9 @@ export async function ensureInitialDbData() {
         INDEX idx_wa_event (event_type),
         INDEX idx_wa_created (created_at)
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+    `);
 
+    await query(`
       CREATE TABLE IF NOT EXISTS conversation_sessions (
         id VARCHAR(64) PRIMARY KEY,
         customer_phone VARCHAR(20) NOT NULL,
@@ -197,10 +203,11 @@ export async function ensureInitialDbData() {
         last_message_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-        INDEX idx_cs_phone (customer_phone),
-        FOREIGN KEY (active_booking_id) REFERENCES bookings(id) ON DELETE SET NULL
+        INDEX idx_cs_phone (customer_phone)
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+    `);
 
+    await query(`
       CREATE TABLE IF NOT EXISTS conversation_messages (
         id VARCHAR(64) PRIMARY KEY,
         session_id VARCHAR(64) NOT NULL,
@@ -210,8 +217,7 @@ export async function ensureInitialDbData() {
         extracted_intent JSON NULL,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         INDEX idx_cm_session (session_id),
-        UNIQUE KEY uq_cm_wa_msg (whatsapp_message_id),
-        FOREIGN KEY (session_id) REFERENCES conversation_sessions(id) ON DELETE CASCADE
+        UNIQUE KEY uq_cm_wa_msg (whatsapp_message_id)
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
     `);
 
