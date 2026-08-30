@@ -438,19 +438,9 @@ router.patch(
             booking.id
           ]
         ).catch((err) => console.warn('Financial record insert error:', err));
-
-        if (customerPhone) {
-          try {
-            const { sendBookingConfirmationWhatsApp } = await import('../services/whatsapp.service.js');
-            await sendBookingConfirmationWhatsApp(booking);
-            console.log('WA Confirmed Status sent successfully to:', customerPhone);
-          } catch (e) {
-            console.error('WA Confirmed Send Error:', e);
-          }
-        }
       }
 
-      // 2. WhatsApp Notification on Calling Customer to Chair (استدعاء العميل للكرسي) + Proactive Next in Queue Reminder
+      // 2. WhatsApp Notification on Calling Customer to Chair (دورك جه الآن) + Proactive Queue Approaching (باقي 1 أو 2)
       else if (status === 'in_service') {
         const clientName = booking.customer_name || booking.customerName || 'يا باشا';
         const barberName = booking.barber_name || booking.barberName || 'كابتن الصالون';
@@ -463,28 +453,44 @@ router.patch(
           chairName,
         });
 
+        // 1. Notify the customer whose turn is NOW (اللي عليه الدور)
         if (customerPhone) {
           import('../services/whatsapp.service.js').then(({ sendWhatsAppText }) => {
-            const callMsg = `🔔 *يا أستاذ ${clientName}! دورك جه والكرسي جاهز لحضرتك في صالون TrimMind VIP!* 💈👑\n\n✂️ *الكابتن:* ${barberName}\n🪑 *الكرسي:* ${chairName}\n\nتفضل بالدخول لصالون الحلاقة الآن، والكابتن في انتظارك لتجهيزك بأعلى مستوى! ✨`;
+            const callMsg = `🔔 *يا أستاذ ${clientName}! دورك جه الآن والكرسي جاهز لحضرتك في صالون TrimMind VIP!* 💈👑\n\n✂️ *الكابتن:* ${barberName}\n🪑 *الكرسي:* ${chairName}\n\nتفضل بالدخول لصالون الحلاقة الآن، والكابتن في انتظارك لتجهيزك بأعلى مستوى! ✨\n📍 رابط تتبع دورك: https://trimmind.up.railway.app/track?q=${booking.id}`;
             sendWhatsAppText(customerPhone, callMsg).catch((e) => console.error('WA Call Send Error:', e));
           }).catch(() => {});
         }
 
-        // Proactively send "Turn Approaching" Reminder to Next Customer in Queue
+        // 2. Query Waiting Customers in Queue (العميل التالي والعميل الذي بعده)
         query<any[]>(
-          `SELECT id, customer_name, customer_phone, barber_name, service_name 
+          `SELECT id, customer_name, customer_phone, barber_name, service_name, queue_number 
            FROM bookings 
            WHERE (branch_id = ? OR branch_id = 'branch-elhdad' OR branch_id = 'branch-1')
-           AND status = 'confirmed' AND id != ?
-           ORDER BY created_at ASC LIMIT 1`,
+             AND status IN ('confirmed', 'pending_review', 'awaiting_payment')
+             AND id != ?
+           ORDER BY queue_number ASC, created_at ASC LIMIT 2`,
           [booking.branch_id || 'branch-elhdad', booking.id]
-        ).then(([nextBooking]) => {
+        ).then((waitingList) => {
+          if (!waitingList || waitingList.length === 0) return;
+
+          // Customer #1: The next in line (أنت التالي مباشرة)
+          const nextBooking = waitingList[0];
           if (nextBooking && nextBooking.customer_phone) {
             import('../services/whatsapp.service.js').then(({ sendWhatsAppText }) => {
               const nextName = nextBooking.customer_name || 'يا فندم';
               const nextBarber = nextBooking.barber_name || 'كابتن الصالون';
-              const reminderMsg = `⏳ *تنبيه باقتراب دورك يا أستاذ ${nextName}!* 💈👑\n\nدورك قرب جداً في صالون TrimMind VIP (أنت العميل القادم في الطابور والكابتن *${nextBarber}* هيستقبلك على الكرسي خلال دقائق معدودة).\n\n📍 يرجى التواجد في صالة الانتظار والاستعداد للدخول ✂️✨\nرابط متابعة دورك: https://trimmind.up.railway.app/track?q=${nextBooking.id}`;
+              const reminderMsg = `⏳ *يا أستاذ ${nextName}! أنت العميل التالي مباشرة في الطابور!* 💈👑\n\nالكابتن *${nextBarber}* هيستقبلك على الكرسي بعد العميل الحالي مباشرة (باقي عميل واحد فقط أمامك).\n\n📍 يرجى التواجد في صالة الانتظار والاستعداد للدخول ✂️✨\nرابط متابعة دورك: https://trimmind.up.railway.app/track?q=${nextBooking.id}`;
               sendWhatsAppText(nextBooking.customer_phone, reminderMsg).catch(() => {});
+            }).catch(() => {});
+          }
+
+          // Customer #2: Two ahead in line (باقي أمامك شخصين)
+          const secondBooking = waitingList[1];
+          if (secondBooking && secondBooking.customer_phone) {
+            import('../services/whatsapp.service.js').then(({ sendWhatsAppText }) => {
+              const secondName = secondBooking.customer_name || 'يا فندم';
+              const reminderMsg = `⏳ *تنبيه باقتراب دورك يا أستاذ ${secondName}!* 💈👑\n\nدورك قرب في صالون TrimMind VIP (باقي أمامك عميلين فقط في الطابور ⏳).\n\n📍 يرجى التوجه للصالون لتجهيز موعدك بالوقت المحدد ✂️✨\nرابط متابعة دورك: https://trimmind.up.railway.app/track?q=${secondBooking.id}`;
+              sendWhatsAppText(secondBooking.customer_phone, reminderMsg).catch(() => {});
             }).catch(() => {});
           }
         }).catch(() => {});

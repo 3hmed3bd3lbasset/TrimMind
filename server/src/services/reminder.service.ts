@@ -96,32 +96,26 @@ export function initReminderService() {
         sendDailyManagerReport().catch((err) => console.error('Daily Manager Report Error:', err.message));
       }
 
-      // 2. Check in-memory liveSyncedBookings
+      // 2. Check in-memory liveSyncedBookings & Persistent DB
       for (const b of liveSyncedBookings) {
-        if (b.status === 'confirmed' && (b.customerPhone || b.customer_phone) && !remindedBookings.has(b.id)) {
+        if ((b.status === 'confirmed' || b.status === 'pending_review' || b.status === 'awaiting_payment') && (b.customerPhone || b.customer_phone)) {
           const bookingDate = (b.starts_at || b.startsAt || '').split('T')[0].split(' ')[0];
-
           if (bookingDate && bookingDate !== todayStr) {
             continue;
           }
 
-          const timePartMatch = (b.starts_at || b.startsAt || '').match(/(\d{1,2}):(\d{2})/);
-          if (timePartMatch) {
-            const bHour = parseInt(timePartMatch[1], 10);
-            const bMin = parseInt(timePartMatch[2], 10);
-            const bTimeMinutes = bHour * 60 + bMin;
-            const diffMinutes = bTimeMinutes - currentTimeMinutes;
-            if (diffMinutes > 90 || diffMinutes < -120) {
-              continue;
-            }
-          }
-
           const queuePos = b.queueNumber || b.queue_number || 1;
-          if (queuePos <= 2) {
-            remindedBookings.add(b.id);
-            const clientName = b.customerName || b.customer_name || 'يا غالي';
-            const reminderMsg = `يا أستاذ ${clientName} 💈 ميعادك قرب في الصالون!\n(باقي أمامك ${queuePos} فقط في الطابور ⏳)\n\n📍 رابط تتبع دورك لحظة بلحظة:\nhttps://trimmind.up.railway.app/track?q=${b.id}\n\n👈 للرد السريع:\n- أرسل "1" أو "أنا في الطريق" لتأكيد حضورك وتجهيز الكرسي.\n- أرسل "2" أو "إلغاء" لإلغاء الحجز.`;
-            sendWhatsAppText(b.customerPhone || b.customer_phone, reminderMsg).catch(() => {});
+          const clientName = b.customerName || b.customer_name || 'يا غالي';
+          const targetPhone = b.customerPhone || b.customer_phone;
+
+          if (queuePos === 2 && !remindedBookings.has(`${b.id}_pos2`)) {
+            remindedBookings.add(`${b.id}_pos2`);
+            const reminderMsg = `⏳ *تنبيه باقتراب دورك يا أستاذ ${clientName}!* 💈👑\n\nباقي أمامك عميلين فقط في الطابور ⏳ في صالون TrimMind VIP.\n📍 يرجى التوجه للصالون لتجهيز موعدك بالوقت المحدد.\nرابط متابعة دورك لحظة بلحظة:\nhttps://trimmind.up.railway.app/track?q=${b.id}`;
+            sendWhatsAppText(targetPhone, reminderMsg).catch(() => {});
+          } else if (queuePos === 1 && !remindedBookings.has(`${b.id}_pos1`)) {
+            remindedBookings.add(`${b.id}_pos1`);
+            const reminderMsg = `⏳ *يا أستاذ ${clientName}! أنت العميل التالي مباشرة في الطابور!* 💈👑\n\nالكابتن هيستقبلك على الكرسي خلال دقائق معدودة (باقي عميل واحد فقط أمامك).\n📍 يرجى التواجد في صالة الانتظار والاستعداد للدخول ✂️✨\nرابط متابعة دورك:\nhttps://trimmind.up.railway.app/track?q=${b.id}`;
+            sendWhatsAppText(targetPhone, reminderMsg).catch(() => {});
           }
         }
       }
@@ -130,29 +124,24 @@ export function initReminderService() {
       const rows = await query<any[]>(
         `SELECT id, customer_name, customer_phone, queue_number, starts_at, status 
          FROM bookings 
-         WHERE booking_date = ? AND status = 'confirmed'`,
-        [todayStr]
-      );
+         WHERE (booking_date = ? OR starts_at LIKE ?) AND status IN ('confirmed', 'pending_review', 'awaiting_payment')
+         ORDER BY queue_number ASC`,
+        [todayStr, `${todayStr}%`]
+      ).catch(() => []);
 
       if (rows && rows.length > 0) {
         for (const b of rows) {
-          if (b.customer_phone && !remindedBookings.has(b.id)) {
-            const timePartMatch = (b.starts_at || '').match(/(\d{1,2}):(\d{2})/);
-            if (timePartMatch) {
-              const bHour = parseInt(timePartMatch[1], 10);
-              const bMin = parseInt(timePartMatch[2], 10);
-              const bTimeMinutes = bHour * 60 + bMin;
-              const diffMinutes = bTimeMinutes - currentTimeMinutes;
-              if (diffMinutes > 90 || diffMinutes < -120) {
-                continue;
-              }
-            }
-
+          if (b.customer_phone) {
             const queuePos = b.queue_number || 1;
-            if (queuePos <= 2) {
-              remindedBookings.add(b.id);
-              const clientName = b.customer_name || 'يا غالي';
-              const reminderMsg = `يا أستاذ ${clientName} 💈 ميعادك قرب في الصالون!\n(باقي أمامك ${queuePos} فقط في الطابور ⏳)\n\n📍 رابط تتبع دورك لحظة بلحظة:\nhttps://trimmind.up.railway.app/track?q=${b.id}\n\n👈 للرد السريع:\n- أرسل "1" أو "أنا في الطريق" لتأكيد حضورك وتجهيز الكرسي.\n- أرسل "2" أو "إلغاء" لإلغاء الحجز.`;
+            const clientName = b.customer_name || 'يا غالي';
+
+            if (queuePos === 2 && !remindedBookings.has(`${b.id}_pos2`)) {
+              remindedBookings.add(`${b.id}_pos2`);
+              const reminderMsg = `⏳ *تنبيه باقتراب دورك يا أستاذ ${clientName}!* 💈👑\n\nباقي أمامك عميلين فقط في الطابور ⏳ في صالون TrimMind VIP.\n📍 يرجى التوجه للصالون لتجهيز موعدك بالوقت المحدد.\nرابط متابعة دورك لحظة بلحظة:\nhttps://trimmind.up.railway.app/track?q=${b.id}`;
+              sendWhatsAppText(b.customer_phone, reminderMsg).catch(() => {});
+            } else if (queuePos === 1 && !remindedBookings.has(`${b.id}_pos1`)) {
+              remindedBookings.add(`${b.id}_pos1`);
+              const reminderMsg = `⏳ *يا أستاذ ${clientName}! أنت العميل التالي مباشرة في الطابور!* 💈👑\n\nالكابتن هيستقبلك على الكرسي خلال دقائق معدودة (باقي عميل واحد فقط أمامك).\n📍 يرجى التواجد في صالة الانتظار والاستعداد للدخول ✂️✨\nرابط متابعة دورك:\nhttps://trimmind.up.railway.app/track?q=${b.id}`;
               sendWhatsAppText(b.customer_phone, reminderMsg).catch(() => {});
             }
           }
