@@ -470,14 +470,14 @@ export async function ensureInitialDbData() {
     const chairs = await query<any[]>('SELECT id FROM chairs LIMIT 1');
     if (!chairs || chairs.length === 0) {
       const chairList = [
-        ['chair-1', 'branch-elhdad', 'barber-mohamed', 'الكرسي الملكي VIP 1', 'vip', 1],
-        ['chair-2', 'branch-elhdad', 'barber-karim', 'كرسي العناية 2', 'normal', 1],
-        ['chair-3', 'branch-elhdad', 'barber-omar', 'كرسي العناية 3', 'normal', 1],
+        ['chair-1', 'branch-elhdad', 'الكرسي الملكي VIP 1', 1, 'barber-mohamed', 1, 1],
+        ['chair-2', 'branch-elhdad', 'كرسي العناية 2', 2, 'barber-karim', 0, 1],
+        ['chair-3', 'branch-elhdad', 'كرسي العناية 3', 3, 'barber-omar', 0, 1],
       ];
       for (const c of chairList) {
         await query(`
-          INSERT INTO chairs (id, branch_id, barber_id, name, mode, is_active)
-          VALUES (?, ?, ?, ?, ?, ?)
+          INSERT INTO chairs (id, branch_id, name, chair_number, current_barber_id, is_vip, is_active)
+          VALUES (?, ?, ?, ?, ?, ?, ?)
           ON DUPLICATE KEY UPDATE name=VALUES(name)
         `, c);
       }
