@@ -65,7 +65,199 @@ export function initCleanupCron() {
 
 export async function ensureInitialDbData() {
   try {
-    // 0. Ensure refresh_tokens table for Session Management & Rotation
+    // 0. Ensure Core Application Tables in MySQL
+    await query(`
+      CREATE TABLE IF NOT EXISTS branches (
+        id VARCHAR(64) PRIMARY KEY,
+        name VARCHAR(150) NOT NULL,
+        address VARCHAR(255) NOT NULL,
+        phone VARCHAR(30) NOT NULL,
+        opening_time VARCHAR(10) DEFAULT '10:00',
+        closing_time VARCHAR(10) DEFAULT '23:30',
+        is_active TINYINT(1) DEFAULT 1,
+        image_url TEXT,
+        instapay_username VARCHAR(100),
+        vodafone_cash_number VARCHAR(30),
+        bank_account_info TEXT,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+    `);
+
+    await query(`
+      CREATE TABLE IF NOT EXISTS barbers (
+        id VARCHAR(64) PRIMARY KEY,
+        branch_id VARCHAR(64),
+        full_name VARCHAR(150) NOT NULL,
+        phone VARCHAR(30) NOT NULL,
+        photo_url LONGTEXT,
+        specialty VARCHAR(255),
+        rating DECIMAL(3, 2) DEFAULT 5.0,
+        rating_count INT DEFAULT 0,
+        is_active TINYINT(1) DEFAULT 1,
+        service_ids JSON,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        INDEX idx_barber_branch (branch_id)
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+    `);
+
+    await query(`
+      CREATE TABLE IF NOT EXISTS chairs (
+        id VARCHAR(64) PRIMARY KEY,
+        branch_id VARCHAR(64) NOT NULL,
+        name VARCHAR(100) NOT NULL,
+        chair_number INT NOT NULL,
+        status ENUM('available', 'occupied', 'offline') DEFAULT 'available',
+        current_barber_id VARCHAR(64),
+        current_booking_id VARCHAR(64),
+        is_vip TINYINT(1) DEFAULT 0,
+        is_active TINYINT(1) DEFAULT 1,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        INDEX idx_chair_branch (branch_id)
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+    `);
+
+    await query(`
+      CREATE TABLE IF NOT EXISTS services (
+        id VARCHAR(64) PRIMARY KEY,
+        branch_id VARCHAR(64),
+        name VARCHAR(150) NOT NULL,
+        description TEXT,
+        price DECIMAL(10, 2) NOT NULL,
+        duration_minutes INT DEFAULT 30,
+        category VARCHAR(50) DEFAULT 'hair',
+        is_vip_only TINYINT(1) DEFAULT 0,
+        is_active TINYINT(1) DEFAULT 1,
+        image_url TEXT,
+        aliases JSON,
+        bundle_service_ids JSON,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+    `);
+
+    await query(`
+      CREATE TABLE IF NOT EXISTS products (
+        id VARCHAR(64) PRIMARY KEY,
+        branch_id VARCHAR(64),
+        name VARCHAR(150) NOT NULL,
+        category VARCHAR(50) DEFAULT 'care_product',
+        price DECIMAL(10, 2) NOT NULL,
+        is_active TINYINT(1) DEFAULT 1,
+        image_url TEXT,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+    `);
+
+    await query(`
+      CREATE TABLE IF NOT EXISTS profiles (
+        id VARCHAR(64) PRIMARY KEY,
+        full_name VARCHAR(150) NOT NULL,
+        phone VARCHAR(30) NOT NULL UNIQUE,
+        email VARCHAR(150),
+        password_hash VARCHAR(255) NOT NULL,
+        role ENUM('manager', 'receptionist', 'barber', 'customer') NOT NULL,
+        branch_id VARCHAR(64),
+        barber_id VARCHAR(64),
+        is_super_admin TINYINT(1) DEFAULT 0,
+        is_active TINYINT(1) DEFAULT 1,
+        assigned_branch_ids JSON,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+    `);
+
+    await query(`
+      CREATE TABLE IF NOT EXISTS settings (
+        setting_key VARCHAR(64) PRIMARY KEY,
+        setting_value JSON NOT NULL,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+    `);
+
+    await query(`
+      CREATE TABLE IF NOT EXISTS bookings (
+        id VARCHAR(64) PRIMARY KEY,
+        customer_id VARCHAR(64),
+        customer_name VARCHAR(150) NOT NULL,
+        customer_phone VARCHAR(30) NOT NULL,
+        branch_id VARCHAR(64) NOT NULL,
+        barber_id VARCHAR(64),
+        chair_id VARCHAR(64),
+        service_id VARCHAR(64) NOT NULL,
+        additional_service_ids JSON,
+        booking_type ENUM('normal', 'vip') DEFAULT 'normal',
+        status ENUM('draft', 'awaiting_payment', 'custom_pricing_requested', 'payment_submitted', 'pending_review', 'confirmed', 'customer_arrived', 'in_service', 'completed', 'rejected', 'cancelled', 'expired', 'no_show') DEFAULT 'confirmed',
+        starts_at DATETIME NOT NULL,
+        ends_at DATETIME,
+        booking_date DATE NOT NULL,
+        queue_number INT DEFAULT 1,
+        service_price_at_booking DECIMAL(10, 2) NOT NULL,
+        booking_fee_at_booking DECIMAL(10, 2) NOT NULL,
+        discount_at_booking DECIMAL(10, 2) DEFAULT 0,
+        items_total_at_booking DECIMAL(10, 2) DEFAULT 0,
+        total_at_booking DECIMAL(10, 2) NOT NULL,
+        secure_token VARCHAR(64) NOT NULL,
+        notes TEXT,
+        source ENUM('web', 'whatsapp') DEFAULT 'web',
+        ai_brief TEXT,
+        confidence_score INT DEFAULT 90,
+        needs_human_attention TINYINT(1) DEFAULT 0,
+        handoff_expires_at TIMESTAMP NULL,
+        custom_line_items JSON,
+        custom_pricing_notes TEXT,
+        no_show_marked_at TIMESTAMP NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        INDEX idx_booking_branch_date (branch_id, booking_date),
+        INDEX idx_booking_phone (customer_phone),
+        INDEX idx_booking_status (status)
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+    `);
+
+    await query(`
+      CREATE TABLE IF NOT EXISTS booking_items (
+        id VARCHAR(64) PRIMARY KEY,
+        booking_id VARCHAR(64) NOT NULL,
+        product_id VARCHAR(64) NOT NULL,
+        name VARCHAR(150) NOT NULL,
+        price_at_booking DECIMAL(10, 2) NOT NULL,
+        quantity INT DEFAULT 1,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        INDEX idx_bi_booking (booking_id)
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+    `);
+
+    await query(`
+      CREATE TABLE IF NOT EXISTS payment_proofs (
+        id VARCHAR(64) PRIMARY KEY,
+        booking_id VARCHAR(64) NOT NULL,
+        image_path LONGTEXT NOT NULL,
+        payment_method ENUM('instapay', 'vodafone_cash', 'card', 'cash') DEFAULT 'instapay',
+        sender_phone VARCHAR(30) NOT NULL,
+        transferred_amount DECIMAL(10, 2) NOT NULL,
+        status ENUM('pending_review', 'approved', 'rejected') DEFAULT 'pending_review',
+        rejection_reason TEXT,
+        reviewed_by VARCHAR(64),
+        reviewed_at TIMESTAMP NULL,
+        is_image_purged TINYINT(1) DEFAULT 0,
+        purged_at TIMESTAMP NULL,
+        submitted_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        INDEX idx_pp_booking (booking_id)
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+    `);
+
+    await query(`
+      CREATE TABLE IF NOT EXISTS audit_logs (
+        id VARCHAR(64) PRIMARY KEY,
+        user_id VARCHAR(64),
+        action VARCHAR(100) NOT NULL,
+        entity_type VARCHAR(50),
+        entity_id VARCHAR(64),
+        details JSON,
+        ip_address VARCHAR(45),
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+    `);
+
+    // Ensure refresh_tokens table for Session Management & Rotation
     await query(`
       CREATE TABLE IF NOT EXISTS refresh_tokens (
         id VARCHAR(64) PRIMARY KEY,
