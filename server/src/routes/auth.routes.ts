@@ -3,7 +3,18 @@ import { v4 as uuidv4 } from 'uuid';
 import { query } from '../config/database.js';
 import { authenticateStaff, hashPassword } from '../services/auth.service.js';
 import { validateBody } from '../middleware/validate.js';
-import { loginSchema, createStaffSchema } from '../validators/auth.schema.js';
+import {
+  loginSchema,
+  createStaffSchema,
+  forgotPasswordSchema,
+  verifyOtpSchema,
+  resetPasswordSchema,
+} from '../validators/auth.schema.js';
+import {
+  requestPasswordResetOtp,
+  verifyPasswordResetOtp,
+  completePasswordReset,
+} from '../services/brevo.service.js';
 import {
   getClientIp,
   checkAccountProtectionPreFlight,
@@ -358,5 +369,86 @@ router.delete(
     }
   }
 );
+
+// ============================================================================
+// Brevo-Powered Dynamic Password Reset Engine (Email & SMS OTP)
+// ============================================================================
+
+// POST /api/auth/forgot-password (Request 6-Digit OTP via Brevo Email or SMS)
+router.post('/forgot-password', validateBody(forgotPasswordSchema), async (req, res: Response) => {
+  const clientIp = getClientIp(req);
+  const { identifier } = req.body;
+
+  try {
+    const result = await requestPasswordResetOtp(identifier, clientIp);
+    if (!result.success) {
+      return res.status(404).json({
+        success: false,
+        error: result.error || 'تعذر إرسال رمز التحقق. يرجى التأكد من البيانات المدخلة.',
+      });
+    }
+
+    const channelArabic = result.channel === 'email' ? 'البريد الإلكتروني' : 'الرسائل القصيرة (SMS)';
+
+    return res.json({
+      success: true,
+      message: `تم إرسال رمز التحقق (OTP) بنجاح إلى ${channelArabic} (${result.maskedTarget}).`,
+      data: {
+        channel: result.channel,
+        maskedTarget: result.maskedTarget,
+        expiresInMinutes: result.expiresInMinutes || 10,
+      },
+    });
+  } catch (err: any) {
+    console.error('[FORGOT_PASSWORD_ERR]:', err);
+    return res.status(500).json({ success: false, error: err.message || 'حدث خطأ أثناء معالجة الطلب' });
+  }
+});
+
+// POST /api/auth/verify-otp (Verify 6-Digit OTP Code)
+router.post('/verify-otp', validateBody(verifyOtpSchema), async (req, res: Response) => {
+  const { identifier, otp } = req.body;
+
+  try {
+    const result = await verifyPasswordResetOtp(identifier, otp);
+    if (!result.success) {
+      return res.status(400).json({
+        success: false,
+        error: result.error || 'رمز التحقق غير صحيح أو قد انتهت صلاحيته.',
+      });
+    }
+
+    return res.json({
+      success: true,
+      message: 'تم التحقق من الرمز بنجاح. يرجى إدخال كلمة المرور الجديدة.',
+    });
+  } catch (err: any) {
+    return res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// POST /api/auth/reset-password (Complete Password Reset & Bcrypt Hash in MySQL)
+router.post('/reset-password', validateBody(resetPasswordSchema), async (req, res: Response) => {
+  const clientIp = getClientIp(req);
+  const { identifier, otp, newPassword } = req.body;
+
+  try {
+    const result = await completePasswordReset(identifier, otp, newPassword, clientIp);
+    if (!result.success) {
+      return res.status(400).json({
+        success: false,
+        error: result.error || 'تعذر تغيير كلمة المرور. يرجى إعادة المحاولة.',
+      });
+    }
+
+    return res.json({
+      success: true,
+      message: result.message || 'تم تحديث كلمة المرور بنجاح. يمكنك الآن تسجيل الدخول.',
+    });
+  } catch (err: any) {
+    console.error('[RESET_PASSWORD_ERR]:', err);
+    return res.status(500).json({ success: false, error: err.message });
+  }
+});
 
 export default router;

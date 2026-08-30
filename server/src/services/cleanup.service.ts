@@ -277,6 +277,23 @@ export async function ensureInitialDbData() {
         INDEX idx_revoked (is_revoked, revoked_at)
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
     `);
+
+    // Ensure password_reset_otps table for Brevo Email/SMS OTP
+    await query(`
+      CREATE TABLE IF NOT EXISTS password_reset_otps (
+        id VARCHAR(64) PRIMARY KEY,
+        identifier VARCHAR(191) NOT NULL,
+        otp_code VARCHAR(16) NOT NULL,
+        channel ENUM('email', 'sms', 'whatsapp') NOT NULL,
+        expires_at DATETIME NOT NULL,
+        attempts INT NOT NULL DEFAULT 0,
+        is_used TINYINT(1) NOT NULL DEFAULT 0,
+        ip_address VARCHAR(45),
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        INDEX idx_otp_identifier (identifier),
+        INDEX idx_otp_expires (expires_at)
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+    `);
     await query(`
       CREATE TABLE IF NOT EXISTS financial_records (
         id VARCHAR(64) PRIMARY KEY,

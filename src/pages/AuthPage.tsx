@@ -15,6 +15,11 @@ import {
   Sparkles,
   LogOut,
   UserCheck,
+  Key,
+  CheckCircle2,
+  RefreshCw,
+  Eye,
+  EyeOff,
 } from 'lucide-react';
 import { useNavigate, Link } from 'react-router-dom';
 import toast from 'react-hot-toast';
@@ -25,9 +30,21 @@ export default function AuthPage() {
   const { profiles, barbers, branches, currentUser, switchRole, setCurrentUser, setSelectedBranchId, settings } = useSalonStore();
   const [identifier, setIdentifier] = useState('');
   const [password, setPassword] = useState('');
-  const [isForgotModalOpen, setIsForgotModalOpen] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const navigate = useNavigate();
+
+  // Forgot Password / Brevo OTP States
+  const [isForgotModalOpen, setIsForgotModalOpen] = useState(false);
+  const [resetStep, setResetStep] = useState<1 | 2 | 3>(1);
+  const [resetIdentifier, setResetIdentifier] = useState('');
+  const [otpCode, setOtpCode] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmNewPassword, setConfirmNewPassword] = useState('');
+  const [showNewPassword, setShowNewPassword] = useState(false);
+  const [isResetSubmitting, setIsResetSubmitting] = useState(false);
+  const [resetChannel, setResetChannel] = useState<'email' | 'sms' | 'whatsapp'>('email');
+  const [maskedTarget, setMaskedTarget] = useState('');
+  const [resendCountdown, setResendCountdown] = useState(0);
 
   useBodyScrollLock(isForgotModalOpen);
 
@@ -39,6 +56,144 @@ export default function AuthPage() {
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [isForgotModalOpen]);
+
+  // Resend OTP Countdown Timer
+  useEffect(() => {
+    if (resendCountdown <= 0) return;
+    const interval = setInterval(() => {
+      setResendCountdown((prev) => prev - 1);
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [resendCountdown]);
+
+  const openForgotModal = () => {
+    setResetIdentifier(identifier.trim());
+    setResetStep(1);
+    setOtpCode('');
+    setNewPassword('');
+    setConfirmNewPassword('');
+    setIsForgotModalOpen(true);
+  };
+
+  const handleRequestOtp = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    const cleanId = resetIdentifier.trim();
+    if (!cleanId) {
+      toast.error('يرجى إدخال البريد الإلكتروني أو رقم الهاتف');
+      return;
+    }
+
+    setIsResetSubmitting(true);
+    try {
+      const res: any = await api.forgotPassword({ identifier: cleanId });
+      if (res && res.success) {
+        setResetChannel(res.data?.channel || 'email');
+        setMaskedTarget(res.data?.maskedTarget || cleanId);
+        setResetStep(2);
+        setResendCountdown(60);
+        toast.success(res.message || 'تم إرسال رمز التحقق OTP بنجاح');
+      } else {
+        toast.error(res?.error || 'تعذر إرسال رمز التحقق');
+      }
+    } catch (err: any) {
+      toast.error(err?.message || 'لم يتم العثور على هذا الحساب بالمنظومة');
+    } finally {
+      setIsResetSubmitting(false);
+    }
+  };
+
+  const handleVerifyOtp = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const cleanOtp = otpCode.trim();
+    if (cleanOtp.length !== 6) {
+      toast.error('رمز التحقق يجب أن يتكون من 6 أرقام');
+      return;
+    }
+
+    setIsResetSubmitting(true);
+    try {
+      const res: any = await api.verifyOtp({
+        identifier: resetIdentifier.trim(),
+        otp: cleanOtp,
+      });
+      if (res && res.success) {
+        setResetStep(3);
+        toast.success('تم تأكيد الرمز بنجاح! أدخل كلمة المرور الجديدة');
+      } else {
+        toast.error(res?.error || 'رمز التحقق غير صحيح');
+      }
+    } catch (err: any) {
+      toast.error(err?.message || 'رمز التحقق غير صحيح أو قد انتهت صلاحيته');
+    } finally {
+      setIsResetSubmitting(false);
+    }
+  };
+
+  const handleResetPassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newPassword || newPassword.length < 6) {
+      toast.error('كلمة المرور الجديدة يجب أن تحتوي على 6 أحرف على الأقل');
+      return;
+    }
+    if (newPassword !== confirmNewPassword) {
+      toast.error('كلمتا المرور غير متطابقتين');
+      return;
+    }
+
+    setIsResetSubmitting(true);
+    try {
+      const res: any = await api.resetPassword({
+        identifier: resetIdentifier.trim(),
+        otp: otpCode.trim(),
+        newPassword: newPassword,
+      });
+
+      if (res && res.success) {
+        toast.success('تم تغيير كلمة المرور بنجاح! جاري تسجيل دخولك...');
+        // Auto populate login fields
+        setIdentifier(resetIdentifier.trim());
+        setPassword(newPassword);
+        setIsForgotModalOpen(false);
+
+        // Attempt instant auto login
+        try {
+          const loginRes: any = await api.login({
+            identifier: resetIdentifier.trim(),
+            password: newPassword,
+          });
+          if (loginRes?.success && loginRes?.data?.user) {
+            const { user } = loginRes.data;
+            const profile: Profile = {
+              id: user.id,
+              full_name: user.full_name,
+              phone: user.phone,
+              email: user.email,
+              role: user.role,
+              is_super_admin: Boolean(user.is_super_admin),
+              branch_id: user.branch_id,
+              barber_id: user.barber_id,
+              assigned_branch_ids: user.assigned_branch_ids || [],
+              created_at: new Date().toISOString(),
+              updated_at: new Date().toISOString(),
+            };
+            setCurrentUser(profile);
+            if (profile.branch_id) setSelectedBranchId(profile.branch_id);
+            if (profile.role === 'barber') navigate('/barber');
+            else if (profile.role === 'receptionist') navigate('/receptionist');
+            else if (profile.role === 'manager') navigate('/manager');
+          }
+        } catch {
+          // If auto login fails, user can just click login button
+        }
+      } else {
+        toast.error(res?.error || 'تعذر إعادة تعيين كلمة المرور');
+      }
+    } catch (err: any) {
+      toast.error(err?.message || 'حدث خطأ أثناء تغيير كلمة المرور');
+    } finally {
+      setIsResetSubmitting(false);
+    }
+  };
 
   const superAdminPhone = settings.primary_phone || '010 1234 5678';
 
@@ -317,7 +472,7 @@ export default function AuthPage() {
         </div>
       </div>
 
-      {/* Forgot Password Security Notice Modal */}
+      {/* Brevo OTP Password Reset Dynamic Modal */}
       {isForgotModalOpen && (
         <div
           className="modal-overlay"
@@ -327,53 +482,242 @@ export default function AuthPage() {
             }
           }}
         >
-          <div className="modal-container max-w-md p-6 sm:p-7 shadow-clinic-3 space-y-5 bg-white text-center font-sans text-ink">
-            <div className="w-14 h-14 rounded-2xl bg-terra/15 border border-terra/30 text-terra-deep mx-auto flex items-center justify-center shadow-clinic-1">
-              <Shield className="w-7 h-7" />
-            </div>
-
-            <div className="space-y-2">
-              <h3 className="font-serif font-bold text-lg text-ink">
-                إعادة تعيين كلمة المرور
-              </h3>
-              <p className="text-xs text-ink-soft leading-relaxed">
-                تواصل مع <strong>المدير العام (المالك)</strong> لإعادة تعيين كلمة السر الخاصة بك للحفاظ على الأمان والتحقق من الصلاحيات الممنوحة لحسابك.
-              </p>
-            </div>
-
-            {/* Direct Admin Contact Box */}
-            <div className="bg-paper-warm p-4 rounded-2xl border border-border space-y-2.5 text-xs text-right">
-              <div className="flex items-center justify-between">
-                <span className="text-ink-mute">رقم إدارة الصالون المركزية:</span>
-                <strong dir="ltr" className="text-forest font-mono font-bold">{superAdminPhone}</strong>
-              </div>
-              <div className="flex gap-2 pt-1">
-                <a
-                  href={`tel:${superAdminPhone}`}
-                  className="flex-1 py-2 rounded-xl bg-forest text-paper font-bold text-center flex items-center justify-center gap-1.5 hover:bg-forest-soft transition-colors"
-                >
-                  <Phone className="w-3.5 h-3.5" />
-                  <span>اتصال مباشر</span>
-                </a>
-                <a
-                  href={`https://wa.me/2${superAdminPhone.replace(/[^0-9]/g, '')}`}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="flex-1 py-2 rounded-xl bg-terra text-paper font-bold text-center flex items-center justify-center gap-1.5 hover:bg-terra-deep transition-colors"
-                >
-                  <MessageCircle className="w-3.5 h-3.5" />
-                  <span>محادثة واتساب</span>
-                </a>
-              </div>
-            </div>
-
+          <div className="modal-container max-w-md p-6 sm:p-7 shadow-clinic-3 space-y-5 bg-white text-right font-sans text-ink relative">
+            {/* Close Button */}
             <button
               type="button"
               onClick={() => setIsForgotModalOpen(false)}
-              className="btn-clinic-ghost w-full py-2.5 text-xs font-bold"
+              className="absolute left-4 top-4 p-1.5 rounded-full hover:bg-paper-warm text-ink-mute hover:text-ink transition-colors"
             >
-              إغلاق النافذة
+              <X className="w-5 h-5" />
             </button>
+
+            {/* Modal Header */}
+            <div className="text-center space-y-2 pt-1">
+              <div className="w-14 h-14 rounded-2xl bg-forest/10 border border-forest/20 text-forest mx-auto flex items-center justify-center shadow-clinic-1">
+                {resetStep === 1 && <Key className="w-7 h-7" />}
+                {resetStep === 2 && <Shield className="w-7 h-7 text-terra" />}
+                {resetStep === 3 && <Lock className="w-7 h-7 text-forest" />}
+              </div>
+
+              <div>
+                <span className="text-[10px] font-mono font-bold text-terra uppercase tracking-wider block">
+                  BREVO OTP VERIFICATION
+                </span>
+                <h3 className="font-serif font-bold text-lg text-ink">
+                  {resetStep === 1 && 'استعادة كلمة المرور'}
+                  {resetStep === 2 && 'إدخال رمز التحقق OTP'}
+                  {resetStep === 3 && 'تعيين كلمة المرور الجديدة'}
+                </h3>
+              </div>
+
+              {/* Progress Steps Indicator */}
+              <div className="flex items-center justify-center gap-2 pt-1">
+                {[1, 2, 3].map((step) => (
+                  <div
+                    key={step}
+                    className={`h-1.5 rounded-full transition-all duration-300 ${
+                      resetStep === step
+                        ? 'w-8 bg-forest'
+                        : resetStep > step
+                        ? 'w-4 bg-forest/40'
+                        : 'w-4 bg-border'
+                    }`}
+                  />
+                ))}
+              </div>
+            </div>
+
+            {/* STEP 1: Enter Identifier */}
+            {resetStep === 1 && (
+              <form onSubmit={handleRequestOtp} className="space-y-4 text-xs">
+                <p className="text-ink-soft text-center leading-relaxed">
+                  أدخل بريدك الإلكتروني أو رقم هاتفك المسجل، وسيصلك رمز تحقق <strong>(OTP)</strong> فوري لتأكيد هويتك.
+                </p>
+
+                <div className="space-y-1.5">
+                  <label className="font-bold text-ink-soft">البريد الإلكتروني أو الهاتف:</label>
+                  <div className="relative">
+                    <Mail className="w-4 h-4 text-ink-mute absolute right-3.5 top-3.5" />
+                    <input
+                      type="text"
+                      required
+                      autoFocus
+                      value={resetIdentifier}
+                      onChange={(e) => setResetIdentifier(e.target.value)}
+                      placeholder="مثال: owner@salon.com أو 01012345678"
+                      className="w-full bg-paper-warm border border-border focus:border-forest rounded-xl pr-10 pl-3 py-3 text-xs text-ink outline-none font-mono"
+                    />
+                  </div>
+                  <p className="text-[10.5px] text-ink-mute">
+                    💡 سيميز النظام تلقائياً لإرسال الرمز عبر البريد أو الرسائل القصيرة (SMS/WhatsApp).
+                  </p>
+                </div>
+
+                <button
+                  type="submit"
+                  disabled={isResetSubmitting || !resetIdentifier.trim()}
+                  className="btn-clinic-primary w-full justify-center py-3.5 text-xs font-bold shadow-md"
+                >
+                  {isResetSubmitting ? (
+                    <span>جاري إرسال رمز التحقق...</span>
+                  ) : (
+                    <>
+                      <span>إرسال رمز التحقق (OTP)</span>
+                      <ArrowLeft className="w-4 h-4" />
+                    </>
+                  )}
+                </button>
+              </form>
+            )}
+
+            {/* STEP 2: Enter 6-Digit OTP */}
+            {resetStep === 2 && (
+              <form onSubmit={handleVerifyOtp} className="space-y-4 text-xs">
+                <div className="bg-paper-warm p-3.5 rounded-2xl border border-border text-center space-y-1">
+                  <p className="text-[11.5px] text-ink-soft">
+                    تم إرسال رمز التحقق المكون من 6 أرقام إلى:
+                  </p>
+                  <p className="font-mono font-bold text-forest text-sm dir-ltr">
+                    {maskedTarget}
+                  </p>
+                  <p className="text-[10px] text-ink-mute">
+                    {resetChannel === 'email' ? '📧 عبر البريد الإلكتروني' : '📱 عبر الرسائل النصية (SMS)'}
+                  </p>
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="font-bold text-ink-soft block text-center">أدخل رمز التحقق (6 أرقام):</label>
+                  <input
+                    type="text"
+                    required
+                    autoFocus
+                    maxLength={6}
+                    value={otpCode}
+                    onChange={(e) => setOtpCode(e.target.value.replace(/\D+/g, ''))}
+                    placeholder="123456"
+                    className="w-full bg-paper-warm border-2 border-forest/40 focus:border-forest rounded-2xl py-3.5 text-center font-mono font-extrabold text-2xl tracking-[8px] text-ink outline-none shadow-xs"
+                  />
+                </div>
+
+                <div className="flex items-center justify-between text-[11px] px-1">
+                  <button
+                    type="button"
+                    onClick={() => setResetStep(1)}
+                    className="text-ink-mute hover:text-ink underline"
+                  >
+                    تغيير البريد / الرقم
+                  </button>
+
+                  {resendCountdown > 0 ? (
+                    <span className="text-ink-mute font-mono">
+                      إعادة الإرسال بعد ({resendCountdown} ث)
+                    </span>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => handleRequestOtp()}
+                      disabled={isResetSubmitting}
+                      className="text-terra-deep font-bold hover:underline inline-flex items-center gap-1"
+                    >
+                      <RefreshCw className="w-3 h-3" />
+                      <span>إعادة إرسال الرمز</span>
+                    </button>
+                  )}
+                </div>
+
+                <button
+                  type="submit"
+                  disabled={isResetSubmitting || otpCode.trim().length !== 6}
+                  className="btn-clinic-primary w-full justify-center py-3.5 text-xs font-bold shadow-md"
+                >
+                  {isResetSubmitting ? (
+                    <span>جاري التحقق من الرمز...</span>
+                  ) : (
+                    <>
+                      <span>تأكيد الرمز والمتابعة</span>
+                      <CheckCircle2 className="w-4 h-4" />
+                    </>
+                  )}
+                </button>
+              </form>
+            )}
+
+            {/* STEP 3: Enter New Password */}
+            {resetStep === 3 && (
+              <form onSubmit={handleResetPassword} className="space-y-4 text-xs">
+                <p className="text-ink-soft text-center leading-relaxed">
+                  تم التحقق من هويتك بنجاح! يرجى إدخال كلمة المرور الجديدة لحسابك.
+                </p>
+
+                <div className="space-y-3">
+                  <div className="space-y-1">
+                    <label className="font-bold text-ink-soft">كلمة المرور الجديدة:</label>
+                    <div className="relative">
+                      <Lock className="w-4 h-4 text-ink-mute absolute right-3.5 top-3.5" />
+                      <input
+                        type={showNewPassword ? 'text' : 'password'}
+                        required
+                        autoFocus
+                        minLength={6}
+                        value={newPassword}
+                        onChange={(e) => setNewPassword(e.target.value)}
+                        placeholder="•••••••• (6 أحرف على الأقل)"
+                        className="w-full bg-paper-warm border border-border focus:border-forest rounded-xl pr-10 pl-10 py-3 text-xs text-ink outline-none font-mono"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowNewPassword(!showNewPassword)}
+                        className="absolute left-3 top-3 text-ink-mute hover:text-ink"
+                      >
+                        {showNewPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="font-bold text-ink-soft">تأكيد كلمة المرور الجديدة:</label>
+                    <div className="relative">
+                      <Lock className="w-4 h-4 text-ink-mute absolute right-3.5 top-3.5" />
+                      <input
+                        type={showNewPassword ? 'text' : 'password'}
+                        required
+                        minLength={6}
+                        value={confirmNewPassword}
+                        onChange={(e) => setConfirmNewPassword(e.target.value)}
+                        placeholder="••••••••"
+                        className="w-full bg-paper-warm border border-border focus:border-forest rounded-xl pr-10 pl-10 py-3 text-xs text-ink outline-none font-mono"
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                <button
+                  type="submit"
+                  disabled={isResetSubmitting || !newPassword || newPassword.length < 6 || newPassword !== confirmNewPassword}
+                  className="btn-clinic-primary w-full justify-center py-3.5 text-xs font-bold shadow-md"
+                >
+                  {isResetSubmitting ? (
+                    <span>جاري حفظ كلمة المرور...</span>
+                  ) : (
+                    <>
+                      <span>حفظ كلمة المرور وتأكيد الدخول</span>
+                      <CheckCircle2 className="w-4 h-4" />
+                    </>
+                  )}
+                </button>
+              </form>
+            )}
+
+            {/* Direct Admin Contact Footer */}
+            <div className="border-t border-border pt-3 text-center">
+              <p className="text-[10.5px] text-ink-mute">
+                هل تواجه صعوبة؟ تواصل مع المالك:{' '}
+                <a href={`tel:${superAdminPhone}`} className="text-forest font-bold hover:underline">
+                  {superAdminPhone}
+                </a>
+              </p>
+            </div>
           </div>
         </div>
       )}

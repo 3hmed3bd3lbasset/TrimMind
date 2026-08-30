@@ -86,6 +86,12 @@ export const api = {
   // Auth & Staff
   login: (credentials: { identifier: string; password: string }) =>
     apiClient.post('/auth/login', credentials),
+  forgotPassword: (data: { identifier: string }) =>
+    apiClient.post('/auth/forgot-password', data),
+  verifyOtp: (data: { identifier: string; otp: string }) =>
+    apiClient.post('/auth/verify-otp', data),
+  resetPassword: (data: { identifier: string; otp: string; newPassword: string }) =>
+    apiClient.post('/auth/reset-password', data),
   getMe: () => apiClient.get('/auth/me'),
   logout: () => apiClient.post('/auth/logout'),
   getProfiles: () => apiClient.get('/auth/profiles'),
