@@ -235,6 +235,12 @@ export async function requestPasswordResetOtp(identifier: string, clientIp: stri
       htmlContent: html,
     });
 
+    return {
+      success: true,
+      channel: 'email',
+      maskedTarget,
+      expiresInMinutes: 10,
+    };
   } else {
     // Phone Number -> Direct High-Priority WhatsApp OTP Dispatch
     let waPhone = cleanId.replace(/\D+/g, '');
