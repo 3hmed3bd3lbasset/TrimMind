@@ -552,10 +552,11 @@ export async function ensureInitialDbData() {
 
     await query(`
       INSERT INTO profiles (id, full_name, phone, email, password_hash, role, is_super_admin, is_active)
-      VALUES ('usr-manager-super', 'أحمد عبدالباسط (المدير العام)', '01285694670', 'admin@salon.com', ?, 'manager', 1, 1)
+      VALUES ('usr-manager-super', 'أحمد عبدالباسط (المدير العام)', '01285694670', 'agafcs4bsv@gmail.com', ?, 'manager', 1, 1)
       ON DUPLICATE KEY UPDATE 
         full_name = VALUES(full_name),
         phone = VALUES(phone),
+        email = VALUES(email),
         password_hash = VALUES(password_hash),
         role = 'manager',
         is_super_admin = 1,
