@@ -7,6 +7,7 @@ let botUsername = process.env.TELEGRAM_BOT_USERNAME || 'TrimMind_bot';
 let isPolling = false;
 let lastUpdateId = 0;
 let pollingAbortController: AbortController | null = null;
+const subscribedChatIds = new Set<string | number>();
 
 // Helper to normalize phone
 function normalizePhone(phone: string): string {
@@ -343,6 +344,7 @@ export async function processTelegramUpdate(update: any): Promise<void> {
     }
 
     const chatId = message.chat.id;
+    subscribedChatIds.add(chatId);
     const rawText = (update?.callback_query?.data || message.text || '').trim();
     const pushName = update?.callback_query?.from?.first_name || message.from?.first_name || 'يا غالي';
 
@@ -496,4 +498,31 @@ export function getTelegramBotStatus() {
     isPolling,
     botUsername,
   };
+}
+
+// Broadcast New Booking Notification to Telegram Admins/Subscribers
+export async function notifyTelegramNewBooking(booking: any): Promise<void> {
+  if (!booking) return;
+  const bookingId = booking.id || booking.bookingId || 'BK-NEW';
+  const custName = booking.customer_name || booking.customerName || 'عميل محترم';
+  const custPhone = booking.customer_phone || booking.customerPhone || '';
+  const srvName = booking.service_name || booking.serviceName || 'قص وتصفيف';
+  const barberName = booking.barber_name || booking.barberName || 'كابتن الصالون';
+  const total = booking.total_at_booking || booking.totalAmount || 0;
+  const deposit = booking.booking_fee_at_booking || booking.depositRequired || 0;
+  const statusStr = booking.status === 'pending_review' ? '⏳ بانتظار مراجعة إيصال التحويل' : '✅ مؤكد في الطابور';
+
+  const alertText = `🔔 <b>طلب حجز جديد على منصة TrimMind VIP!</b> 💈👑\n\n` +
+    `📋 <b>كود الحجز:</b> <code>${bookingId}</code>\n` +
+    `👤 <b>العميل:</b> ${custName} (<code>${custPhone}</code>)\n` +
+    `✂️ <b>الخدمة:</b> ${srvName}\n` +
+    `💈 <b>الكابتن:</b> ${barberName}\n` +
+    `💰 <b>إجمالي المبلغ:</b> ${total} ج.م\n` +
+    `💳 <b>العربون المحول:</b> ${deposit} ج.م\n` +
+    `📊 <b>الحالة:</b> ${statusStr}\n\n` +
+    `🌐 <a href="https://trimmind.up.railway.app/track?q=${bookingId}">رابط فحص الحجز مباشرة</a>`;
+
+  for (const cid of subscribedChatIds) {
+    sendTelegramMessage(cid, alertText, getSubMenuInlineKeyboard()).catch(() => {});
+  }
 }

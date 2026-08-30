@@ -36,6 +36,7 @@ export const ChairGrid: React.FC<ChairGridProps> = ({ branchId, onSelectChair })
       try {
         await fetch(`/api/bookings/${encodeURIComponent(bId)}/status`, {
           method: 'PATCH',
+          credentials: 'include',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             status: 'completed',

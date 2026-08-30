@@ -108,7 +108,7 @@ interface SalonStore {
       imagePath: string;
       amount: number;
     };
-  }) => Booking;
+  }) => Promise<Booking> | Booking;
 
   submitPaymentProof: (
     bookingId: string,
@@ -277,7 +277,7 @@ export const useSalonStore = create<SalonStore>((set, get) => ({
   },
   setAiDrawerOpen: (open) => set({ isAiDrawerOpen: open }),
 
-      createBooking: (payload) => {
+      createBooking: async (payload) => {
         const {
           services,
           products,
@@ -420,36 +420,55 @@ export const useSalonStore = create<SalonStore>((set, get) => ({
         const branch = branches.find((b) => b.id === payload.branchId);
 
         // Authoritative Server Backend Dispatch (Calculates final prices, records DB audit, emits WebSockets)
-        api.createBooking({
-          id: bookingId,
-          bookingId: bookingId,
-          customerName: payload.customerName,
-          customerPhone: payload.customerPhone,
-          branchId: payload.branchId,
-          branchName: branch?.name,
-          barberId: payload.barberId,
-          barberName: barber?.full_name,
-          serviceId: payload.serviceId,
-          serviceName: service?.name,
-          servicePrice: servicePrice,
-          totalAmount: newBooking.total_at_booking,
-          additionalServiceIds: payload.additionalServiceIds,
-          bookingType: payload.bookingType,
-          startsAt: payload.startsAt,
-          endsAt: payload.endsAt,
-          notes: payload.notes,
-          selectedProducts: payload.selectedProducts,
-          paymentProof: payload.paymentProof
-            ? {
-                paymentMethod: payload.paymentProof.paymentMethod,
-                senderPhone: payload.paymentProof.senderPhone,
-                imagePath: payload.paymentProof.imagePath,
-                amount: payload.paymentProof.amount,
-              }
-            : undefined,
-        }).catch((err) => {
+        try {
+          const res: any = await api.createBooking({
+            id: bookingId,
+            bookingId: bookingId,
+            customerName: payload.customerName,
+            customerPhone: payload.customerPhone,
+            branchId: payload.branchId,
+            branchName: branch?.name,
+            barberId: payload.barberId,
+            barberName: barber?.full_name,
+            serviceId: payload.serviceId,
+            serviceName: service?.name,
+            servicePrice: servicePrice,
+            totalAmount: newBooking.total_at_booking,
+            additionalServiceIds: payload.additionalServiceIds,
+            bookingType: payload.bookingType,
+            startsAt: payload.startsAt,
+            endsAt: payload.endsAt,
+            notes: payload.notes,
+            selectedProducts: payload.selectedProducts,
+            paymentProof: payload.paymentProof
+              ? {
+                  paymentMethod: payload.paymentProof.paymentMethod,
+                  senderPhone: payload.paymentProof.senderPhone,
+                  imagePath: payload.paymentProof.imagePath,
+                  amount: payload.paymentProof.amount,
+                }
+              : undefined,
+          });
+
+          if (res?.data) {
+            const serverBooking: Booking = {
+              ...newBooking,
+              ...res.data,
+              id: res.data.id || bookingId,
+              status: res.data.status || newBooking.status,
+              queue_number: res.data.queue_number || newBooking.queue_number,
+              secure_token: res.data.secure_token || newBooking.secure_token,
+            };
+
+            set((state) => ({
+              bookings: [serverBooking, ...state.bookings.filter((b) => b.id !== bookingId)],
+            }));
+
+            return serverBooking;
+          }
+        } catch (err: any) {
           console.warn('Server booking sync note:', err?.message || err);
-        });
+        }
 
         return newBooking;
       },

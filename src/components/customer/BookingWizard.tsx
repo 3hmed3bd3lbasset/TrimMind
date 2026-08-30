@@ -332,7 +332,7 @@ export const BookingWizard: React.FC = () => {
     }
   };
 
-  const handleConfirmAndPay = () => {
+  const handleConfirmAndPay = async () => {
     if (!proofImage) {
       toast.error('يرجى رفع صورة إيصال التحويل لإتمام الحجز');
       return;
@@ -352,8 +352,8 @@ export const BookingWizard: React.FC = () => {
       .filter(([_, qty]) => qty > 0)
       .map(([pId, qty]) => ({ productId: pId, quantity: qty }));
 
-    setTimeout(() => {
-      const newBooking = createBooking({
+    try {
+      const newBooking = await createBooking({
         customerName,
         customerPhone,
         branchId,
@@ -384,8 +384,11 @@ export const BookingWizard: React.FC = () => {
         colors: ['#1e3a2e', '#c2613d', '#f3eee4'],
       });
 
-      toast.success('تم تأكيد حجزك وإرسال الإيصال للاستقبال بنجاح');
-    }, 900);
+      toast.success('تم تأكيد حجزك وإرسال الإيصال للاستقبال بنجاح ✅');
+    } catch (err: any) {
+      setIsSubmitting(false);
+      toast.error(err?.message || 'تعذر إرسال الحجز للسيرفر، يرجى إعادة المحاولة');
+    }
   };
 
   return (

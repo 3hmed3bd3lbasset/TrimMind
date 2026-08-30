@@ -105,7 +105,9 @@ export default function ReceptionistDashboard() {
 
     const syncServerBookings = async () => {
       try {
-        const res = await fetch(`/api/bookings?branchId=${encodeURIComponent(branchId)}`);
+        const res = await fetch(`/api/bookings?branchId=${encodeURIComponent(branchId)}`, {
+          credentials: 'include',
+        });
         const json = await res.json();
         if (json.success && Array.isArray(json.data) && isMounted) {
           const { services: catalogServices } = useSalonStore.getState();

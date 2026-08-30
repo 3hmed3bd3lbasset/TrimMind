@@ -69,6 +69,7 @@ export const PaymentProofModal: React.FC<PaymentProofModalProps> = ({
     try {
       await fetch(`/api/bookings/${encodeURIComponent(booking.id)}/status`, {
         method: 'PATCH',
+        credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           status: 'confirmed',
@@ -88,6 +89,7 @@ export const PaymentProofModal: React.FC<PaymentProofModalProps> = ({
     try {
       await fetch(`/api/bookings/${encodeURIComponent(booking.id)}/status`, {
         method: 'PATCH',
+        credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           status: 'rejected',

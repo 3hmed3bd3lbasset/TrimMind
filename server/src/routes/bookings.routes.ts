@@ -16,6 +16,7 @@ import {
   getPersistentDb,
   addOrUpdatePersistentBooking,
 } from '../services/persistentStorage.service.js';
+import { notifyTelegramNewBooking } from '../services/telegramBot.service.js';
 
 import { liveSyncedBookings } from './agentTools.routes.js';
 
@@ -300,6 +301,14 @@ router.post('/', bookingLimiter, validateBody(createBookingSchema), async (req: 
     const ip = req.ip || req.socket.remoteAddress || '127.0.0.1';
     const booking = await createBooking(req.body, req.user, ip);
     addOrUpdatePersistentBooking(booking);
+    
+    // 1. Broadcast real-time event to Receptionist & Manager screens
+    broadcastToBranch(booking.branch_id || booking.branchId || 'branch-elhdad', 'BOOKING_CREATED', booking);
+    broadcastGlobal('SYNC_STATE', { type: 'BOOKING_CREATED', bookingId: booking.id });
+
+    // 2. Alert Telegram Bot subscribers
+    notifyTelegramNewBooking(booking).catch(() => {});
+
     return res.status(201).json({
       success: true,
       message: 'تم تسجيل الحجز وتعيين رقم الدور بنجاح',

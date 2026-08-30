@@ -67,6 +67,7 @@ export const QueueList: React.FC<QueueListProps> = ({ branchId }) => {
     try {
       await fetch(`/api/bookings/${encodeURIComponent(bookingIdToUse)}/status`, {
         method: 'PATCH',
+        credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           status: 'in_service',
