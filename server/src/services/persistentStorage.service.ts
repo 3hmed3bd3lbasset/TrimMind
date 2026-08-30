@@ -244,3 +244,87 @@ export function deletePersistentBarber(barberId: string) {
   const filtered = db.barbers.filter((b) => b.id !== barberId);
   savePersistentDb({ barbers: filtered });
 }
+
+// 7. Services Persistent Operations
+export function addOrUpdatePersistentService(service: any) {
+  const db = getPersistentDb();
+  if (!db.services) db.services = [];
+  const existingIdx = db.services.findIndex((s) => s.id === service.id);
+  if (existingIdx >= 0) {
+    db.services[existingIdx] = { ...db.services[existingIdx], ...service, updated_at: new Date().toISOString() };
+  } else {
+    db.services.push(service);
+  }
+  savePersistentDb({ services: db.services });
+  return service;
+}
+
+export function deletePersistentService(serviceId: string) {
+  const db = getPersistentDb();
+  if (!db.services) db.services = [];
+  const filtered = db.services.filter((s) => s.id !== serviceId);
+  savePersistentDb({ services: filtered });
+}
+
+// 8. Branches Persistent Operations
+export function addOrUpdatePersistentBranch(branch: any) {
+  const db = getPersistentDb();
+  if (!db.branches) db.branches = [];
+  const existingIdx = db.branches.findIndex((b) => b.id === branch.id);
+  if (existingIdx >= 0) {
+    db.branches[existingIdx] = { ...db.branches[existingIdx], ...branch, updated_at: new Date().toISOString() };
+  } else {
+    db.branches.push(branch);
+  }
+  savePersistentDb({ branches: db.branches });
+  return branch;
+}
+
+export function deletePersistentBranch(branchId: string) {
+  const db = getPersistentDb();
+  if (!db.branches) db.branches = [];
+  const filtered = db.branches.filter((b) => b.id !== branchId);
+  savePersistentDb({ branches: filtered });
+}
+
+// 9. Chairs Persistent Operations
+export function addOrUpdatePersistentChair(chair: any) {
+  const db = getPersistentDb();
+  if (!db.chairs) db.chairs = [];
+  const existingIdx = db.chairs.findIndex((c) => c.id === chair.id);
+  if (existingIdx >= 0) {
+    db.chairs[existingIdx] = { ...db.chairs[existingIdx], ...chair, updated_at: new Date().toISOString() };
+  } else {
+    db.chairs.push(chair);
+  }
+  savePersistentDb({ chairs: db.chairs });
+  return chair;
+}
+
+export function deletePersistentChair(chairId: string) {
+  const db = getPersistentDb();
+  if (!db.chairs) db.chairs = [];
+  const filtered = db.chairs.filter((c) => c.id !== chairId);
+  savePersistentDb({ chairs: filtered });
+}
+
+// 10. Products Persistent Operations
+export function addOrUpdatePersistentProduct(product: any) {
+  const db = getPersistentDb();
+  if (!db.products) db.products = [];
+  const existingIdx = db.products.findIndex((p) => p.id === product.id);
+  if (existingIdx >= 0) {
+    db.products[existingIdx] = { ...db.products[existingIdx], ...product, updated_at: new Date().toISOString() };
+  } else {
+    db.products.push(product);
+  }
+  savePersistentDb({ products: db.products });
+  return product;
+}
+
+export function deletePersistentProduct(productId: string) {
+  const db = getPersistentDb();
+  if (!db.products) db.products = [];
+  const filtered = db.products.filter((p) => p.id !== productId);
+  savePersistentDb({ products: filtered });
+}

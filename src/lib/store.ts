@@ -1,5 +1,13 @@
 import { create } from 'zustand';
-import { persist, createJSONStorage } from 'zustand/middleware';
+
+// Ensure no stale data remains in device localStorage - Pure Server-Driven Architecture
+if (typeof window !== 'undefined' && window.localStorage) {
+  try {
+    localStorage.removeItem('trimmind_salon_storage_v2');
+    localStorage.removeItem('trimmind_salon_store_v1');
+    localStorage.removeItem('trimmind_salon_state');
+  } catch {}
+}
 import {
   Branch,
   Barber,
@@ -200,9 +208,7 @@ interface SalonStore {
   resetAllData: () => void;
 }
 
-export const useSalonStore = create<SalonStore>()(
-  persist(
-    (set, get) => ({
+export const useSalonStore = create<SalonStore>((set, get) => ({
   currentUser: INITIAL_PROFILES[0],
   selectedBranchId: INITIAL_BRANCHES[0]?.id || '',
   branches: INITIAL_BRANCHES,
@@ -1345,23 +1351,5 @@ export const useSalonStore = create<SalonStore>()(
           lastCalledCustomer: null,
         });
       },
-    }),
-    {
-      name: 'trimmind_salon_storage_v2',
-      storage: createJSONStorage(() => localStorage),
-      partialize: (state) => ({
-        bookings: state.bookings,
-        branches: state.branches,
-        barbers: state.barbers,
-        chairs: state.chairs,
-        services: state.services,
-        products: state.products,
-        settings: state.settings,
-        queue: state.queue,
-        selectedBranchId: state.selectedBranchId,
-        auditLogs: state.auditLogs,
-        notifications: state.notifications,
-      }),
-    }
-  )
+    })
 );
