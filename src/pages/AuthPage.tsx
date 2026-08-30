@@ -409,7 +409,7 @@ export default function AuthPage() {
                 required
                 value={identifier}
                 onChange={(e) => setIdentifier(e.target.value)}
-                placeholder="مثال: owner@salon.com أو 01012345678"
+                placeholder="مثال: example@email.com أو 01012345678"
                 className="w-full bg-paper-warm border border-border focus:border-forest rounded-xl pr-10 pl-3 py-3 text-xs text-ink outline-none font-mono"
               />
             </div>
@@ -545,13 +545,10 @@ export default function AuthPage() {
                       autoFocus
                       value={resetIdentifier}
                       onChange={(e) => setResetIdentifier(e.target.value)}
-                      placeholder="مثال: owner@salon.com أو 01012345678"
+                      placeholder="مثال: example@email.com أو 01012345678"
                       className="w-full bg-paper-warm border border-border focus:border-forest rounded-xl pr-10 pl-3 py-3 text-xs text-ink outline-none font-mono"
                     />
                   </div>
-                  <p className="text-[10.5px] text-ink-mute">
-                    💡 سيميز النظام تلقائياً: (رسالة واتساب فورية للهاتف 💬 أو بريد إلكتروني رسمي 📧).
-                  </p>
                 </div>
 
                 <button
