@@ -27,26 +27,28 @@ export function getUploadDir(): string {
     } catch {}
   }
 
-  // Check Railway volume mount location (/app/server/uploads)
-  const railwayMount = '/app/server/uploads';
-  if (fs.existsSync('/app/server')) {
-    try {
-      fs.mkdirSync(railwayMount, { recursive: true });
-      return railwayMount;
-    } catch {}
-  }
+  // Check standard Railway volume mount locations
+  const candidateVolumePaths = [
+    '/app/server/uploads',
+    '/app/uploads',
+    '/data',
+    path.resolve('server/uploads'),
+    path.resolve('uploads'),
+  ];
 
-  const serverUploads = path.resolve('server/uploads');
-  if (fs.existsSync(path.resolve('server'))) {
+  for (const vPath of candidateVolumePaths) {
+    if (fs.existsSync(vPath)) {
+      return vPath;
+    }
     try {
-      fs.mkdirSync(serverUploads, { recursive: true });
-      return serverUploads;
+      fs.mkdirSync(vPath, { recursive: true });
+      return vPath;
     } catch {}
   }
 
   const fallback = path.resolve('uploads');
   if (!fs.existsSync(fallback)) {
-    fs.mkdirSync(fallback, { recursive: true });
+    try { fs.mkdirSync(fallback, { recursive: true }); } catch {}
   }
   return fallback;
 }
