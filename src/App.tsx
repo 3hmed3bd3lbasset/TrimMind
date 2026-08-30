@@ -86,12 +86,13 @@ function RoleGuard({
 
 function AppLayout() {
   const location = useLocation();
+  const currentUser = useSalonStore((state) => state.currentUser);
   const isDisplayScreen =
     location.pathname === '/display' || location.pathname === '/queue-display';
 
-  // Cross-tab real-time live synchronization + Auto-sync store to backend for WhatsApp bot + Live DB Hydration
+  // Cross-tab real-time live synchronization + Database Live DB Hydration
   useEffect(() => {
-    // 1. Hydrate state from server DB on startup
+    // 1. Hydrate state from MySQL DB
     const hydrateFromBackend = async () => {
       try {
         const [branchesRes, barbersRes, chairsRes, servicesRes, productsRes, settingsRes, bookingsRes, profilesRes, meRes] = await Promise.allSettled([
@@ -139,24 +140,7 @@ function AppLayout() {
           stateUpdates.settings = { ...useSalonStore.getState().settings, ...(settingsRes.value as any).data };
         }
         if (bookingsRes.status === 'fulfilled' && (bookingsRes.value as any)?.success && Array.isArray((bookingsRes.value as any)?.data)) {
-          const backendBookings = (bookingsRes.value as any).data;
-          const localBookings = useSalonStore.getState().bookings || [];
-          const merged = [...backendBookings];
-          for (const lb of localBookings) {
-            if (!merged.some((b) => b.id === lb.id)) {
-              merged.push(lb);
-            }
-          }
-          if (merged.length > 0) {
-            stateUpdates.bookings = merged;
-          }
-          if (localBookings.length > 0) {
-            fetch('/api/sync/backup', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ bookings: localBookings }),
-            }).catch(() => {});
-          }
+          stateUpdates.bookings = (bookingsRes.value as any).data;
         }
         if (profilesRes.status === 'fulfilled' && (profilesRes.value as any)?.success && Array.isArray((profilesRes.value as any)?.data) && (profilesRes.value as any).data.length > 0) {
           stateUpdates.profiles = (profilesRes.value as any).data;
@@ -171,51 +155,7 @@ function AppLayout() {
     };
 
     hydrateFromBackend();
-
-    const syncToBackend = () => {
-      try {
-        const state = useSalonStore.getState();
-        if (state.branches.length > 0 && state.services.length > 0) {
-          fetch('/api/sync/backup', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              branches: state.branches,
-              services: state.services,
-              barbers: state.barbers,
-              chairs: state.chairs,
-              products: state.products,
-              settings: state.settings,
-              bookings: state.bookings,
-              profiles: state.profiles,
-            }),
-          }).catch(() => {});
-        }
-      } catch (e) {}
-    };
-
-    // Sync on store update
-    const unsubStore = useSalonStore.subscribe((state, prevState) => {
-      if (
-        state.branches !== prevState.branches ||
-        state.services !== prevState.services ||
-        state.barbers !== prevState.barbers ||
-        state.settings !== prevState.settings
-      ) {
-        syncToBackend();
-      }
-    });
-
-    const unsubscribe = initRealtimeSync(() => {
-      hydrateFromBackend();
-      syncToBackend();
-    });
-
-    return () => {
-      unsubStore();
-      unsubscribe();
-    };
-  }, []);
+  }, [currentUser.id, currentUser.role]);
 
   return (
     <div className="min-h-screen flex flex-col bg-paper text-ink font-sans relative selection:bg-forest selection:text-paper">

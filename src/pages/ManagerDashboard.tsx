@@ -1,5 +1,6 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useSalonStore } from '../lib/store';
+import { api } from '../lib/api';
 import { AnalyticsCharts } from '../components/manager/AnalyticsCharts';
 import { BookingRevenuesManager } from '../components/manager/BookingRevenuesManager';
 import { BranchManager } from '../components/manager/BranchManager';
@@ -69,6 +70,44 @@ export default function ManagerDashboard() {
   });
 
   const [isSettingsMenuOpen, setIsSettingsMenuOpen] = useState(false);
+
+  // 1. Live sync bookings & profiles from MySQL DB on Railway
+  useEffect(() => {
+    let isMounted = true;
+    const fetchLatestDbData = async () => {
+      try {
+        const [bookingsRes, profilesRes] = await Promise.allSettled([
+          api.getBookings(),
+          api.getProfiles(),
+        ]);
+        if (!isMounted) return;
+
+        if (
+          bookingsRes.status === 'fulfilled' &&
+          (bookingsRes.value as any)?.success &&
+          Array.isArray((bookingsRes.value as any)?.data)
+        ) {
+          useSalonStore.setState({ bookings: (bookingsRes.value as any).data });
+        }
+        if (
+          profilesRes.status === 'fulfilled' &&
+          (profilesRes.value as any)?.success &&
+          Array.isArray((profilesRes.value as any)?.data)
+        ) {
+          useSalonStore.setState({ profiles: (profilesRes.value as any).data });
+        }
+      } catch (err) {
+        console.warn('ManagerDashboard DB sync note:', err);
+      }
+    };
+
+    fetchLatestDbData();
+    const interval = setInterval(fetchLatestDbData, 15000);
+    return () => {
+      isMounted = false;
+      clearInterval(interval);
+    };
+  }, []);
 
   React.useEffect(() => {
     try {

@@ -1116,14 +1116,32 @@ export const useSalonStore = create<SalonStore>((set, get) => ({
           auditLogs: [newLog, ...auditLogs],
         });
 
-        broadcastEvent('SYNC_STATE');
-
-        // Persist to backend API immediately
-        fetch('/api/sync/bookings', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ booking: newBooking }),
-        }).catch(() => {});
+        // Persist to MySQL Database immediately via authoritative API
+        api.createBooking({
+          id: bookingId,
+          bookingId: bookingId,
+          customerName: payload.customerName,
+          customerPhone: payload.customerPhone,
+          branchId: payload.branchId,
+          barberId: payload.barberId,
+          chairId: payload.chairId,
+          serviceId: payload.serviceId,
+          serviceName: serviceName,
+          servicePrice: servicePrice,
+          totalAmount: servicePrice,
+          bookingType: isCustom && serviceName.toLowerCase().includes('vip') ? 'vip' : 'normal',
+          startsAt: newBooking.starts_at,
+          endsAt: newBooking.ends_at,
+          notes: payload.notes || `حجز فوري مباشر من الصالون - ${serviceName}`,
+          source: 'walk_in',
+          status: 'in_service',
+          paymentProof: {
+            paymentMethod: 'cash',
+            senderPhone: payload.customerPhone,
+            imagePath: 'walk_in_direct',
+            amount: servicePrice,
+          },
+        }).catch((err) => console.warn('Walk-in booking DB save notice:', err));
 
         return newBooking;
       },
