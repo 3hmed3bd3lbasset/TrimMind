@@ -1,5 +1,6 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { useSalonStore } from '../../lib/store';
+import { INITIAL_BRANCHES, INITIAL_BARBERS } from '../../lib/seedData';
 import { Service, Barber, Chair, Product, Booking } from '../../types';
 import { formatCurrency, formatTime, generateToken, format12Hour, compressImage } from '../../lib/utils';
 import { ServiceCard } from './ServiceCard';
@@ -55,7 +56,7 @@ export const BookingWizard: React.FC = () => {
 
   // Wizard States (Step 1 to 8)
   const [currentStep, setCurrentStep] = useState<number>(1);
-  const [branchId, setBranchId] = useState<string>(selectedBranchId || branches[0]?.id || '');
+  const [branchId, setBranchId] = useState<string>(selectedBranchId || branches[0]?.id || 'branch-elhdad');
   const [bookingType, setBookingType] = useState<'normal' | 'vip'>('normal');
   const [selectedServiceId, setSelectedServiceId] = useState<string>(services[0]?.id || '');
   const [additionalServiceIds, setAdditionalServiceIds] = useState<string[]>([]);
@@ -81,14 +82,37 @@ export const BookingWizard: React.FC = () => {
   const [confirmedBooking, setConfirmedBooking] = useState<Booking | null>(null);
   const [isVipPromptOpen, setIsVipPromptOpen] = useState<boolean>(false);
 
-  const currentBranch = branches.find((b) => b.id === branchId) || branches[0];
-  const currentBarber = barbers.find((b) => b.id === barberId) || barbers[0];
+  const effectiveBranchId = branchId || selectedBranchId || branches[0]?.id || 'branch-elhdad';
+  const currentBranch = branches.find((b) => b.id === effectiveBranchId) || branches[0] || INITIAL_BRANCHES[0];
 
-  // Filtered lists based on selection
-  const branchBarbers = useMemo(
-    () => barbers.filter((b) => b.is_active && (b.branch_id === branchId || !b.branch_id)),
-    [barbers, branchId]
-  );
+  // Auto-sync branchId & serviceId when data loads
+  useEffect(() => {
+    if (!branchId && branches.length > 0) {
+      setBranchId(branches[0].id);
+    }
+  }, [branches, branchId]);
+
+  useEffect(() => {
+    if (!selectedServiceId && services.length > 0) {
+      setSelectedServiceId(services[0].id);
+    }
+  }, [services, selectedServiceId]);
+
+  // Robust Barbers list resolution: always shows all active barbers for the branch
+  const branchBarbers = useMemo(() => {
+    const rawList = barbers && barbers.length > 0 ? barbers : INITIAL_BARBERS;
+    const activeBarbers = rawList.filter((b) => b.is_active !== false);
+    const matched = activeBarbers.filter((b) => !b.branch_id || b.branch_id === effectiveBranchId);
+    return matched.length > 0 ? matched : activeBarbers;
+  }, [barbers, effectiveBranchId]);
+
+  useEffect(() => {
+    if ((!barberId || !branchBarbers.some((b) => b.id === barberId)) && branchBarbers.length > 0) {
+      setBarberId(branchBarbers[0].id);
+    }
+  }, [branchBarbers, barberId]);
+
+  const currentBarber = branchBarbers.find((b) => b.id === barberId) || branchBarbers[0] || INITIAL_BARBERS[0];
 
   // Calculate pricing
   const primaryService = services.find((s) => s.id === selectedServiceId);
