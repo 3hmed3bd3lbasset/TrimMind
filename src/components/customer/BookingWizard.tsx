@@ -38,6 +38,60 @@ import {
 } from 'lucide-react';
 import { Link, useNavigate } from 'react-router-dom';
 
+// Smart Cairo-aware normal queue slot calculation helper
+export function calculateSmartNormalTimeSlot(
+  selectedDate: string,
+  queueNumber: number,
+  openingTime: string = '10:00',
+  closingTime: string = '23:30',
+  nowTime: Date = new Date()
+): string {
+  const cairoDateStr = nowTime.toLocaleDateString('en-CA', { timeZone: 'Africa/Cairo' });
+  const isToday = selectedDate === cairoDateStr;
+
+  const [openHourStr, openMinStr] = (openingTime || '10:00').split(':');
+  const openHour = parseInt(openHourStr, 10) || 10;
+  const openMin = parseInt(openMinStr, 10) || 0;
+
+  const [closeHourStr, closeMinStr] = (closingTime || '23:30').split(':');
+  const closeHour = parseInt(closeHourStr, 10) || 23;
+  const closeMin = parseInt(closeMinStr, 10) || 30;
+  const closeTotalMinutes = closeHour * 60 + closeMin;
+
+  let baseMinutes = openHour * 60 + openMin;
+
+  if (isToday) {
+    const cairoTimeFormatter = new Intl.DateTimeFormat('en-US', {
+      timeZone: 'Africa/Cairo',
+      hour: 'numeric',
+      minute: 'numeric',
+      hour12: false,
+    });
+    const parts = cairoTimeFormatter.formatToParts(nowTime);
+    const nowHour = parseInt(parts.find((p) => p.type === 'hour')?.value || '12', 10);
+    const nowMin = parseInt(parts.find((p) => p.type === 'minute')?.value || '0', 10);
+    const nowTotalMinutes = nowHour * 60 + nowMin;
+
+    if (nowTotalMinutes >= baseMinutes) {
+      baseMinutes = Math.ceil((nowTotalMinutes + 15) / 15) * 15;
+    }
+  }
+
+  const queueOffsetMinutes = Math.max(0, queueNumber - 1) * 30;
+  let targetMinutes = baseMinutes + queueOffsetMinutes;
+
+  if (targetMinutes > closeTotalMinutes - 15) {
+    targetMinutes = Math.min(targetMinutes, closeTotalMinutes - 15);
+  }
+
+  const resHour = Math.floor(targetMinutes / 60) % 24;
+  const resMin = targetMinutes % 60;
+
+  const hh = resHour < 10 ? `0${resHour}` : `${resHour}`;
+  const mm = resMin < 10 ? `0${resMin}` : `${resMin}`;
+  return `${hh}:${mm}`;
+}
+
 export const BookingWizard: React.FC = () => {
   const {
     branches,
@@ -207,12 +261,20 @@ export const BookingWizard: React.FC = () => {
   }, [liveCairoTime]);
 
   const todayCairoDate = useMemo(() => {
-    const d = new Date();
-    const year = d.getFullYear();
-    const month = String(d.getMonth() + 1).padStart(2, '0');
-    const day = String(d.getDate()).padStart(2, '0');
-    return `${year}-${month}-${day}`;
+    return liveCairoTime.toLocaleDateString('en-CA', { timeZone: 'Africa/Cairo' });
   }, [liveCairoTime]);
+
+  const smartNormalTimeSlot = useMemo(() => {
+    return calculateSmartNormalTimeSlot(
+      selectedDate,
+      nextQueueNumber,
+      currentBranch?.opening_time || '10:00',
+      currentBranch?.closing_time || '23:30',
+      liveCairoTime
+    );
+  }, [selectedDate, nextQueueNumber, currentBranch?.opening_time, currentBranch?.closing_time, liveCairoTime]);
+
+  const effectiveTimeSlot = bookingType === 'vip' ? selectedTimeSlot : smartNormalTimeSlot;
 
   const isSlotExpired = (slot: string) => {
     if (selectedDate !== todayCairoDate) return false;
@@ -344,7 +406,7 @@ export const BookingWizard: React.FC = () => {
 
     setIsSubmitting(true);
 
-    const startsAtISO = `${selectedDate}T${selectedTimeSlot}:00.000Z`;
+    const startsAtISO = `${selectedDate}T${effectiveTimeSlot}:00.000Z`;
     const endsAtDate = new Date(startsAtISO);
     endsAtDate.setMinutes(endsAtDate.getMinutes() + totalDurationMinutes);
 
@@ -656,8 +718,20 @@ export const BookingWizard: React.FC = () => {
                   نظام حجز الدور الذكي ليوم ({selectedDate})
                 </h3>
                 <p className="text-xs text-ink-soft max-w-lg mx-auto leading-relaxed">
-                  دورك هو <strong className="text-forest font-extrabold text-sm">رقم #{nextQueueNumber}</strong> مع الكابتن ({currentBarber?.full_name})، وتم تعيين الدور كأقرب دور متاح في حجوزات هذا اليوم.
+                  دورك هو <strong className="text-forest font-extrabold text-sm">رقم #{nextQueueNumber}</strong> مع الكابتن ({currentBarber?.full_name})، والموعد المتوقع لدخولك هو <strong className="text-terra font-extrabold text-sm">{format12Hour(effectiveTimeSlot)}</strong> بتوقيت القاهرة.
                 </p>
+              </div>
+
+              {/* Dynamic Queue Timing Highlight */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 max-w-md mx-auto">
+                <div className="p-3 bg-white rounded-xl border border-border shadow-xs text-center">
+                  <span className="text-[10.5px] text-ink-mute block">رقم الدور في الطابور:</span>
+                  <span className="text-forest font-mono font-extrabold text-base">#{nextQueueNumber}</span>
+                </div>
+                <div className="p-3 bg-white rounded-xl border border-border shadow-xs text-center">
+                  <span className="text-[10.5px] text-ink-mute block">الموعد المتوقع للحضور:</span>
+                  <span className="text-terra font-mono font-extrabold text-base">{format12Hour(effectiveTimeSlot)}</span>
+                </div>
               </div>
 
               {/* Customer Service Notice */}
@@ -673,13 +747,6 @@ export const BookingWizard: React.FC = () => {
                   </strong>{' '}
                   أو من خلال تتبع الحجز المباشر عبر المنصة.
                 </p>
-              </div>
-
-              <div className="inline-flex items-center gap-2 bg-white px-5 py-2.5 rounded-full border border-border shadow-sm text-xs font-bold text-forest">
-                <span>رقم الدور التلقائي المتاح:</span>
-                <span className="text-terra-deep font-mono font-extrabold text-sm">
-                  #{nextQueueNumber} في طابور اليوم
-                </span>
               </div>
             </div>
           ) : (
@@ -950,7 +1017,7 @@ export const BookingWizard: React.FC = () => {
                 </div>
                 <div className="flex justify-between text-ink-soft">
                   <span>التاريخ والوقت:</span>
-                  <span className="font-bold text-forest">{selectedDate} في تمام {format12Hour(selectedTimeSlot)}</span>
+                  <span className="font-bold text-forest">{selectedDate} في تمام {format12Hour(effectiveTimeSlot)}</span>
                 </div>
                 <div className="flex justify-between text-ink-soft">
                   <span>الخدمة الأساسية:</span>
@@ -1191,7 +1258,7 @@ export const BookingWizard: React.FC = () => {
                 <div>
                   <p className="text-ink-mute text-[10px]">الموعد:</p>
                   <p className="font-bold text-forest">
-                    {selectedDate} • {format12Hour(selectedTimeSlot)}
+                    {selectedDate} • {format12Hour(confirmedBooking.starts_at ? (confirmedBooking.starts_at.includes('T') ? confirmedBooking.starts_at.split('T')[1].slice(0, 5) : confirmedBooking.starts_at.slice(11, 16)) : effectiveTimeSlot)}
                   </p>
                 </div>
               </div>

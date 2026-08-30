@@ -4,6 +4,59 @@ import { Booking, BookingStatus } from '../../domain/entities/Booking.entity.js'
 import { query, queryConn, withTransaction } from '../../config/database.js';
 import { getPersistentDb, addOrUpdatePersistentBooking } from '../../services/persistentStorage.service.js';
 
+export function computeCairoSmartNormalTime(
+  bookingDate: string,
+  queueNumber: number,
+  openingTime: string = '10:00',
+  closingTime: string = '23:30'
+): string {
+  const now = new Date();
+  const cairoDateStr = now.toLocaleDateString('en-CA', { timeZone: 'Africa/Cairo' });
+  const isToday = bookingDate === cairoDateStr;
+
+  const [openHourStr, openMinStr] = (openingTime || '10:00').split(':');
+  const openHour = parseInt(openHourStr, 10) || 10;
+  const openMin = parseInt(openMinStr, 10) || 0;
+
+  const [closeHourStr, closeMinStr] = (closingTime || '23:30').split(':');
+  const closeHour = parseInt(closeHourStr, 10) || 23;
+  const closeMin = parseInt(closeMinStr, 10) || 30;
+  const closeTotalMinutes = closeHour * 60 + closeMin;
+
+  let baseMinutes = openHour * 60 + openMin;
+
+  if (isToday) {
+    const cairoTimeFormatter = new Intl.DateTimeFormat('en-US', {
+      timeZone: 'Africa/Cairo',
+      hour: 'numeric',
+      minute: 'numeric',
+      hour12: false,
+    });
+    const parts = cairoTimeFormatter.formatToParts(now);
+    const nowHour = parseInt(parts.find((p) => p.type === 'hour')?.value || '12', 10);
+    const nowMin = parseInt(parts.find((p) => p.type === 'minute')?.value || '0', 10);
+    const nowTotalMinutes = nowHour * 60 + nowMin;
+
+    if (nowTotalMinutes >= baseMinutes) {
+      baseMinutes = Math.ceil((nowTotalMinutes + 15) / 15) * 15;
+    }
+  }
+
+  const queueOffsetMinutes = Math.max(0, queueNumber - 1) * 30;
+  let targetMinutes = baseMinutes + queueOffsetMinutes;
+
+  if (targetMinutes > closeTotalMinutes - 15) {
+    targetMinutes = Math.min(targetMinutes, closeTotalMinutes - 15);
+  }
+
+  const resHour = Math.floor(targetMinutes / 60) % 24;
+  const resMin = targetMinutes % 60;
+
+  const hh = resHour < 10 ? `0${resHour}` : `${resHour}`;
+  const mm = resMin < 10 ? `0${resMin}` : `${resMin}`;
+  return `${bookingDate} ${hh}:${mm}:00`;
+}
+
 export class MySQLBookingRepository implements IBookingRepository {
   public async createWithTransaction(data: CreateBookingData, actorId?: string): Promise<Booking> {
     const bookingId = data.id || `BK-${Math.floor(1000 + Math.random() * 9000)}`;
@@ -91,8 +144,20 @@ export class MySQLBookingRepository implements IBookingRepository {
           assignedQueueNumber++;
         }
 
+        // Smart Cairo-aware queue appointment timing for Normal bookings
+        let finalStartsAtSql = startsAtSql;
+        let finalEndsAtSql = endsAtSql;
+        if (data.bookingType === 'normal') {
+          finalStartsAtSql = computeCairoSmartNormalTime(
+            bookingDate,
+            assignedQueueNumber,
+            (branchRows && branchRows.length > 0 ? branchRows[0].opening_time : '10:00') || '10:00',
+            (branchRows && branchRows.length > 0 ? branchRows[0].closing_time : '23:30') || '23:30'
+          );
+        }
+
         // 6. Validate Barber & Chair
-        if (data.barberId && startsAtSql) {
+        if (data.barberId && finalStartsAtSql) {
           const barberConflicts = await queryConn<any[]>(
             conn,
             `SELECT id FROM bookings 
@@ -100,7 +165,7 @@ export class MySQLBookingRepository implements IBookingRepository {
                AND starts_at = ? 
                AND status IN ('confirmed', 'customer_arrived', 'in_service')
              LIMIT 1 FOR UPDATE`,
-            [data.barberId, startsAtSql]
+            [data.barberId, finalStartsAtSql]
           );
           if (barberConflicts && barberConflicts.length > 0) {
             throw new Error('الكابتن المختار محجوز بالفعل في هذا الموعد المحدد.');
@@ -135,7 +200,7 @@ export class MySQLBookingRepository implements IBookingRepository {
           [
             bookingId, actorId || uuidv4(), data.customerName, cleanPhone, finalBranchId,
             data.barberId || null, data.chairId || null, data.serviceId, JSON.stringify(data.additionalServiceIds || []),
-            data.bookingType, initialStatus, startsAtSql, endsAtSql,
+            data.bookingType, initialStatus, finalStartsAtSql, finalEndsAtSql,
             bookingDate, assignedQueueNumber, servicePrice, bookingFee, 0, itemsTotal, total, secureToken, data.notes || null,
             data.source || 'web', data.aiBrief || null, data.confidenceScore || 90, Boolean(data.needsHumanAttention), JSON.stringify(data.customLineItems || []),
           ]
@@ -206,8 +271,8 @@ export class MySQLBookingRepository implements IBookingRepository {
           data.additionalServiceIds || [],
           data.bookingType,
           initialStatus,
-          data.startsAt || new Date().toISOString(),
-          data.endsAt || null,
+          finalStartsAtSql ? finalStartsAtSql.replace(' ', 'T') + '.000Z' : (data.startsAt || new Date().toISOString()),
+          finalEndsAtSql ? finalEndsAtSql.replace(' ', 'T') + '.000Z' : (data.endsAt || null),
           bookingDate,
           assignedQueueNumber,
           servicePrice,
@@ -260,6 +325,17 @@ export class MySQLBookingRepository implements IBookingRepository {
       const bookingFee = data.paymentProof?.amount ? Number(data.paymentProof.amount) : (data.bookingType === 'vip' ? 100 : 50);
       const total = data.totalAmount || servicePrice;
 
+      let fallbackStartsAt = data.startsAt || new Date().toISOString();
+      if (data.bookingType === 'normal') {
+        const smartSql = computeCairoSmartNormalTime(
+          bookingDate,
+          assignedQueueNumber,
+          branch?.opening_time || '10:00',
+          branch?.closing_time || '23:30'
+        );
+        fallbackStartsAt = smartSql.replace(' ', 'T') + '.000Z';
+      }
+
       const fallbackBooking = new Booking(
         bookingId,
         actorId || null,
@@ -272,7 +348,7 @@ export class MySQLBookingRepository implements IBookingRepository {
         data.additionalServiceIds || [],
         data.bookingType,
         initialStatus,
-        data.startsAt || new Date().toISOString(),
+        fallbackStartsAt,
         data.endsAt || null,
         bookingDate,
         assignedQueueNumber,
