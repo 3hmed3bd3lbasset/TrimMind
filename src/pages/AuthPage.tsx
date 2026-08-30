@@ -550,7 +550,7 @@ export default function AuthPage() {
                     />
                   </div>
                   <p className="text-[10.5px] text-ink-mute">
-                    💡 سيميز النظام تلقائياً لإرسال الرمز عبر البريد أو الرسائل القصيرة (SMS/WhatsApp).
+                    💡 سيميز النظام تلقائياً: (رسالة واتساب فورية للهاتف 💬 أو بريد إلكتروني رسمي 📧).
                   </p>
                 </div>
 
@@ -581,8 +581,18 @@ export default function AuthPage() {
                   <p className="font-mono font-bold text-forest text-sm dir-ltr">
                     {maskedTarget}
                   </p>
-                  <p className="text-[10px] text-ink-mute">
-                    {resetChannel === 'email' ? '📧 عبر البريد الإلكتروني' : '📱 عبر الرسائل النصية (SMS)'}
+                  <p className="text-[11px] font-bold text-forest flex items-center justify-center gap-1.5">
+                    {resetChannel === 'email' ? (
+                      <>
+                        <Mail className="w-3.5 h-3.5" />
+                        <span>عبر البريد الإلكتروني (Brevo)</span>
+                      </>
+                    ) : (
+                      <>
+                        <MessageCircle className="w-3.5 h-3.5 text-emerald-600" />
+                        <span className="text-emerald-700">عبر رسائل الواتساب الرسمية (WhatsApp)</span>
+                      </>
+                    )}
                   </p>
                 </div>
 

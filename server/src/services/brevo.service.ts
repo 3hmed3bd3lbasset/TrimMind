@@ -235,22 +235,27 @@ export async function requestPasswordResetOtp(identifier: string, clientIp: stri
       htmlContent: html,
     });
 
-    return {
-      success: true,
-      channel: 'email',
-      maskedTarget,
-      expiresInMinutes: 10,
-    };
   } else {
-    const smsContent = `رمز التحقق الخاص بك لإعادة تعيين كلمة المرور في صالون TrimMind VIP هو: ${otpCode} (صالح لمدة 10 دقائق).`;
-    const smsRes = await sendBrevoSMS({
-      toPhone: cleanId,
-      content: smsContent,
-    });
+    // Phone Number -> Direct High-Priority WhatsApp OTP Dispatch
+    let waPhone = cleanId.replace(/\D+/g, '');
+    if (waPhone.startsWith('20') && waPhone.length === 12) {
+      waPhone = '0' + waPhone.substring(2);
+    } else if (waPhone.startsWith('1') && waPhone.length === 10) {
+      waPhone = '0' + waPhone;
+    }
+
+    const waMessage = `👑 *صالون TrimMind VIP - استعادة كلمة المرور* 🔐\n\nمرحباً بك يا *${user.full_name}*،\n\nتلقينا طلباً لإعادة تعيين كلمة المرور لحسابك في النظام.\nرمز التحقق السري الخاص بك هو:\n\n🔢 *${otpCode}*\n\n⏳ هذا الرمز صالح للاستخدام لمدة *10 دقائق* فقط.\n🔒 _يرجى عدم مشاركة هذا الرمز مع أي شخص للحفاظ على سرية وأمان حسابك._`;
+
+    try {
+      await sendWhatsAppText(waPhone, waMessage);
+      console.log(`✅ [WHATSAPP_OTP_SENT] to: ${waPhone} for user: ${user.full_name}`);
+    } catch (waErr: any) {
+      console.warn('[WHATSAPP_OTP_ERR]:', waErr.message);
+    }
 
     return {
       success: true,
-      channel: smsRes.channelUsed || 'sms',
+      channel: 'whatsapp',
       maskedTarget,
       expiresInMinutes: 10,
     };
