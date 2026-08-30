@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { persist, createJSONStorage } from 'zustand/middleware';
 import {
   Branch,
   Barber,
@@ -199,7 +200,9 @@ interface SalonStore {
   resetAllData: () => void;
 }
 
-export const useSalonStore = create<SalonStore>((set, get) => ({
+export const useSalonStore = create<SalonStore>()(
+  persist(
+    (set, get) => ({
   currentUser: INITIAL_PROFILES[0],
   selectedBranchId: INITIAL_BRANCHES[0]?.id || '',
   branches: INITIAL_BRANCHES,
@@ -1342,5 +1345,23 @@ export const useSalonStore = create<SalonStore>((set, get) => ({
           lastCalledCustomer: null,
         });
       },
-    })
+    }),
+    {
+      name: 'trimmind_salon_storage_v2',
+      storage: createJSONStorage(() => localStorage),
+      partialize: (state) => ({
+        bookings: state.bookings,
+        branches: state.branches,
+        barbers: state.barbers,
+        chairs: state.chairs,
+        services: state.services,
+        products: state.products,
+        settings: state.settings,
+        queue: state.queue,
+        selectedBranchId: state.selectedBranchId,
+        auditLogs: state.auditLogs,
+        notifications: state.notifications,
+      }),
+    }
+  )
 );

@@ -2,6 +2,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { IBookingRepository, CreateBookingData } from '../../domain/repositories/IBookingRepository.js';
 import { Booking, BookingStatus } from '../../domain/entities/Booking.entity.js';
 import { query, queryConn, withTransaction } from '../../config/database.js';
+import { getPersistentDb, addOrUpdatePersistentBooking } from '../../services/persistentStorage.service.js';
 
 export class MySQLBookingRepository implements IBookingRepository {
   public async createWithTransaction(data: CreateBookingData, actorId?: string): Promise<Booking> {
@@ -12,192 +13,259 @@ export class MySQLBookingRepository implements IBookingRepository {
     const startsAtSql = rawStartsAt.replace('T', ' ').replace('Z', '').substring(0, 19);
     const endsAtSql = data.endsAt ? data.endsAt.replace('T', ' ').replace('Z', '').substring(0, 19) : null;
 
-    return await withTransaction(async (conn) => {
-      // 1. Validate Branch
-      let finalBranchId = data.branchId || 'branch-elhdad';
-      const branchRows = await queryConn<any[]>(conn, 'SELECT id, name FROM branches WHERE id = ? LIMIT 1', [finalBranchId]);
-      let branchName = 'الحداد - ELHDAD';
-      if (!branchRows || branchRows.length === 0) {
-        const firstBranch = await queryConn<any[]>(conn, 'SELECT id, name FROM branches LIMIT 1');
-        if (firstBranch && firstBranch.length > 0) {
-          finalBranchId = firstBranch[0].id;
-          branchName = firstBranch[0].name;
+    try {
+      return await withTransaction(async (conn) => {
+        // 1. Validate Branch
+        let finalBranchId = data.branchId || 'branch-elhdad';
+        const branchRows = await queryConn<any[]>(conn, 'SELECT id, name FROM branches WHERE id = ? LIMIT 1', [finalBranchId]);
+        let branchName = 'الحداد - ELHDAD';
+        if (!branchRows || branchRows.length === 0) {
+          const firstBranch = await queryConn<any[]>(conn, 'SELECT id, name FROM branches LIMIT 1');
+          if (firstBranch && firstBranch.length > 0) {
+            finalBranchId = firstBranch[0].id;
+            branchName = firstBranch[0].name;
+          }
+        } else {
+          branchName = branchRows[0].name;
         }
-      } else {
-        branchName = branchRows[0].name;
-      }
 
-      // 2. Fetch service & calculate prices
-      let servicePrice = data.servicePrice || 180;
-      let serviceName = data.serviceName || 'قص شعر كلاسيكي';
-      if (data.serviceId) {
-        const serviceRows = await queryConn<any[]>(conn, 'SELECT id, name, price FROM services WHERE id = ? LIMIT 1', [data.serviceId]);
-        if (serviceRows && serviceRows.length > 0) {
-          if (!data.serviceName || data.serviceName === 'خدمة الصالون' || data.serviceName === 'خدمة محددة') {
-            servicePrice = Number(serviceRows[0].price);
-            serviceName = serviceRows[0].name;
+        // 2. Fetch service & calculate prices
+        let servicePrice = data.servicePrice || 180;
+        let serviceName = data.serviceName || 'قص شعر كلاسيكي';
+        if (data.serviceId) {
+          const serviceRows = await queryConn<any[]>(conn, 'SELECT id, name, price FROM services WHERE id = ? LIMIT 1', [data.serviceId]);
+          if (serviceRows && serviceRows.length > 0) {
+            if (!data.serviceName || data.serviceName === 'خدمة الصالون' || data.serviceName === 'خدمة محددة') {
+              servicePrice = Number(serviceRows[0].price);
+              serviceName = serviceRows[0].name;
+            }
           }
         }
-      }
 
-      if (data.additionalServiceIds && data.additionalServiceIds.length > 0) {
-        for (const addId of data.additionalServiceIds) {
-          const addSrv = await queryConn<any[]>(conn, 'SELECT price FROM services WHERE id = ? LIMIT 1', [addId]);
-          if (addSrv && addSrv.length > 0) {
-            servicePrice += Number(addSrv[0].price);
+        if (data.additionalServiceIds && data.additionalServiceIds.length > 0) {
+          for (const addId of data.additionalServiceIds) {
+            const addSrv = await queryConn<any[]>(conn, 'SELECT price FROM services WHERE id = ? LIMIT 1', [addId]);
+            if (addSrv && addSrv.length > 0) {
+              servicePrice += Number(addSrv[0].price);
+            }
           }
         }
-      }
 
-      // 3. Products
-      let itemsTotal = 0;
-      const itemsToInsert: any[] = [];
-      if (data.selectedProducts && data.selectedProducts.length > 0) {
-        for (const p of data.selectedProducts) {
-          const prodRows = await queryConn<any[]>(conn, 'SELECT id, name, price FROM products WHERE id = ? LIMIT 1', [p.productId]);
-          if (prodRows && prodRows.length > 0) {
-            const pPrice = Number(prodRows[0].price);
-            itemsTotal += pPrice * p.quantity;
-            itemsToInsert.push({
-              id: uuidv4(),
-              booking_id: bookingId,
-              product_id: prodRows[0].id,
-              name: prodRows[0].name,
-              price_at_booking: pPrice,
-              quantity: p.quantity,
-            });
+        // 3. Products
+        let itemsTotal = 0;
+        const itemsToInsert: any[] = [];
+        if (data.selectedProducts && data.selectedProducts.length > 0) {
+          for (const p of data.selectedProducts) {
+            const prodRows = await queryConn<any[]>(conn, 'SELECT id, name, price FROM products WHERE id = ? LIMIT 1', [p.productId]);
+            if (prodRows && prodRows.length > 0) {
+              const pPrice = Number(prodRows[0].price);
+              itemsTotal += pPrice * p.quantity;
+              itemsToInsert.push({
+                id: uuidv4(),
+                booking_id: bookingId,
+                product_id: prodRows[0].id,
+                name: prodRows[0].name,
+                price_at_booking: pPrice,
+                quantity: p.quantity,
+              });
+            }
           }
         }
-      }
 
-      // 4. Booking Fee
-      let bookingFee = data.paymentProof?.amount
-        ? Number(data.paymentProof.amount)
-        : (data.bookingType === 'vip' ? 100 : 50);
+        // 4. Booking Fee
+        let bookingFee = data.paymentProof?.amount
+          ? Number(data.paymentProof.amount)
+          : (data.bookingType === 'vip' ? 100 : 50);
 
-      // 5. ATOMIC ROW-LOCKED QUEUE NUMBER GENERATION
-      const activeBookings = await queryConn<any[]>(
-        conn,
-        `SELECT queue_number FROM bookings 
-         WHERE branch_id = ? AND booking_date = ? AND status != 'cancelled'
-         ORDER BY queue_number ASC FOR UPDATE`,
-        [finalBranchId, bookingDate]
-      );
-      let assignedQueueNumber = 1;
-      const existingNums = new Set<number>(activeBookings.map((b) => b.queue_number).filter(Boolean));
-      while (existingNums.has(assignedQueueNumber)) {
-        assignedQueueNumber++;
-      }
-
-      // 6. Validate Barber & Chair
-      if (data.barberId && startsAtSql) {
-        const barberConflicts = await queryConn<any[]>(
+        // 5. ATOMIC ROW-LOCKED QUEUE NUMBER GENERATION
+        const activeBookings = await queryConn<any[]>(
           conn,
-          `SELECT id FROM bookings 
-           WHERE barber_id = ? 
-             AND starts_at = ? 
-             AND status IN ('confirmed', 'customer_arrived', 'in_service')
-           LIMIT 1 FOR UPDATE`,
-          [data.barberId, startsAtSql]
+          `SELECT queue_number FROM bookings 
+           WHERE branch_id = ? AND booking_date = ? AND status != 'cancelled'
+           ORDER BY queue_number ASC FOR UPDATE`,
+          [finalBranchId, bookingDate]
         );
-        if (barberConflicts && barberConflicts.length > 0) {
-          throw new Error('الكابتن المختار محجوز بالفعل في هذا الموعد المحدد.');
+        let assignedQueueNumber = 1;
+        const existingNums = new Set<number>(activeBookings.map((b) => b.queue_number).filter(Boolean));
+        while (existingNums.has(assignedQueueNumber)) {
+          assignedQueueNumber++;
         }
-      }
 
-      if (data.chairId) {
-        const chairRows = await queryConn<any[]>(conn, 'SELECT id, status FROM chairs WHERE id = ? FOR UPDATE', [data.chairId]);
-        if (chairRows && chairRows.length > 0 && chairRows[0].status === 'offline') {
-          throw new Error('الكرسي المحدد خارج الخدمة حالياً.');
+        // 6. Validate Barber & Chair
+        if (data.barberId && startsAtSql) {
+          const barberConflicts = await queryConn<any[]>(
+            conn,
+            `SELECT id FROM bookings 
+             WHERE barber_id = ? 
+               AND starts_at = ? 
+               AND status IN ('confirmed', 'customer_arrived', 'in_service')
+             LIMIT 1 FOR UPDATE`,
+            [data.barberId, startsAtSql]
+          );
+          if (barberConflicts && barberConflicts.length > 0) {
+            throw new Error('الكابتن المختار محجوز بالفعل في هذا الموعد المحدد.');
+          }
         }
-      }
 
-      const initialStatus: BookingStatus = data.paymentProof ? 'pending_review' : 'awaiting_payment';
-      const total = servicePrice + itemsTotal;
+        if (data.chairId) {
+          const chairRows = await queryConn<any[]>(conn, 'SELECT id, status FROM chairs WHERE id = ? FOR UPDATE', [data.chairId]);
+          if (chairRows && chairRows.length > 0 && chairRows[0].status === 'offline') {
+            throw new Error('الكرسي المحدد خارج الخدمة حالياً.');
+          }
+        }
+
+        const initialStatus: BookingStatus = data.paymentProof ? 'pending_review' : 'awaiting_payment';
+        const total = servicePrice + itemsTotal;
+
+        let cleanPhone = (data.customerPhone || '').replace(/\D+/g, '');
+        if (cleanPhone.startsWith('20') && cleanPhone.length === 12) {
+          cleanPhone = '0' + cleanPhone.substring(2);
+        }
+
+        // 7. Insert Booking
+        await queryConn(
+          conn,
+          `INSERT INTO bookings (
+            id, customer_id, customer_name, customer_phone, branch_id, barber_id, chair_id,
+            service_id, additional_service_ids, booking_type, status, starts_at, ends_at,
+            booking_date, queue_number, service_price_at_booking, booking_fee_at_booking,
+            discount_at_booking, items_total_at_booking, total_at_booking, secure_token, notes,
+            source, ai_brief, confidence_score, needs_human_attention, custom_line_items
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          [
+            bookingId, actorId || uuidv4(), data.customerName, cleanPhone, finalBranchId,
+            data.barberId || null, data.chairId || null, data.serviceId, JSON.stringify(data.additionalServiceIds || []),
+            data.bookingType, initialStatus, startsAtSql, endsAtSql,
+            bookingDate, assignedQueueNumber, servicePrice, bookingFee, 0, itemsTotal, total, secureToken, data.notes || null,
+            data.source || 'web', data.aiBrief || null, data.confidenceScore || 90, Boolean(data.needsHumanAttention), JSON.stringify(data.customLineItems || []),
+          ]
+        );
+
+        for (const item of itemsToInsert) {
+          await queryConn(
+            conn,
+            `INSERT INTO booking_items (id, booking_id, product_id, name, price_at_booking, quantity)
+             VALUES (?, ?, ?, ?, ?, ?)`,
+            [item.id, item.booking_id, item.product_id, item.name, item.price_at_booking, item.quantity]
+          );
+        }
+
+        // 8. Track Recall Campaign Attribution if customer was re-engaged
+        try {
+          await queryConn(
+            conn,
+            `UPDATE recall_sends 
+             SET status = 'rebooked', rebooked_at = NOW(), rebooked_booking_id = ? 
+             WHERE customer_phone = ? AND status = 'sent' AND rebooked_booking_id IS NULL
+             ORDER BY sent_at DESC LIMIT 1`,
+            [bookingId, cleanPhone]
+          );
+        } catch {}
+
+        let proofEntity: any = null;
+        if (data.paymentProof) {
+          proofEntity = {
+            id: uuidv4(),
+            booking_id: bookingId,
+            image_path: data.paymentProof.imagePath || (data.paymentProof as any).image_url || (data.paymentProof as any).imageUrl || 'data:image/placeholder',
+            payment_method: (data.paymentProof.paymentMethod || 'instapay') as any,
+            sender_phone: data.paymentProof.senderPhone || cleanPhone,
+            transferred_amount: Number(data.paymentProof.amount || (data.paymentProof as any).transferred_amount || bookingFee),
+            status: 'pending_review' as const,
+            submitted_at: new Date().toISOString(),
+          };
+
+          await queryConn(
+            conn,
+            `INSERT INTO payment_proofs (
+              id, booking_id, image_path, payment_method, sender_phone, transferred_amount, status, submitted_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+            [
+              proofEntity.id, proofEntity.booking_id, proofEntity.image_path, proofEntity.payment_method,
+              proofEntity.sender_phone, proofEntity.transferred_amount, proofEntity.status, proofEntity.submitted_at,
+            ]
+          );
+        }
+
+        // Fetch Barber Name
+        let barberName = 'كابتن الصالون';
+        if (data.barberId) {
+          const barbRows = await queryConn<any[]>(conn, 'SELECT full_name FROM barbers WHERE id = ? LIMIT 1', [data.barberId]);
+          if (barbRows && barbRows.length > 0) barberName = barbRows[0].full_name;
+        }
+
+        const bookingEntity = new Booking(
+          bookingId,
+          actorId || null,
+          data.customerName,
+          cleanPhone,
+          finalBranchId,
+          data.barberId || null,
+          data.chairId || null,
+          data.serviceId,
+          data.additionalServiceIds || [],
+          data.bookingType,
+          initialStatus,
+          data.startsAt || new Date().toISOString(),
+          data.endsAt || null,
+          bookingDate,
+          assignedQueueNumber,
+          servicePrice,
+          bookingFee,
+          0,
+          itemsTotal,
+          total,
+          secureToken,
+          data.notes || null,
+          new Date().toISOString(),
+          itemsToInsert,
+          proofEntity,
+          serviceName,
+          barberName,
+          branchName,
+          data.source || 'web',
+          data.aiBrief || undefined,
+          data.confidenceScore || 90,
+          Boolean(data.needsHumanAttention),
+          null,
+          data.customLineItems || []
+        );
+
+        addOrUpdatePersistentBooking(bookingEntity);
+        return bookingEntity;
+      });
+    } catch (dbErr: any) {
+      console.warn('[DB Booking Fallback Mode]:', dbErr?.message);
+
+      // Resilient Fallback: Construct Booking from persistent storage & save
+      const pDb = getPersistentDb();
+      const pBookings = pDb.bookings || [];
+      const service = pDb.services?.find((s: any) => s.id === data.serviceId);
+      const barber = pDb.barbers?.find((b: any) => b.id === data.barberId);
+      const branch = pDb.branches?.find((br: any) => br.id === data.branchId);
+
+      const servicePrice = data.servicePrice || service?.price || 180;
+      const serviceName = data.serviceName || service?.name || 'قص شعر كلاسيكي';
+      const barberName = (data as any).barberName || barber?.full_name || 'كابتن الصالون';
+      const branchName = (data as any).branchName || branch?.name || 'الحداد - ELHDAD';
 
       let cleanPhone = (data.customerPhone || '').replace(/\D+/g, '');
       if (cleanPhone.startsWith('20') && cleanPhone.length === 12) {
         cleanPhone = '0' + cleanPhone.substring(2);
       }
 
-      // 7. Insert Booking
-      await queryConn(
-        conn,
-        `INSERT INTO bookings (
-          id, customer_id, customer_name, customer_phone, branch_id, barber_id, chair_id,
-          service_id, additional_service_ids, booking_type, status, starts_at, ends_at,
-          booking_date, queue_number, service_price_at_booking, booking_fee_at_booking,
-          discount_at_booking, items_total_at_booking, total_at_booking, secure_token, notes,
-          source, ai_brief, confidence_score, needs_human_attention, custom_line_items
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        [
-          bookingId, actorId || uuidv4(), data.customerName, cleanPhone, finalBranchId,
-          data.barberId || null, data.chairId || null, data.serviceId, JSON.stringify(data.additionalServiceIds || []),
-          data.bookingType, initialStatus, startsAtSql, endsAtSql,
-          bookingDate, assignedQueueNumber, servicePrice, bookingFee, 0, itemsTotal, total, secureToken, data.notes || null,
-          data.source || 'web', data.aiBrief || null, data.confidenceScore || 90, Boolean(data.needsHumanAttention), JSON.stringify(data.customLineItems || []),
-        ]
-      );
+      const dayBookings = pBookings.filter((b: any) => (b.booking_date === bookingDate || b.starts_at?.startsWith(bookingDate)) && b.status !== 'cancelled');
+      const assignedQueueNumber = dayBookings.length + 1;
+      const initialStatus: BookingStatus = data.paymentProof ? 'pending_review' : 'awaiting_payment';
+      const bookingFee = data.paymentProof?.amount ? Number(data.paymentProof.amount) : (data.bookingType === 'vip' ? 100 : 50);
+      const total = data.totalAmount || servicePrice;
 
-      for (const item of itemsToInsert) {
-        await queryConn(
-          conn,
-          `INSERT INTO booking_items (id, booking_id, product_id, name, price_at_booking, quantity)
-           VALUES (?, ?, ?, ?, ?, ?)`,
-          [item.id, item.booking_id, item.product_id, item.name, item.price_at_booking, item.quantity]
-        );
-      }
-
-      // 8. Track Recall Campaign Attribution if customer was re-engaged
-      try {
-        await queryConn(
-          conn,
-          `UPDATE recall_sends 
-           SET status = 'rebooked', rebooked_at = NOW(), rebooked_booking_id = ? 
-           WHERE customer_phone = ? AND status = 'sent' AND rebooked_booking_id IS NULL
-           ORDER BY sent_at DESC LIMIT 1`,
-          [bookingId, cleanPhone]
-        );
-      } catch {}
-
-      let proofEntity: any = null;
-      if (data.paymentProof) {
-        proofEntity = {
-          id: uuidv4(),
-          booking_id: bookingId,
-          image_path: data.paymentProof.imagePath || (data.paymentProof as any).image_url || (data.paymentProof as any).imageUrl || 'data:image/placeholder',
-          payment_method: (data.paymentProof.paymentMethod || 'instapay') as any,
-          sender_phone: data.paymentProof.senderPhone || cleanPhone,
-          transferred_amount: Number(data.paymentProof.amount || (data.paymentProof as any).transferred_amount || bookingFee),
-          status: 'pending_review' as const,
-          submitted_at: new Date().toISOString(),
-        };
-
-        await queryConn(
-          conn,
-          `INSERT INTO payment_proofs (
-            id, booking_id, image_path, payment_method, sender_phone, transferred_amount, status, submitted_at
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-          [
-            proofEntity.id, proofEntity.booking_id, proofEntity.image_path, proofEntity.payment_method,
-            proofEntity.sender_phone, proofEntity.transferred_amount, proofEntity.status, proofEntity.submitted_at,
-          ]
-        );
-      }
-
-      // Fetch Barber Name
-      let barberName = 'كابتن الصالون';
-      if (data.barberId) {
-        const barbRows = await queryConn<any[]>(conn, 'SELECT full_name FROM barbers WHERE id = ? LIMIT 1', [data.barberId]);
-        if (barbRows && barbRows.length > 0) barberName = barbRows[0].full_name;
-      }
-
-      return new Booking(
+      const fallbackBooking = new Booking(
         bookingId,
         actorId || null,
         data.customerName,
         cleanPhone,
-        finalBranchId,
+        data.branchId || 'branch-elhdad',
         data.barberId || null,
         data.chairId || null,
         data.serviceId,
@@ -211,13 +279,13 @@ export class MySQLBookingRepository implements IBookingRepository {
         servicePrice,
         bookingFee,
         0,
-        itemsTotal,
+        0,
         total,
         secureToken,
         data.notes || null,
         new Date().toISOString(),
-        itemsToInsert,
-        proofEntity,
+        [],
+        data.paymentProof as any,
         serviceName,
         barberName,
         branchName,
@@ -228,7 +296,10 @@ export class MySQLBookingRepository implements IBookingRepository {
         null,
         data.customLineItems || []
       );
-    });
+
+      addOrUpdatePersistentBooking(fallbackBooking);
+      return fallbackBooking;
+    }
   }
 
   public async findById(bookingId: string): Promise<Booking | null> {

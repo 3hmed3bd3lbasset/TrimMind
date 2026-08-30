@@ -117,9 +117,16 @@ function AppLayout() {
         if (bookingsRes.status === 'fulfilled' && (bookingsRes.value as any)?.success && Array.isArray((bookingsRes.value as any)?.data)) {
           const backendBookings = (bookingsRes.value as any).data;
           const localBookings = useSalonStore.getState().bookings || [];
-          if (backendBookings.length > 0) {
-            stateUpdates.bookings = backendBookings;
-          } else if (localBookings.length > 0) {
+          const merged = [...backendBookings];
+          for (const lb of localBookings) {
+            if (!merged.some((b) => b.id === lb.id)) {
+              merged.push(lb);
+            }
+          }
+          if (merged.length > 0) {
+            stateUpdates.bookings = merged;
+          }
+          if (localBookings.length > 0) {
             fetch('/api/sync/backup', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
