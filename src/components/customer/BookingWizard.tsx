@@ -830,28 +830,35 @@ export const BookingWizard: React.FC = () => {
 
           {/* Normal Mode: Smart Queue Card Assignment */}
           {bookingType === 'normal' ? (
-            <div className="bg-paper-warm p-6 rounded-2xl border-2 border-forest/20 text-center space-y-4 shadow-clinic-1">
+            <div className="bg-paper-warm p-6 rounded-2xl border-2 border-forest/20 text-center space-y-4 shadow-clinic-1 animate-in fade-in">
               <div className="w-12 h-12 rounded-2xl bg-forest text-paper mx-auto flex items-center justify-center shadow-sm">
                 <Sparkles className="w-6 h-6" />
               </div>
-              <div className="space-y-1.5">
+              <div className="space-y-2">
                 <h3 className="font-serif font-bold text-lg text-forest">
                   نظام حجز الدور الذكي ليوم ({selectedDate})
                 </h3>
                 <p className="text-xs text-ink-soft max-w-lg mx-auto leading-relaxed">
-                  دورك هو <strong className="text-forest font-extrabold text-sm">رقم #{nextQueueNumber}</strong> مع الكابتن ({currentBarber?.full_name})، والموعد المتوقع لدخولك هو <strong className="text-terra font-extrabold text-sm">{format12Hour(effectiveTimeSlot)}</strong> بتوقيت القاهرة.
+                  سيتم احتساب وتعيين <strong>رقم دورك الفعلي والموعد المتوقع لدخولك بدقة</strong> لحظة تأكيد الحجز ورفع الإيصال في الخطوة الأخيرة، لضمان أولوية الحجز الفعلي بالمللي ثانية ومنع أي تعارض في الأدوار.
                 </p>
               </div>
 
-              {/* Dynamic Queue Timing Highlight */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 max-w-md mx-auto">
-                <div className="p-3 bg-white rounded-xl border border-border shadow-xs text-center">
-                  <span className="text-[10.5px] text-ink-mute block">رقم الدور في الطابور:</span>
-                  <span className="text-forest font-mono font-extrabold text-base">#{nextQueueNumber}</span>
+              {/* Dynamic Queue Assurance Features */}
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 max-w-lg mx-auto text-xs text-ink">
+                <div className="p-3 bg-white rounded-xl border border-border shadow-xs text-center space-y-1">
+                  <span className="text-base block">⚡</span>
+                  <span className="font-bold text-[11px] block text-forest">حجز فوري ومؤمن</span>
+                  <span className="text-[9.5px] text-ink-mute block">منع التعارض الذري</span>
                 </div>
-                <div className="p-3 bg-white rounded-xl border border-border shadow-xs text-center">
-                  <span className="text-[10.5px] text-ink-mute block">الموعد المتوقع للحضور:</span>
-                  <span className="text-terra font-mono font-extrabold text-base">{format12Hour(effectiveTimeSlot)}</span>
+                <div className="p-3 bg-white rounded-xl border border-border shadow-xs text-center space-y-1">
+                  <span className="text-base block">🎟️</span>
+                  <span className="font-bold text-[11px] block text-forest">تذكرة رقمية كاملة</span>
+                  <span className="text-[9.5px] text-ink-mute block">تتضمن الدور والموعد بدقة</span>
+                </div>
+                <div className="p-3 bg-white rounded-xl border border-border shadow-xs text-center space-y-1">
+                  <span className="text-base block">📲</span>
+                  <span className="font-bold text-[11px] block text-forest">تتبع حي لحظي</span>
+                  <span className="text-[9.5px] text-ink-mute block">عبر بوت التلجرام والويب</span>
                 </div>
               </div>
 
@@ -859,14 +866,14 @@ export const BookingWizard: React.FC = () => {
               <div className="p-3.5 bg-white rounded-2xl border border-border space-y-1.5 text-xs max-w-md mx-auto text-right shadow-sm">
                 <div className="flex items-center gap-2 text-forest font-bold">
                   <Phone className="w-4 h-4 text-forest" />
-                  <span>للاستفسار عن التوقيت الدقيق للحضور:</span>
+                  <span>للاستفسار عن مواعيد وأدوار اليوم:</span>
                 </div>
                 <p className="text-ink-soft text-[11px] leading-relaxed">
                   يمكنك الاتصال مباشرة بخدمة عملاء الفرع على:{' '}
                   <strong dir="ltr" className="text-ink font-mono font-bold text-xs">
                     {customerServicePhone}
                   </strong>{' '}
-                  أو من خلال تتبع الحجز المباشر عبر المنصة.
+                  أو من خلال التتبع المباشر عبر التلجرام.
                 </p>
               </div>
             </div>
@@ -1358,12 +1365,23 @@ export const BookingWizard: React.FC = () => {
           <div className="max-w-md mx-auto bg-white p-6 rounded-3xl border border-border shadow-clinic-3 space-y-5 text-xs relative">
             <div className="flex items-center justify-between border-b border-border-soft pb-4">
               <div>
-                <h3 className="font-serif font-bold text-ink text-base">صالون النخبة VIP</h3>
-                <p className="text-[10px] text-terra font-mono tracking-wider">ELITE BARBER PASS</p>
+                <h3 className="font-serif font-bold text-ink text-base">
+                  {confirmedBooking.booking_type === 'vip' ? 'صالون النخبة VIP' : 'صالون الحلاقة والتجميل'}
+                </h3>
+                <p className="text-[10px] text-terra font-mono tracking-wider">
+                  {confirmedBooking.booking_type === 'vip' ? 'ELITE VIP PASS' : 'SMART QUEUE PASS'}
+                </p>
               </div>
-              <span className="font-mono font-bold text-forest bg-forest/10 px-3 py-1 rounded-full border border-forest/20 text-sm">
-                {confirmedBooking.id}
-              </span>
+              <div className="text-left space-y-1">
+                <span className="font-mono font-bold text-forest bg-forest/10 px-3 py-1 rounded-full border border-forest/20 text-sm block">
+                  {confirmedBooking.id}
+                </span>
+                {confirmedBooking.queue_number && (
+                  <span className="text-[10.5px] font-bold text-terra block text-center bg-terra/10 px-2 py-0.5 rounded-full border border-terra/20">
+                    الدور #{confirmedBooking.queue_number}
+                  </span>
+                )}
+              </div>
             </div>
 
             <div className="flex items-center justify-between gap-4 py-2">
@@ -1374,10 +1392,10 @@ export const BookingWizard: React.FC = () => {
                 </div>
                 <div>
                   <p className="text-ink-mute text-[10px]">الحلاق والكرسي:</p>
-                  <p className="font-bold text-ink">{currentBarber?.full_name}</p>
+                  <p className="font-bold text-ink">{confirmedBooking.barber_name || currentBarber?.full_name}</p>
                 </div>
                 <div>
-                  <p className="text-ink-mute text-[10px]">الموعد:</p>
+                  <p className="text-ink-mute text-[10px]">الموعد وتوقيت الحضور:</p>
                   <p className="font-bold text-forest">
                     {selectedDate} • {format12Hour(confirmedBooking.starts_at ? (confirmedBooking.starts_at.includes('T') ? confirmedBooking.starts_at.split('T')[1].slice(0, 5) : confirmedBooking.starts_at.slice(11, 16)) : effectiveTimeSlot)}
                   </p>
@@ -1389,7 +1407,13 @@ export const BookingWizard: React.FC = () => {
               </div>
             </div>
 
-            <div className="bg-paper-warm/80 p-3 rounded-xl border border-border space-y-1">
+            <div className="bg-paper-warm/80 p-3 rounded-xl border border-border space-y-1.5">
+              {confirmedBooking.queue_number && (
+                <div className="flex justify-between border-b border-border/50 pb-1">
+                  <span className="text-ink-mute">رقمك في طابور اليوم:</span>
+                  <span className="font-mono text-terra font-extrabold text-xs">#{confirmedBooking.queue_number}</span>
+                </div>
+              )}
               <div className="flex justify-between">
                 <span className="text-ink-mute">رمز التتبع السري:</span>
                 <span className="font-mono text-forest font-bold">{confirmedBooking.secure_token}</span>

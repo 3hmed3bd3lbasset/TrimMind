@@ -156,19 +156,19 @@ export class MySQLBookingRepository implements IBookingRepository {
           );
         }
 
-        // 6. Validate Barber & Chair
+        // 6. Strict VIP & Barber Conflict Locking (Atomic Row-Level Lock)
         if (data.barberId && finalStartsAtSql) {
           const barberConflicts = await queryConn<any[]>(
             conn,
             `SELECT id FROM bookings 
              WHERE barber_id = ? 
                AND starts_at = ? 
-               AND status IN ('confirmed', 'customer_arrived', 'in_service')
+               AND status IN ('confirmed', 'pending_review', 'payment_submitted', 'awaiting_payment', 'customer_arrived', 'in_service')
              LIMIT 1 FOR UPDATE`,
             [data.barberId, finalStartsAtSql]
           );
           if (barberConflicts && barberConflicts.length > 0) {
-            throw new Error('الكابتن المختار محجوز بالفعل في هذا الموعد المحدد.');
+            throw new Error('عفواً، تم حجز هذا الموعد للتو مع الكابتن المختار بواسطة عميل آخر، يرجى اختيار موعد بديل.');
           }
         }
 
