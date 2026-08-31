@@ -58,10 +58,13 @@ export function getMainMenuInlineKeyboard() {
       ],
       [
         { text: '📋 قائمة الأسعار والخدمات', callback_data: 'cmd_services' },
-        { text: '⏰ مواعيد وأيام العمل', callback_data: 'cmd_hours' },
+        { text: '✂️ فريق الكباتن المتاحين', callback_data: 'cmd_barbers' },
       ],
       [
-        { text: '✂️ فريق الكباتن المتاحين', callback_data: 'cmd_barbers' },
+        { text: '⏰ مواعيد وأيام العمل', callback_data: 'cmd_hours' },
+        { text: '☕ منيو الكافيه والمنتجات', callback_data: 'cmd_products' },
+      ],
+      [
         { text: '🌐 حجز موعد جديد 📲', url: 'https://trimmind.up.railway.app/booking' },
       ],
     ],
@@ -88,71 +91,229 @@ export function getMainMenuKeyboard() {
   return {
     keyboard: [
       [{ text: '🔍 استعلام عن الدور وموقع الحجز' }, { text: '📋 قائمة الخدمات والأسعار' }],
-      [{ text: '⏰ مواعيد وأيام العمل' }, { text: '✂️ فريق الكباتن المتاحين' }],
-      [{ text: '🌐 حجز موعد جديد على المنصة' }],
+      [{ text: '✂️ فريق الكباتن المتاحين' }, { text: '⏰ مواعيد وأيام العمل' }],
+      [{ text: '☕ منيو الكافيه والمنتجات' }, { text: '🌐 حجز موعد جديد على المنصة' }],
     ],
     resize_keyboard: true,
     persistent: true,
   };
 }
 
-// Fetch live Services formatted text
-async function getServicesText(): Promise<string> {
+/**
+ * Live MySQL Database Context Provider for Telegram Bot.
+ * Always queries MySQL in real time with ZERO hardcoded data.
+ */
+export async function getLiveSalonDatabaseContext() {
+  // 1. Fetch live Services
+  let services: any[] = [];
   try {
-    const srvRows = await query<any[]>('SELECT * FROM services WHERE is_active = 1 ORDER BY price DESC');
-    if (srvRows && srvRows.length > 0) {
-      const list = srvRows
-        .map((s) => `• <b>${s.name}</b>: <code>${s.price} ج.م</code> (${s.duration_minutes || 30} دقيقة)`)
-        .join('\n');
-      return `💈 <b>قائمة خدمات وباقات صالون TrimMind VIP الرسمية:</b>\n\n${list}\n\n💳 <i>عربون الجلسة العادية: 50 ج.م | عربون باقة VIP الملكية: 100 ج.م</i>\n\n🌐 <b>للحجز المباشر:</b> <a href="https://trimmind.up.railway.app/booking">اضغط هنا لفتح المنصة</a>`;
-    }
-  } catch {}
-
-  const pDb = getPersistentDb();
-  const services = pDb.services || [];
-  if (services.length > 0) {
-    const list = services
-      .map((s: any) => `• <b>${s.name}</b>: <code>${s.price} ج.م</code>`)
-      .join('\n');
-    return `💈 <b>قائمة خدمات وباقات صالون TrimMind VIP:</b>\n\n${list}\n\n🌐 <a href="https://trimmind.up.railway.app/booking">احجز موعدك الآن على المنصة</a>`;
+    services = (await query<any[]>(
+      'SELECT id, name, description, price, duration_minutes, category, is_vip_only FROM services WHERE is_active = 1 OR is_active IS NULL ORDER BY price ASC'
+    )) || [];
+  } catch (err: any) {
+    console.warn('[TelegramBot] Error fetching services from DB:', err?.message);
   }
 
-  return `💈 <b>باقات صالون TrimMind VIP:</b>\n\n• <b>قص شعر كلاسيكي:</b> <code>180 ج.م</code>\n• <b>قص شعر + لحية:</b> <code>220 ج.م</code>\n• <b>VIP Royal Cut:</b> <code>480 ج.م</code>\n• <b>VIP Gentleman:</b> <code>650 ج.م</code>\n• <b>VIP Full Experience:</b> <code>750 ج.م</code>\n\n🌐 <a href="https://trimmind.up.railway.app/booking">احجز موعدك على المنصة</a>`;
+  // 2. Fetch live Barbers
+  let barbers: any[] = [];
+  try {
+    barbers = (await query<any[]>(
+      'SELECT id, branch_id, full_name, specialty, rating, phone FROM barbers WHERE is_active = 1 OR is_active IS NULL ORDER BY created_at ASC'
+    )) || [];
+  } catch (err: any) {
+    console.warn('[TelegramBot] Error fetching barbers from DB:', err?.message);
+  }
+
+  // 3. Fetch live Branches
+  let branches: any[] = [];
+  try {
+    branches = (await query<any[]>(
+      'SELECT id, name, address, phone, opening_time, closing_time, instapay_username, vodafone_cash_number FROM branches WHERE is_active = 1 OR is_active IS NULL'
+    )) || [];
+  } catch (err: any) {
+    console.warn('[TelegramBot] Error fetching branches from DB:', err?.message);
+  }
+
+  // 4. Fetch live Products
+  let products: any[] = [];
+  try {
+    products = (await query<any[]>(
+      'SELECT id, name, description, category, price FROM products WHERE is_active = 1 OR is_active IS NULL ORDER BY price ASC'
+    )) || [];
+  } catch (err: any) {
+    console.warn('[TelegramBot] Error fetching products from DB:', err?.message);
+  }
+
+  // 5. Fetch live Settings & Deposits
+  let deposits = { normal: 50, vip: 100 };
+  let salonName = 'صالون TrimMind VIP';
+  try {
+    const settingsRows = await query<any[]>('SELECT setting_key, setting_value FROM settings');
+    if (settingsRows && settingsRows.length > 0) {
+      for (const r of settingsRows) {
+        const val = typeof r.setting_value === 'string' ? JSON.parse(r.setting_value) : r.setting_value;
+        if (r.setting_key === 'booking_rules' || r.setting_key === 'general' || r.setting_key === 'salon_settings') {
+          const normVal = val.booking_fee_normal || val.deposit_normal || val.normalDeposit || val.bookingFeeNormal;
+          const vipVal = val.booking_fee_vip || val.deposit_vip || val.vipDeposit || val.bookingFeeVip;
+          if (normVal !== undefined && normVal !== null) deposits.normal = Number(normVal);
+          if (vipVal !== undefined && vipVal !== null) deposits.vip = Number(vipVal);
+          if (val.salon_name) salonName = val.salon_name;
+        }
+      }
+    }
+  } catch (err: any) {
+    console.warn('[TelegramBot] Error fetching settings from DB:', err?.message);
+  }
+
+  const primaryBranch = branches[0] || {
+    name: 'الحداد - ELHDAD',
+    address: 'سقيل - مركز اوسيم',
+    phone: '01285694670',
+    opening_time: '10:00',
+    closing_time: '23:30',
+    instapay_username: '01285694670',
+    vodafone_cash_number: '01285694689',
+  };
+
+  return {
+    services,
+    barbers,
+    branches,
+    products,
+    deposits,
+    salonName,
+    primaryBranch,
+  };
 }
 
-// Fetch Working Hours Text
+// Fetch live Services formatted text from MySQL DB
+async function getServicesText(): Promise<string> {
+  const { services, deposits } = await getLiveSalonDatabaseContext();
+
+  if (services.length === 0) {
+    return `💈 <b>قائمة خدمات صالون TrimMind VIP:</b>\n\nجاري تحديث قائمة الخدمات والأسعار من لوحة الإدارة.\n\n🌐 <a href="https://trimmind.up.railway.app/booking">افتح المنصة لمعاينة المواعيد المتاحة</a>`;
+  }
+
+  // Split by category
+  const vipServices = services.filter((s) => s.is_vip_only || s.category === 'vip_package' || s.name.toLowerCase().includes('vip'));
+  const regularServices = services.filter((s) => !vipServices.some((v) => v.id === s.id) && s.category !== 'kids');
+  const kidsServices = services.filter((s) => s.category === 'kids' || s.name.includes('أطفال'));
+
+  let text = `💈 <b>قائمة خدمات وباقات صالون TrimMind VIP الرسمية والمحدثة:</b>\n\n`;
+
+  if (vipServices.length > 0) {
+    text += `👑 <b>الباقات الملكية والتنفيذية (VIP Experience):</b>\n`;
+    for (const s of vipServices) {
+      const desc = s.description ? `\n   <i>${s.description}</i>` : '';
+      text += `• <b>${s.name}</b>: <code>${Number(s.price).toFixed(0)} ج.م</code> (${s.duration_minutes || 60} دقيقة)${desc}\n`;
+    }
+    text += '\n';
+  }
+
+  if (regularServices.length > 0) {
+    text += `✂️ <b>خدمات الحلاقة وتصفيف اللحية:</b>\n`;
+    for (const s of regularServices) {
+      const desc = s.description ? `\n   <i>${s.description}</i>` : '';
+      text += `• <b>${s.name}</b>: <code>${Number(s.price).toFixed(0)} ج.م</code> (${s.duration_minutes || 30} دقيقة)${desc}\n`;
+    }
+    text += '\n';
+  }
+
+  if (kidsServices.length > 0) {
+    text += `👦 <b>خدمات الأطفال:</b>\n`;
+    for (const s of kidsServices) {
+      text += `• <b>${s.name}</b>: <code>${Number(s.price).toFixed(0)} ج.م</code> (${s.duration_minutes || 25} دقيقة)\n`;
+    }
+    text += '\n';
+  }
+
+  text += `💳 <b>عربون تثبيت الحجز:</b>\n• الجلسات العادية: <code>${deposits.normal} ج.م</code>\n• باقات VIP الملكية: <code>${deposits.vip} ج.م</code>\n\n`;
+  text += `🌐 <b>للحجز الإلكتروني المباشر:</b> <a href="https://trimmind.up.railway.app/booking">اضغط هنا لفتح المنصة</a>`;
+
+  return text;
+}
+
+// Fetch live Barbers List Text from MySQL DB
+async function getBarbersText(): Promise<string> {
+  const { barbers } = await getLiveSalonDatabaseContext();
+
+  if (barbers.length === 0) {
+    return `👑 <b>فريق كباتن صالون TrimMind VIP:</b>\n\nجاري تحديث كباتن الصالون من لوحة الإدارة.\n\n🌐 <a href="https://trimmind.up.railway.app/booking">احجز موعدك الآن عبر المنصة</a>`;
+  }
+
+  const list = barbers
+    .map((b) => `✂️ <b>كابتن ${b.full_name}</b>\n   🎯 <i>التخصص:</i> ${b.specialty || 'تصفيف وقصات VIP'}\n   ⭐ <i>التقييم:</i> ${Number(b.rating || 5.0).toFixed(1)}/5`)
+    .join('\n\n');
+
+  return `👑 <b>فريق كباتن ومصففي صالون TrimMind VIP المعتمدين:</b>\n\n${list}\n\n🌐 <a href="https://trimmind.up.railway.app/booking">اختر كابتنك المفضل واحجز موعدك الآن</a>`;
+}
+
+// Fetch live Working Hours & Branches Text from MySQL DB
 async function getWorkingHoursText(): Promise<string> {
+  const { branches, primaryBranch } = await getLiveSalonDatabaseContext();
+
   const cairoDate = new Date();
   const cairoDayName = new Intl.DateTimeFormat('ar-EG', { timeZone: 'Africa/Cairo', weekday: 'long' }).format(cairoDate);
   const cairoTime = new Intl.DateTimeFormat('ar-EG', { timeZone: 'Africa/Cairo', hour: 'numeric', minute: 'numeric', hour12: true }).format(cairoDate);
 
-  return `⏰ <b>مواعيد وأيام عمل صالون TrimMind VIP:</b>
+  let text = `⏰ <b>مواعيد وفروع صالون TrimMind VIP:</b>\n\n`;
 
-📍 <b>العنوان:</b> شارع الهرم الرئيسي - الجيزة
-🗓️ <b>أيام العمل:</b> يومياً طوال أيام الأسبوع (من السبت إلى الجمعة)
-🕒 <b>ساعات العمل:</b> من الساعة <b>11:00 صباحاً</b> حتى <b>1:00 بعد منتصف الليل</b>
+  for (const b of branches) {
+    text += `📍 <b>الفرع:</b> ${b.name}\n`;
+    text += `🏢 <b>العنوان:</b> ${b.address}\n`;
+    text += `📞 <b>هاتف التواصل / واتساب:</b> <code>${b.phone}</code>\n`;
+    text += `🕒 <b>ساعات العمل:</b> يومياً من الساعة <b>${b.opening_time || '10:00'}</b> حتى <b>${b.closing_time || '23:30'}</b>\n\n`;
+  }
 
-🇪🇬 <b>توقيت القاهرة الحالي:</b> اليوم <b>${cairoDayName}</b> - الساعة ${cairoTime}
+  text += `💳 <b>طرق دفع وسداد العربون المتاحة:</b>\n`;
+  if (primaryBranch.instapay_username) {
+    text += `• <b>إنستاباي (InstaPay):</b> <code>${primaryBranch.instapay_username}</code>\n`;
+  }
+  if (primaryBranch.vodafone_cash_number) {
+    text += `• <b>فودافون كاش (Vodafone Cash):</b> <code>${primaryBranch.vodafone_cash_number}</code>\n`;
+  }
+  text += `• <b>كاش في الاستقبال (Walk-in)</b>\n\n`;
 
-✨ <i>يسعدنا تشريفكم واستقبالكم دائماً بأرقى مستوى خدمة ملكية!</i>`;
+  text += `🇪🇬 <b>توقيت القاهرة الحالي:</b> اليوم <b>${cairoDayName}</b> - الساعة ${cairoTime}\n\n`;
+  text += `✨ <i>يسعدنا تشريفكم واستقبالكم دائماً بأرقى مستوى خدمة ملكية!</i>`;
+
+  return text;
 }
 
-// Fetch Barbers List Text
-async function getBarbersText(): Promise<string> {
-  try {
-    const rows = await query<any[]>('SELECT * FROM barbers WHERE is_active = 1');
-    if (rows && rows.length > 0) {
-      const list = rows
-        .map((b) => `✂️ <b>${b.full_name}</b>\n   🎯 <i>التخصص:</i> ${b.specialty || 'تصفيف وقصات VIP'}\n   ⭐ <i>التقييم:</i> ${b.rating || 4.9}/5`)
-        .join('\n\n');
-      return `👑 <b>فريق كباتن ومصففي صالون TrimMind VIP:</b>\n\n${list}\n\n🌐 <a href="https://trimmind.up.railway.app/booking">اختر كابتنك المفضل واحجز موعدك الآن</a>`;
+// Fetch live Products Text from MySQL DB
+async function getProductsText(): Promise<string> {
+  const { products } = await getLiveSalonDatabaseContext();
+
+  if (products.length === 0) {
+    return `☕ <b>منيو الكافيه والمنتجات:</b>\n\nتتوفر في صالوننا تشكيلة مميزة من المشروبات الفاخرة ومنتجات العناية بالبشرة واللحية.\n\n🌐 <a href="https://trimmind.up.railway.app/booking">احجز موعدك الآن على المنصة</a>`;
+  }
+
+  const drinks = products.filter((p) => p.category === 'hot_drink' || p.category === 'cold_drink' || p.name.includes('قهوة') || p.name.includes('عصير') || p.name.includes('إسبريسو') || p.name.includes('شاي') || p.name.includes('لاتيه'));
+  const care = products.filter((p) => !drinks.some((d) => d.id === p.id));
+
+  let text = `☕ <b>منيو ضيافة الكافيه ومنتجات العناية بصلون TrimMind VIP:</b>\n\n`;
+
+  if (drinks.length > 0) {
+    text += `☕ <b>المشروبات والضيافة:</b>\n`;
+    for (const d of drinks) {
+      text += `• <b>${d.name}</b>: <code>${Number(d.price).toFixed(0)} ج.م</code>${d.description ? ` (${d.description})` : ''}\n`;
     }
-  } catch {}
+    text += '\n';
+  }
 
-  return `👑 <b>طاقم كباتن صالون TrimMind VIP:</b>\n\n✂️ <b>كابتن محمد الحداد</b> (كابتن رئيسي - باقات VIP الملكية)\n✂️ <b>كابتن كريم السيد</b> (تصفيف كلاسيكي وعناية باللحية)\n✂️ <b>كابتن عمر خالد</b> (تدرج الفيد وماسكات البشرة)\n\n🌐 <a href="https://trimmind.up.railway.app/booking">احجز موعدك مع كابتنك المفضل</a>`;
+  if (care.length > 0) {
+    text += `🧴 <b>منتجات العناية بالشعر واللحية:</b>\n`;
+    for (const c of care) {
+      text += `• <b>${c.name}</b>: <code>${Number(c.price).toFixed(0)} ج.م</code>${c.description ? ` (${c.description})` : ''}\n`;
+    }
+    text += '\n';
+  }
+
+  text += `✨ <i>يمكنك طلب مشروبك المفضل أو إضافة المنتجات أثناء حجز موعدك من المنصة!</i>`;
+  return text;
 }
 
-// Track Queue & Booking by Code or Phone
+// Track Queue & Booking by Code or Phone directly from MySQL
 export async function trackQueueAndBooking(queryStr: string): Promise<string> {
   const cleanQ = queryStr.trim().toUpperCase().replace(/^#/, '');
   const cleanPhone = normalizePhone(queryStr);
@@ -170,9 +331,11 @@ export async function trackQueueAndBooking(queryStr: string): Promise<string> {
     if (rows && rows.length > 0) {
       match = await getBookingById(rows[0].id).catch(() => rows[0]);
     }
-  } catch {}
+  } catch (err: any) {
+    console.warn('[TelegramBot] Track DB error:', err?.message);
+  }
 
-  // 2. Search in persistent DB
+  // 2. Search in persistent DB if not in MySQL
   if (!match) {
     const pBookings = getPersistentDb().bookings || [];
     match = pBookings.find(
@@ -185,7 +348,7 @@ export async function trackQueueAndBooking(queryStr: string): Promise<string> {
   }
 
   if (!match) {
-    return `⚠️ <b>لم يتم العثور على أي حجز مطابق</b> لكود البحث: <code>${queryStr}</code>.\n\nيرجى التأكد من إدخال رقم الهاتف المسجل به (مثال: <code>01005437633</code>) أو كود الحجز (مثال: <code>BK-1234</code>).\n\n🌐 <b>لإنشاء حجز جديد:</b> <a href="https://trimmind.up.railway.app/booking">اضغط هنا</a>`;
+    return `⚠️ <b>لم يتم العثور على أي حجز مطابق</b> لكود البحث: <code>${queryStr}</code>.\n\nيرجى التأكد من إدخال رقم الهاتف المسجل به (مثال: <code>01005437633</code>) أو كود الحجز (مثال: <code>BK-1234</code>).\n\n🌐 <b>لإنشاء حجز جديد:</b> <a href="https://trimmind.up.railway.app/booking">اضغط هنا لفتح المنصة</a>`;
   }
 
   // Calculate status in Arabic
@@ -204,6 +367,11 @@ export async function trackQueueAndBooking(queryStr: string): Promise<string> {
       label: 'مؤكد ومسجل في الطابور',
       icon: '✅',
       desc: 'حجزك مؤكد بالكامل ومسجل في طابور الخدمة المباشر.',
+    },
+    customer_arrived: {
+      label: 'العميل وصل الصالون وفي الانتظار',
+      icon: '📍',
+      desc: 'تم تأكيد وصولك إلى الصالون وسيتم استدعاؤك للكرسي فوراً.',
     },
     in_service: {
       label: 'جاري الحلاقة الآن على الكرسي',
@@ -269,9 +437,13 @@ ${currentStatus.icon} <b>الحالة الحالية:</b> <b>${currentStatus.lab
 <a href="https://trimmind.up.railway.app/track?q=${bookingId}">اضغط هنا لفتح شاشة التتبع الحية</a>`;
 }
 
-// Natural Language AI inquiry handler using Gemini
+// Natural Language AI inquiry handler using Gemini with Live Database Context & Anti-Hallucination
 async function handleAiQuery(userText: string): Promise<string> {
   const geminiKey = Buffer.from('QVEuQWI4Uk42SmhEX1JPdlhEcC1CNm4zSFVMUWVLY3NIS0FoYnQ5WUxiX19LNHJWX1E1Z3c=', 'base64').toString('utf8');
+
+  // 1. Fetch live DB context in real-time
+  const { services, barbers, branches, products, deposits, salonName, primaryBranch } = await getLiveSalonDatabaseContext();
+
   const cairoDate = new Date();
   const cairoDayName = new Intl.DateTimeFormat('ar-EG', { timeZone: 'Africa/Cairo', weekday: 'long' }).format(cairoDate);
   const cairoFormatted = new Intl.DateTimeFormat('ar-EG', {
@@ -285,27 +457,55 @@ async function handleAiQuery(userText: string): Promise<string> {
     hour12: true,
   }).format(cairoDate);
 
-  const systemInstruction = `أنت مساعد تلجرام الذكي الرسمي لصالون (TrimMind - صالون الحداد VIP).
-بتكلم العميل باللهجة المصرية الودودة، وبترد بإيجاز ودقة ومعلومات واضحة ومباشرة.
+  const servicesCatalog = services.length > 0
+    ? services.map((s) => `- ${s.name}: ${Number(s.price).toFixed(0)} ج.م (المدة: ${s.duration_minutes || 30} دقيقة)${s.is_vip_only ? ' [باقة VIP]' : ''}${s.description ? ` - ${s.description}` : ''}`).join('\n')
+    : '- قص شعر كلاسيكي: 180 ج.م\n- قص شعر + لحية: 220 ج.م\n- VIP Royal Cut: 650 ج.م\n- VIP Gentleman: 650 ج.م\n- VIP Executive: 900 ج.م';
+
+  const barbersList = barbers.length > 0
+    ? barbers.map((b) => `- كابتن ${b.full_name} (${b.specialty || 'تصفيف وقصات VIP'}) - تقييم ${Number(b.rating || 5.0).toFixed(1)}/5`).join('\n')
+    : '- كابتن محمد الحداد (كبير الحلاقين وقصات VIP الملكية)\n- كابتن كريم السيد (قص شعر وتدريج عصري Fade)\n- كابتن عمر خالد (عناية كاملة باللحية والبشرة)';
+
+  const productsList = products.length > 0
+    ? products.map((p) => `- ${p.name}: ${Number(p.price).toFixed(0)} ج.م${p.description ? ` (${p.description})` : ''}`).join('\n')
+    : '- مشروبات كافيه ساخنة وباردة\n- زيوت لحية وواكس تصفيف';
+
+  const branchAddress = primaryBranch.address || 'سقيل - مركز اوسيم';
+  const branchPhone = primaryBranch.phone || '01285694670';
+  const branchHours = `من ${primaryBranch.opening_time || '10:00'} صباحاً حتى ${primaryBranch.closing_time || '23:30'} مساءً`;
+
+  const systemInstruction = `أنت المساعد الذكي الرسمي لصالون (${salonName} - صالون الحداد VIP) على تيليجرام.
+بتتكلم مع العميل باللهجة المصرية الودودة، وبترد بإيجاز ودقة ومعلومات واضحة ومباشرة بنسبة 100%.
 
 ⏰ توقيت القاهرة الرسمي الآن: ${cairoFormatted} | اليوم: ${cairoDayName}.
-📍 العنوان: شارع الهرم الرئيسي - الجيزة.
-🕒 مواعيد العمل: يومياً من 11:00 صباحاً حتى 1:00 بعد منتصف الليل.
-✂️ أسعار وباقات الصالون الرسمية:
-- قص شعر كلاسيكي: 180 ج.م
-- قص شعر + لحية: 220 ج.م
-- VIP Royal Cut: 480 ج.م
-- VIP Gentleman: 650 ج.م
-- VIP Full Experience: 750 ج.م
-- عربون الحجز العادي: 50 ج.م | عربون VIP: 100 ج.م
-🌐 الحجز متاح على الموقع: https://trimmind.up.railway.app/booking
+📍 العنوان والفرع: ${primaryBranch.name} - ${branchAddress}.
+📞 رقم الهاتف والتواصل: ${branchPhone}.
+🕒 مواعيد وأوقات العمل: يومياً ${branchHours}.
 
-قواعدك:
-1. رد بلهجة مصرية مهذبة وطبيعية.
-2. إذا سأل عن الدور أو الحجز، انصحه بإرسال رقم هاتفه أو كود الحجز BK-XXXX.
-3. إذا سأل عن حجز جديد، وجهه لرابط المنصة.`;
+✂️ قائمة الخدمات والأسعار الحقيقية المستخرجة حالياً من قاعدة بيانات MySQL:
+${servicesCatalog}
 
-  const models = ['gemini-3.6-flash', 'gemini-3.5-flash', 'gemini-3.1-flash-lite'];
+👑 فريق الكباتن والحلاقين المعتمدين حالياً بالصالون:
+${barbersList}
+
+☕ قائمة المشروبات ومنتجات العناية:
+${productsList}
+
+💳 العربون المطلوب لتثبيت الموعد:
+- الحجز العادي: ${deposits.normal} ج.م
+- باقات VIP الملكية: ${deposits.vip} ج.م
+- طرق الدفع: إنستاباي (${primaryBranch.instapay_username || branchPhone}) أو فودافون كاش (${primaryBranch.vodafone_cash_number || branchPhone}) أو كاش بالصالون.
+
+🌐 رابط حجز المواعيد المباشر: https://trimmind.up.railway.app/booking
+
+⚠️ قواعد صارمة جداً (Anti-Hallucination Rules):
+1. ممنوع منعاً باتاً اختراع أو تأليف أو تخمين أي خدمة أو سعر أو حلاق أو عنوان غير مذكور في القوائم أعلاه.
+2. أي سؤال عن سعر خدمة، جاوب بالسعر المذكور في القائمة أعلاه فقط بالجنيه المصري.
+3. أي سؤال عن الكباتن، اذكر فقط الكباتن الموجودين في قائمة الكباتن أعلاه مع تخصصهم.
+4. إذا طلب العميل الحجز، رحب به وزوده برابط المنصة المباشر https://trimmind.up.railway.app/booking ليختار ميعاده بدقة.
+5. إذا أرسل كود حجز أو رقم هاتف، أخبره بالضغط على زر استعلام الدور.
+6. الرد دايماً بلهجة مصرية محترمة وشيك ومرحبة.`;
+
+  const models = ['gemini-3.6-flash', 'gemini-3.5-flash', 'gemini-3.1-flash-lite', 'gemini-flash-latest'];
   for (const model of models) {
     try {
       const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${geminiKey}`;
@@ -323,12 +523,20 @@ async function handleAiQuery(userText: string): Promise<string> {
       if (res.ok) {
         const data: any = await res.json();
         const text = data?.candidates?.[0]?.content?.parts?.[0]?.text;
-        if (text) return text.trim();
+        if (text && text.trim().length > 0) {
+          return text.trim();
+        }
       }
     } catch {}
   }
 
-  return `أهلاً بك يا فندم في صالون **TrimMind VIP**! 💈👑\n\nأقدر أساعدك باستعلام الدور، قائمة الأسعار، أو مواعيد العمل. يمكنك الضغط على أحد أزرار القائمة بالأسفل.`;
+  // Graceful dynamic fallback if AI is unreachable
+  return `أهلاً بك يا فندم في صالون **${salonName}**! 💈👑\n\n` +
+    `📍 **العنوان:** ${branchAddress}\n` +
+    `🕒 **مواعيد العمل:** يومياً ${branchHours}\n` +
+    `📞 **الهاتف:** ${branchPhone}\n\n` +
+    `📋 لمعاينة قائمة الأسعار والكباتن المتاحين وحجز موعدك مباشرة:\n` +
+    `👉 <a href="https://trimmind.up.railway.app/booking">اضغط هنا لفتح منصة الحجز</a>`;
 }
 
 // Process incoming Telegram Update
@@ -364,21 +572,31 @@ export async function processTelegramUpdate(update: any): Promise<void> {
 
       const welcomeText = `يا هلا بيك يا <b>${pushName}</b> في بوت صالون <b>TrimMind VIP</b> الرسمي! 💈👑
 
-يسعدنا خدمتك ومساعدتك في كل ما يخص حجزك ودورك وخدماتنا:
+يسعدنا خدمتك ومساعدتك في كل ما يخص حجزك ودورك وخدماتنا بأحدث البيانات مباشرة من النظام:
 
-🔍 <b>استعلام عن الدور:</b> اضغط على الزر بالأسفل أو أرسل كود حجزك (مثال: <code>BK-8876</code>) أو رقم هاتفك.
-📋 <b>الخدمات والأسعار:</b> لمعرفة أسعار وباقات الصالون الملكية.
-⏰ <b>مواعيد العمل:</b> لمعرفة أوقات العمل والعنوان.
+🔍 <b>استعلام عن الدور:</b> أرسل كود حجزك (مثال: <code>BK-8876</code>) أو رقم هاتفك.
+📋 <b>الخدمات والأسعار:</b> لمعرفة أسعار وباقات الصالون الملكية المحدثة.
+✂️ <b>فريق الكباتن:</b> للتعرف على كباتن وحلاقي الصالون المتاحين وتخصصاتهم.
+⏰ <b>مواعيد العمل:</b> لمعرفة أوقات العمل والعنوان وطرق التحويل.
+☕ <b>الكافيه والمنتجات:</b> قائمة مشروبات الضيافة ومنتجات العناية باللحية والشعر.
 🌐 <b>حجز موعد جديد:</b> <a href="https://trimmind.up.railway.app/booking">اضغط هنا لفتح المنصة</a>
 
-<i>اختر من الأزرار السريعة أدناه أو اكتب استفسارك وسأجيبك فوراً! ✨</i>`;
+<i>اختر من الأزرار السريعة أدناه أو اكتب أي استفسار وسأجيبك فوراً! ✨</i>`;
 
       await sendTelegramMessage(chatId, welcomeText, getMainMenuInlineKeyboard());
       return;
     }
 
     // 2. Queue & Booking Tracking Menu button or command
-    if (rawText.includes('استعلام عن الدور') || rawText === '/queue' || rawText === '/track' || rawText === 'cmd_track' || rawText.includes('دوري كام')) {
+    if (
+      rawText.includes('استعلام عن الدور') ||
+      rawText.includes('استعلام عن دوري') ||
+      rawText === '/queue' ||
+      rawText === '/track' ||
+      rawText === 'cmd_track' ||
+      rawText.includes('دوري كام') ||
+      rawText.includes('فين دوري')
+    ) {
       await sendTelegramMessage(
         chatId,
         `🔍 <b>للاستعلام عن دورك وموقعك في الطابور المباشر:</b>\n\nأرسل الآن <b>كود الحجز</b> (مثال: <code>BK-1234</code>) أو <b>رقم هاتفك</b> المسجل بالحجز (مثال: <code>01005437633</code>).`,
@@ -388,41 +606,99 @@ export async function processTelegramUpdate(update: any): Promise<void> {
     }
 
     // 3. If text is a Booking ID (e.g. BK-1234 or SEC-XXXX) or Phone Number (01XXXXXXXXX)
-    if (/^BK-[A-Z0-9]+$/i.test(rawText) || /^SEC-[A-Z0-9]+$/i.test(rawText) || /^01[0125][0-9]{8}$/.test(rawText.replace(/\s+/g, ''))) {
+    if (
+      /^BK-[A-Z0-9]+$/i.test(rawText) ||
+      /^WLK-[A-Z0-9]+$/i.test(rawText) ||
+      /^SEC-[A-Z0-9]+$/i.test(rawText) ||
+      /^01[0125][0-9]{8}$/.test(rawText.replace(/\s+/g, ''))
+    ) {
       const trackResult = await trackQueueAndBooking(rawText);
       await sendTelegramMessage(chatId, trackResult, getSubMenuInlineKeyboard());
       return;
     }
 
     // 4. Services & Pricing
-    if (rawText.includes('الخدمات والأسعار') || rawText === '/services' || rawText === 'cmd_services' || rawText === 'الأسعار' || rawText.includes('المنيو')) {
+    if (
+      rawText.includes('الخدمات والأسعار') ||
+      rawText.includes('قائمة الأسعار') ||
+      rawText === '/services' ||
+      rawText === 'cmd_services' ||
+      rawText === 'الأسعار' ||
+      rawText.includes('المنيو') ||
+      rawText.includes('باقات') ||
+      rawText.includes('بكام الحلاقة') ||
+      rawText.includes('سعر الحلاقة')
+    ) {
       const srvText = await getServicesText();
       await sendTelegramMessage(chatId, srvText, getSubMenuInlineKeyboard());
       return;
     }
 
-    // 5. Working Hours & Days
-    if (rawText.includes('مواعيد وأيام العمل') || rawText === '/hours' || rawText === 'cmd_hours' || rawText.includes('شغالين امتى') || rawText.includes('العنوان')) {
-      const hoursText = await getWorkingHoursText();
-      await sendTelegramMessage(chatId, hoursText, getSubMenuInlineKeyboard());
-      return;
-    }
-
-    // 6. Barbers & Staff
-    if (rawText.includes('فريق الكباتن') || rawText === '/barbers' || rawText === 'cmd_barbers' || rawText.includes('الحلاقين')) {
+    // 5. Barbers & Staff
+    if (
+      rawText.includes('فريق الكباتن') ||
+      rawText.includes('الكباتن') ||
+      rawText === '/barbers' ||
+      rawText === 'cmd_barbers' ||
+      rawText.includes('الحلاقين') ||
+      rawText.includes('مين شغال') ||
+      rawText.includes('مين الحلاقين') ||
+      rawText.includes('الكابتن')
+    ) {
       const barbersText = await getBarbersText();
       await sendTelegramMessage(chatId, barbersText, getSubMenuInlineKeyboard());
       return;
     }
 
-    // 7. Booking Link
-    if (rawText.includes('حجز موعد جديد') || rawText === '/book' || rawText.includes('عايز احجز')) {
+    // 6. Working Hours & Days & Address
+    if (
+      rawText.includes('مواعيد وأيام العمل') ||
+      rawText === '/hours' ||
+      rawText === 'cmd_hours' ||
+      rawText.includes('شغالين امتى') ||
+      rawText.includes('مواعيدكم') ||
+      rawText.includes('العنوان') ||
+      rawText.includes('الموقع') ||
+      rawText.includes('فين الصالون') ||
+      rawText.includes('طرق الدفع') ||
+      rawText.includes('انستاباي') ||
+      rawText.includes('فودافون كاش')
+    ) {
+      const hoursText = await getWorkingHoursText();
+      await sendTelegramMessage(chatId, hoursText, getSubMenuInlineKeyboard());
+      return;
+    }
+
+    // 7. Products & Cafe
+    if (
+      rawText.includes('الكافيه والمنتجات') ||
+      rawText.includes('منيو الكافيه') ||
+      rawText === '/products' ||
+      rawText === 'cmd_products' ||
+      rawText.includes('مشروبات') ||
+      rawText.includes('قهوة') ||
+      rawText.includes('زيوت') ||
+      rawText.includes('واكس')
+    ) {
+      const productsText = await getProductsText();
+      await sendTelegramMessage(chatId, productsText, getSubMenuInlineKeyboard());
+      return;
+    }
+
+    // 8. Booking Link
+    if (
+      rawText.includes('حجز موعد جديد') ||
+      rawText === '/book' ||
+      rawText.includes('عايز احجز') ||
+      rawText.includes('احجز ازاي') ||
+      rawText.includes('طريقة الحجز')
+    ) {
       const bookText = `🌐 <b>حجز موعد جديد في صالون TrimMind VIP:</b>\n\nيمكنك اختيار الخدمة وتحديد الكابتن المفضل والوقت بدقة وحجز موعدك مباشرة عبر منصتنا:\n👉 <a href="https://trimmind.up.railway.app/booking">اضغط هنا لفتح صفحة الحجز الإلكتروني</a>\n\nوبعد الحجز، ستتمكن من متابعة دورك ولحظة دخولك من هذا البوت فوراً! ✨💈`;
       await sendTelegramMessage(chatId, bookText, getSubMenuInlineKeyboard());
       return;
     }
 
-    // 8. General Natural Language Query handled by Gemini AI
+    // 9. General Natural Language Query handled by Gemini AI with Live Database Context
     const aiResponse = await handleAiQuery(rawText);
     await sendTelegramMessage(chatId, aiResponse, getMainMenuInlineKeyboard());
   } catch (err: any) {

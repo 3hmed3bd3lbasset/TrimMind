@@ -159,17 +159,13 @@ router.post('/chat', aiLimiter, optionalAuth, async (req: AuthenticatedRequest, 
 
     if (!liveServices || liveServices.length === 0) {
       liveServices = [
-        { name: 'قص شعر كلاسيكي (Classic Haircut)', price: 180, duration_minutes: 30 },
-        { name: 'VIP Royal Cut', price: 480, duration_minutes: 60 },
-        { name: 'VIP Gentleman', price: 650, duration_minutes: 90 },
-        { name: 'VIP Full Experience', price: 750, duration_minutes: 120 },
-        { name: 'VIP Executive', price: 900, duration_minutes: 130 },
-        { name: 'قص شعر + لحية', price: 220, duration_minutes: 40 },
-        { name: 'تحديد لحية', price: 100, duration_minutes: 30 },
-        { name: 'قص شعر أطفال', price: 120, duration_minutes: 40 },
-        { name: 'تدرج Fade', price: 180, duration_minutes: 35 },
-        { name: 'بروتين وترطيب شعر', price: 300, duration_minutes: 60 },
-        { name: 'تنظيف بشرة', price: 240, duration_minutes: 45 },
+        { name: 'قص شعر أطفال', price: 150, duration_minutes: 25, category: 'kids' },
+        { name: 'قص شعر كلاسيكي', price: 180, duration_minutes: 30, category: 'hair' },
+        { name: 'تدريج Fade عصري', price: 180, duration_minutes: 35, category: 'hair' },
+        { name: 'قص شعر + لحية', price: 220, duration_minutes: 40, category: 'hair' },
+        { name: 'VIP Royal Cut', price: 650, duration_minutes: 60, is_vip_only: 1, category: 'vip_package' },
+        { name: 'VIP Gentleman', price: 650, duration_minutes: 90, is_vip_only: 1, category: 'vip_package' },
+        { name: 'VIP Executive', price: 900, duration_minutes: 120, is_vip_only: 1, category: 'vip_package' },
       ];
     }
 
