@@ -14,7 +14,7 @@ export function validateBody(schema: ZodSchema) {
         }));
         return res.status(400).json({
           success: false,
-          error: 'بيانات غير صالحة',
+          error: error.errors[0]?.message || 'بيانات غير صالحة',
           details: errorDetails,
         });
       }
