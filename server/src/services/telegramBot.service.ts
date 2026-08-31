@@ -332,10 +332,10 @@ export async function trackQueueAndBooking(queryStr: string): Promise<string> {
   // 1. Search in MySQL
   try {
     const rows = await query<any[]>(
-      `SELECT * FROM bookings 
-       WHERE id = ? OR secure_token = ? OR customer_phone = ? OR customer_phone = ?
+      `SELECT id FROM bookings 
+       WHERE id = ? OR id LIKE ? OR secure_token = ? OR secure_token LIKE ? OR customer_phone = ? OR customer_phone LIKE ?
        ORDER BY created_at DESC LIMIT 1`,
-      [cleanQ, cleanQ, cleanPhone, cleanPhone.replace(/^0/, '20')]
+      [cleanQ, `%${cleanQ}%`, cleanQ, `%${cleanQ}%`, cleanPhone, `%${cleanPhone}%`]
     );
     if (rows && rows.length > 0) {
       match = await getBookingById(rows[0].id).catch(() => rows[0]);
@@ -349,10 +349,10 @@ export async function trackQueueAndBooking(queryStr: string): Promise<string> {
     const pBookings = getPersistentDb().bookings || [];
     match = pBookings.find(
       (b: any) =>
-        b.id?.toUpperCase() === cleanQ ||
-        b.bookingId?.toUpperCase() === cleanQ ||
-        b.secure_token?.toUpperCase() === cleanQ ||
-        normalizePhone(b.customer_phone || b.customerPhone) === cleanPhone
+        b.id?.toUpperCase().includes(cleanQ) ||
+        b.bookingId?.toUpperCase().includes(cleanQ) ||
+        b.secure_token?.toUpperCase().includes(cleanQ) ||
+        (b.customer_phone && normalizePhone(b.customer_phone).includes(cleanPhone))
     );
   }
 

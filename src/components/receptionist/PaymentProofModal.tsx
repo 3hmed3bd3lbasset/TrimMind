@@ -62,7 +62,18 @@ export const PaymentProofModal: React.FC<PaymentProofModalProps> = ({
 
   const isImageExpired = isReceiptImageExpired(proof);
   const remainingMinutes = getRemainingReceiptImageMinutes(proof);
-  const imageSrc = proof?.image_url || proof?.image_path || proof?.imageUrl || proof?.url;
+  const imageSrc =
+    proof?.image_path ||
+    proof?.image_url ||
+    proof?.imageUrl ||
+    proof?.url ||
+    (typeof rawProof === 'string' && (rawProof as string).startsWith('data:') ? (rawProof as string) : null);
+
+  const isPendingReview =
+    booking.status === 'pending_review' ||
+    booking.status === 'awaiting_payment' ||
+    proof?.status === 'pending_review' ||
+    !['confirmed', 'completed', 'cancelled', 'rejected', 'in_service', 'customer_arrived'].includes(booking.status);
 
   const handleApprove = async () => {
     reviewPaymentProof(booking.id, 'approved');
@@ -244,7 +255,7 @@ export const PaymentProofModal: React.FC<PaymentProofModalProps> = ({
             </div>
 
             {/* Actions for Reviewers */}
-            {proof?.status === 'pending_review' && (
+            {isPendingReview ? (
               <div className="space-y-3 pt-2">
                 {!showRejectForm ? (
                   <div className="flex gap-2">
@@ -292,6 +303,12 @@ export const PaymentProofModal: React.FC<PaymentProofModalProps> = ({
                     </div>
                   </div>
                 )}
+              </div>
+            ) : (
+              <div className="pt-2">
+                <div className="p-3 bg-emerald-50 rounded-xl border border-emerald-200 text-center text-xs text-forest font-bold">
+                  {booking.status === 'confirmed' ? '✓ تم اعتماد وتأكيد هذا الحجز مسبقاً' : `حالة الحجز الحالية: ${booking.status}`}
+                </div>
               </div>
             )}
           </div>

@@ -245,6 +245,17 @@ export async function ensureInitialDbData() {
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
     `);
 
+    // Auto-migrate tables to ensure LONGTEXT for proof images and capacity
+    try {
+      await query('ALTER TABLE payment_proofs MODIFY COLUMN image_path LONGTEXT');
+      await query('ALTER TABLE payment_proofs MODIFY COLUMN rejection_reason TEXT');
+      await query('ALTER TABLE bookings MODIFY COLUMN secure_token VARCHAR(100)');
+      await query('ALTER TABLE bookings MODIFY COLUMN customer_name VARCHAR(150)');
+      await query('ALTER TABLE bookings MODIFY COLUMN customer_phone VARCHAR(50)');
+    } catch (migErr: any) {
+      console.warn('DB Column capacity migration note:', migErr?.message);
+    }
+
     await query(`
       CREATE TABLE IF NOT EXISTS audit_logs (
         id VARCHAR(64) PRIMARY KEY,

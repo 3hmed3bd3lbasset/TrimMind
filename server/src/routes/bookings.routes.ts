@@ -38,9 +38,9 @@ router.get('/track', async (req, res: Response) => {
     try {
       const rows = await query<any[]>(
         `SELECT * FROM bookings 
-         WHERE id = ? OR customer_phone = ? OR secure_token = ?
-         ORDER BY created_at DESC LIMIT 5`,
-        [q, cleanPhone, q]
+         WHERE id = ? OR id LIKE ? OR customer_phone = ? OR customer_phone LIKE ? OR secure_token = ? OR secure_token LIKE ?
+         ORDER BY created_at DESC LIMIT 10`,
+        [q, `%${q}%`, cleanPhone, `%${cleanPhone}%`, q, `%${q}%`]
       );
       if (rows && rows.length > 0) {
         detailedBookings = await Promise.all(rows.map((b) => getBookingById(b.id)));
@@ -51,10 +51,10 @@ router.get('/track', async (req, res: Response) => {
     const persistentBookings = getPersistentDb().bookings || [];
     const pMatches = persistentBookings.filter(
       (b) =>
-        b.id?.toLowerCase() === cleanQuery ||
-        b.bookingId?.toLowerCase() === cleanQuery ||
+        b.id?.toLowerCase().includes(cleanQuery) ||
+        b.bookingId?.toLowerCase().includes(cleanQuery) ||
         (b.customer_phone && b.customer_phone.includes(cleanPhone)) ||
-        (b.secure_token && b.secure_token.toLowerCase() === cleanQuery)
+        (b.secure_token && b.secure_token.toLowerCase().includes(cleanQuery))
     );
 
     // 3. Search in liveSyncedBookings (in-memory created via WhatsApp)

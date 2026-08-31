@@ -458,16 +458,22 @@ export const useSalonStore = create<SalonStore>((set, get) => ({
               status: res.data.status || newBooking.status,
               queue_number: res.data.queue_number || newBooking.queue_number,
               secure_token: res.data.secure_token || newBooking.secure_token,
+              payment_proof: res.data.payment_proof || newBooking.payment_proof,
             };
 
             set((state) => ({
-              bookings: [serverBooking, ...state.bookings.filter((b) => b.id !== bookingId)],
+              bookings: [serverBooking, ...state.bookings.filter((b) => b.id !== bookingId && b.id !== serverBooking.id)],
             }));
 
             return serverBooking;
           }
         } catch (err: any) {
-          console.warn('Server booking sync note:', err?.message || err);
+          console.error('Server booking creation error:', err?.message || err);
+          // Rollback local optimistic state if server failed
+          set((state) => ({
+            bookings: state.bookings.filter((b) => b.id !== bookingId),
+          }));
+          throw err;
         }
 
         return newBooking;
