@@ -5,6 +5,7 @@ import { Navbar } from './components/common/Navbar';
 import { Footer } from './components/common/Footer';
 import { AIChatDrawer } from './components/common/AIChatDrawer';
 import { GlobalModalDialog } from './components/common/GlobalModalDialog';
+import { GlobalScrollReveal } from './components/common/GlobalScrollReveal';
 import { useSalonStore } from './lib/store';
 import { initRealtimeSync } from './lib/sync';
 import { api } from './lib/api';
@@ -198,6 +199,9 @@ function AppLayout() {
 
       {/* Global Luxury Confirmation / Alert Dialog */}
       <GlobalModalDialog />
+
+      {/* Global Scroll-Reveal Effect (Left-to-Right Flow on Scroll for non-admin pages) */}
+      <GlobalScrollReveal />
 
       {!isDisplayScreen && <Navbar />}
 
