@@ -3,7 +3,8 @@ import { useLocation } from 'react-router-dom';
 
 /**
  * Global Scroll Reveal Animation System
- * Smoothly animates elements, cards, images, and text from left to right as the user scrolls down.
+ * Smoothly animates inner cards, images, and text from left to right as the user scrolls down.
+ * Rock-solid layout: Never moves parent sections or the page container, preventing any horizontal shift.
  * Explicitly DISABLED for /manager (Admin Dashboard).
  */
 export const GlobalScrollReveal: React.FC = () => {
@@ -23,13 +24,10 @@ export const GlobalScrollReveal: React.FC = () => {
 
       const windowHeight = window.innerHeight;
 
-      // Select target elements across the page
+      // Select ONLY specific inner content elements (NEVER parent sections or full-width containers)
       const selectors = [
-        'section',
         '.clinic-card',
-        '.grid > div',
-        '.space-y-12 > div',
-        '.space-y-8 > div',
+        '.grid > *',
         'h1',
         'h2',
         'h3',
@@ -57,18 +55,20 @@ export const GlobalScrollReveal: React.FC = () => {
         },
         {
           root: null,
-          rootMargin: '0px 0px -40px 0px',
+          rootMargin: '0px 0px -30px 0px',
           threshold: 0.05,
         }
       );
 
-      elements.forEach((el, index) => {
-        // Skip elements inside modals, menus, notifications bell or drawer
+      elements.forEach((el) => {
+        // Skip elements inside modals, menus, notifications bell, navbar or full-width containers
         if (
           el.closest('.modal-container') ||
           el.closest('#ai-drawer') ||
           el.closest('#notification-bell') ||
-          el.closest('nav')
+          el.closest('nav') ||
+          el.tagName.toLowerCase() === 'section' ||
+          el.tagName.toLowerCase() === 'main'
         ) {
           return;
         }

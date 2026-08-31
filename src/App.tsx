@@ -159,7 +159,7 @@ function AppLayout() {
   }, [currentUser.id, currentUser.role]);
 
   return (
-    <div className="min-h-screen flex flex-col bg-paper text-ink font-sans relative selection:bg-forest selection:text-paper">
+    <div className="min-h-screen flex flex-col bg-paper text-ink font-sans relative selection:bg-forest selection:text-paper w-full max-w-full overflow-x-hidden">
       <Toaster
         position="top-center"
         toastOptions={{
@@ -205,7 +205,7 @@ function AppLayout() {
 
       {!isDisplayScreen && <Navbar />}
 
-      <main className="flex-1 relative z-10">
+      <main className="flex-1 relative z-10 w-full max-w-full overflow-x-hidden">
         <Routes>
           <Route path="/" element={<Landing />} />
           <Route path="/book" element={<BookingPage />} />
