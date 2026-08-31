@@ -1,4 +1,5 @@
 import { container } from '../container.js';
+import { query } from '../config/database.js';
 
 export function generateSecureToken(prefix = 'VIP'): string {
   const randomHex = Math.random().toString(36).substring(2, 8).toUpperCase();
@@ -6,6 +7,27 @@ export function generateSecureToken(prefix = 'VIP'): string {
 }
 
 export async function createBooking(payload: any, actor?: any, ipAddress?: string): Promise<any> {
+  // Check weekly off days from MySQL settings
+  if (payload.startsAt && payload.source !== 'walk_in') {
+    try {
+      const settingsRows = await query<any[]>('SELECT setting_value FROM settings WHERE setting_key = "general" LIMIT 1');
+      if (settingsRows && settingsRows.length > 0) {
+        const val = typeof settingsRows[0].setting_value === 'string' ? JSON.parse(settingsRows[0].setting_value) : settingsRows[0].setting_value;
+        const offDays: number[] = Array.isArray(val?.weekly_off_days) ? val.weekly_off_days : [1];
+        const bookingDate = new Date(payload.startsAt);
+        const dayOfWeek = bookingDate.getDay();
+        if (offDays.includes(dayOfWeek)) {
+          const daysMap: Record<number, string> = { 0: 'الأحد', 1: 'الإثنين', 2: 'الثلاثاء', 3: 'الأربعاء', 4: 'الخميس', 5: 'الجمعة', 6: 'السبت' };
+          throw new Error(`عفواً، يوم (${daysMap[dayOfWeek] || 'المحدد'}) إجازة رسمية للصالون، يرجى اختيار موعد في أيام العمل.`);
+        }
+      }
+    } catch (err: any) {
+      if (err.message && err.message.includes('إجازة رسمية')) {
+        throw err;
+      }
+    }
+  }
+
   const booking = await container.createBookingUseCase.execute({
     id: payload.id || payload.bookingId,
     branchId: payload.branchId || 'branch-elhdad',

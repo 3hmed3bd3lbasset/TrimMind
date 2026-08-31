@@ -10,6 +10,8 @@ import {
   FileText,
   CreditCard,
   Sparkles,
+  Calendar,
+  Ban,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 
@@ -33,6 +35,25 @@ export const SettingsManager: React.FC = () => {
   const [vodafoneNumber, setVodafoneNumber] = useState(settings.vodafone_cash_number || '');
   const [instapayUser, setInstapayUser] = useState(settings.instapay_username || '');
   const [bankInfo, setBankInfo] = useState(settings.bank_account_info || '');
+  const [offDays, setOffDays] = useState<number[]>(
+    Array.isArray(settings.weekly_off_days) ? settings.weekly_off_days : [1]
+  );
+
+  const DAYS_OF_WEEK = [
+    { id: 6, name: 'السبت' },
+    { id: 0, name: 'الأحد' },
+    { id: 1, name: 'الإثنين' },
+    { id: 2, name: 'الثلاثاء' },
+    { id: 3, name: 'الأربعاء' },
+    { id: 4, name: 'الخميس' },
+    { id: 5, name: 'الجمعة' },
+  ];
+
+  const toggleOffDay = (dayId: number) => {
+    setOffDays((prev) =>
+      prev.includes(dayId) ? prev.filter((d) => d !== dayId) : [...prev, dayId]
+    );
+  };
 
   const handleSave = (e: React.FormEvent) => {
     e.preventDefault();
@@ -53,8 +74,9 @@ export const SettingsManager: React.FC = () => {
       vodafone_cash_number: vodafoneNumber,
       instapay_username: instapayUser,
       bank_account_info: bankInfo,
+      weekly_off_days: offDays,
     });
-    toast.success('تم حفظ وتحديث إعدادات وبيانات الصالون وتقارير واستعادة العملاء بنجاح');
+    toast.success('تم حفظ وتحديث إعدادات الصالون وأيام الإجازة الأسبوعية بنجاح ✅');
   };
 
   return (
@@ -127,6 +149,62 @@ export const SettingsManager: React.FC = () => {
                 className="w-full bg-paper-warm border border-border focus:border-forest rounded-xl px-3 py-2.5 text-xs text-ink outline-none"
               />
             </div>
+          </div>
+
+          {/* Weekly Off-Days Vacation Section */}
+          <div className="clinic-card p-5 sm:p-6 shadow-clinic-2 bg-white/95 space-y-4 border-2 border-rose-500/20">
+            <div className="flex items-center justify-between border-b border-border pb-3">
+              <h4 className="font-serif font-bold text-ink text-sm flex items-center gap-2">
+                <Calendar className="w-4 h-4 text-rose-600" />
+                <span>أيام الإجازة والعطلة الأسبوعية للصالون (Salon Off-Days):</span>
+              </h4>
+              <span className="px-2.5 py-0.5 rounded-full bg-rose-100 text-rose-800 text-[10px] font-bold border border-rose-200">
+                {offDays.length === 0 ? 'الصالون يعمل طوال الأسبوع' : `${offDays.length} يوم إجازة`}
+              </span>
+            </div>
+
+            <p className="text-ink-mute text-[11px] leading-relaxed">
+              اضغط على أي يوم لجعله <strong className="text-rose-700 font-bold">إجازة رسمية</strong> للصالون. سيتم إغلاق استقبال الحجوزات في ذلك اليوم فوراً وإظهار كلمة <strong className="text-rose-700 font-bold">"إجازة"</strong> للعملاء في الروزنامة وتوجيههم لأقرب يوم عمل تالٍ.
+            </p>
+
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-1">
+              {DAYS_OF_WEEK.map((day) => {
+                const isOff = offDays.includes(day.id);
+                return (
+                  <button
+                    key={day.id}
+                    type="button"
+                    onClick={() => toggleOffDay(day.id)}
+                    className={`p-3 rounded-2xl border text-center transition-all duration-200 flex flex-col items-center justify-center gap-1.5 ${
+                      isOff
+                        ? 'bg-rose-50 border-2 border-rose-500 text-rose-900 shadow-sm ring-2 ring-rose-500/10'
+                        : 'bg-paper-warm/60 border-border text-ink-soft hover:bg-white hover:border-forest/40'
+                    }`}
+                  >
+                    <span className="font-serif font-bold text-xs sm:text-sm">{day.name}</span>
+                    <span
+                      className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${
+                        isOff
+                          ? 'bg-rose-600 text-white border-rose-600'
+                          : 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                      }`}
+                    >
+                      {isOff ? 'إجازة مغلق 🚫' : 'يوم عمل متاح ✓'}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+
+            {offDays.length > 0 && (
+              <div className="p-3 bg-rose-50/80 rounded-xl border border-rose-200/80 text-[11px] text-rose-800 flex items-start gap-2">
+                <Ban className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
+                <span>
+                  أيام الإجازة المغلقة حالياً:{' '}
+                  <strong>{offDays.map((d) => DAYS_OF_WEEK.find((dw) => dw.id === d)?.name).join('، ')}</strong>. لن يتمكن أي عميل من حجز موعد في هذه الأيام.
+                </span>
+              </div>
+            )}
           </div>
         </div>
 

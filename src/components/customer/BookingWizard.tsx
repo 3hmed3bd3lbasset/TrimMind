@@ -28,6 +28,7 @@ import {
   FileCheck,
   Plus,
   Minus,
+  Ban,
   Check,
   X,
   AlertTriangle,
@@ -115,9 +116,50 @@ export const BookingWizard: React.FC = () => {
   const [selectedServiceId, setSelectedServiceId] = useState<string>(services[0]?.id || '');
   const [additionalServiceIds, setAdditionalServiceIds] = useState<string[]>([]);
   const [barberId, setBarberId] = useState<string>(barbers[0]?.id || '');
-  const [selectedDate, setSelectedDate] = useState<string>(
-    new Date().toISOString().split('T')[0]
-  );
+  // Off-days helper functions (e.g. Monday = 1)
+  const isDateOffDay = (dateStr: string) => {
+    if (!dateStr) return false;
+    const parts = dateStr.split('-');
+    if (parts.length !== 3) return false;
+    const d = new Date(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2]));
+    const dayOfWeek = d.getDay(); // 0=Sun, 1=Mon, 2=Tue, 3=Wed, 4=Thu, 5=Fri, 6=Sat
+    const offDays = Array.isArray(settings?.weekly_off_days) ? settings.weekly_off_days : [1];
+    return offDays.includes(dayOfWeek);
+  };
+
+  const getDayFullName = (dateStr: string) => {
+    if (!dateStr) return '';
+    const parts = dateStr.split('-');
+    if (parts.length !== 3) return '';
+    const d = new Date(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2]));
+    return d.toLocaleDateString('ar-EG', { weekday: 'long' });
+  };
+
+  const findNextAvailableOpenDate = (fromIsoDate: string) => {
+    if (!fromIsoDate) return new Date().toISOString().split('T')[0];
+    const parts = fromIsoDate.split('-');
+    const cursor = new Date(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2]));
+    for (let i = 0; i < 14; i++) {
+      const year = cursor.getFullYear();
+      const month = String(cursor.getMonth() + 1).padStart(2, '0');
+      const day = String(cursor.getDate()).padStart(2, '0');
+      const iso = `${year}-${month}-${day}`;
+      if (!isDateOffDay(iso)) {
+        return iso;
+      }
+      cursor.setDate(cursor.getDate() + 1);
+    }
+    return fromIsoDate;
+  };
+
+  const [selectedDate, setSelectedDate] = useState<string>(() => {
+    const today = new Date();
+    const year = today.getFullYear();
+    const month = String(today.getMonth() + 1).padStart(2, '0');
+    const day = String(today.getDate()).padStart(2, '0');
+    const todayIso = `${year}-${month}-${day}`;
+    return todayIso;
+  });
   const [selectedTimeSlot, setSelectedTimeSlot] = useState<string>('15:30');
   const [selectedProducts, setSelectedProducts] = useState<{ [productId: string]: number }>({});
   const [customerName, setCustomerName] = useState<string>(
@@ -135,6 +177,14 @@ export const BookingWizard: React.FC = () => {
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
   const [confirmedBooking, setConfirmedBooking] = useState<Booking | null>(null);
   const [isVipPromptOpen, setIsVipPromptOpen] = useState<boolean>(false);
+
+  // Auto-snap to open day if currently selected date is an off-day
+  useEffect(() => {
+    if (isDateOffDay(selectedDate)) {
+      const nextOpen = findNextAvailableOpenDate(selectedDate);
+      setSelectedDate(nextOpen);
+    }
+  }, [settings?.weekly_off_days]);
 
   const effectiveBranchId = branchId || selectedBranchId || branches[0]?.id || 'branch-elhdad';
   const currentBranch = branches.find((b) => b.id === effectiveBranchId) || branches[0] || INITIAL_BRANCHES[0];
@@ -348,6 +398,12 @@ export const BookingWizard: React.FC = () => {
       return;
     }
     if (currentStep === 4) {
+      if (isDateOffDay(selectedDate)) {
+        const nextOpen = findNextAvailableOpenDate(selectedDate);
+        setSelectedDate(nextOpen);
+        toast.error(`عفواً، يوم (${getDayFullName(selectedDate)}) إجازة رسمية للصالون 💈 تم تحديد أقرب موعد متاح (${getDayFullName(nextOpen)})`);
+        return;
+      }
       if (!selectedTimeSlot) {
         toast.error('يرجى اختيار موعد الحجز');
         return;
@@ -676,9 +732,14 @@ export const BookingWizard: React.FC = () => {
             {[0, 1, 2, 3, 4, 5, 6].map((dayOffset) => {
               const dateObj = new Date();
               dateObj.setDate(dateObj.getDate() + dayOffset);
-              const isoStr = dateObj.toISOString().split('T')[0];
+              const year = dateObj.getFullYear();
+              const month = String(dateObj.getMonth() + 1).padStart(2, '0');
+              const day = String(dateObj.getDate()).padStart(2, '0');
+              const isoStr = `${year}-${month}-${day}`;
               const isSelected = selectedDate === isoStr;
+              const isOffDay = isDateOffDay(isoStr);
               const dayName = dateObj.toLocaleDateString('ar-EG', { weekday: 'short' });
+              const dayFullName = dateObj.toLocaleDateString('ar-EG', { weekday: 'long' });
               const dayNumber = dateObj.getDate();
               const monthName = dateObj.toLocaleDateString('ar-EG', { month: 'short' });
 
@@ -686,26 +747,86 @@ export const BookingWizard: React.FC = () => {
                 <button
                   key={isoStr}
                   type="button"
-                  onClick={() => setSelectedDate(isoStr)}
-                  className={`flex-1 min-w-[85px] py-4 px-3 rounded-2xl border text-center transition-all duration-200 ${
-                    isSelected
+                  onClick={() => {
+                    if (isOffDay) {
+                      const nextOpenIso = findNextAvailableOpenDate(isoStr);
+                      const nextOpenFullName = getDayFullName(nextOpenIso);
+                      toast(
+                        (t) => (
+                          <div className="flex flex-col gap-1 text-xs">
+                            <span className="font-bold text-rose-800 flex items-center gap-1.5">
+                              <span>🚫</span>
+                              <span>عفواً، يوم {dayFullName} إجازة رسمية للصالون</span>
+                            </span>
+                            <span className="text-ink-soft">
+                              تم تحديد أقرب موعد متاح لك: <strong>يوم {nextOpenFullName}</strong> ({nextOpenIso})
+                            </span>
+                          </div>
+                        ),
+                        {
+                          icon: '💈',
+                          duration: 4500,
+                          style: {
+                            border: '1.5px solid #fecdd3',
+                            background: '#fff1f2',
+                            borderRadius: '16px',
+                          },
+                        }
+                      );
+                      setSelectedDate(nextOpenIso);
+                    } else {
+                      setSelectedDate(isoStr);
+                    }
+                  }}
+                  className={`flex-1 min-w-[86px] py-3.5 px-2 rounded-2xl border text-center transition-all duration-200 relative overflow-hidden ${
+                    isOffDay
+                      ? 'bg-paper-warm/40 border-dashed border-rose-300/80 text-ink-mute/60 cursor-pointer hover:border-rose-400 hover:bg-rose-50/40'
+                      : isSelected
                       ? 'bg-[#1e3a2e] text-white border-[#1e3a2e] font-bold shadow-clinic-2 scale-105 ring-2 ring-[#1e3a2e]/30'
                       : 'bg-white/80 border-border text-ink-soft hover:bg-white hover:border-forest/40'
                   }`}
                 >
-                  <p className={`text-[11px] ${isSelected ? 'text-white/90 font-medium' : 'text-ink-mute'}`}>
+                  {isOffDay && (
+                    <div className="absolute top-1 left-0 right-0 flex justify-center">
+                      <span className="px-1.5 py-0.2 rounded-full bg-rose-600 text-white text-[9px] font-bold shadow-xs">
+                        إجازة
+                      </span>
+                    </div>
+                  )}
+
+                  <p className={`text-[11px] ${isOffDay ? 'text-rose-700/80 font-bold mt-2.5' : isSelected ? 'text-white/90 font-medium' : 'text-ink-mute'}`}>
                     {dayName}
                   </p>
-                  <p className={`text-xl font-serif font-bold my-0.5 ${isSelected ? 'text-white' : 'text-ink'}`}>
+                  <p className={`text-xl font-serif font-bold my-0.5 ${isOffDay ? 'line-through text-rose-400' : isSelected ? 'text-white' : 'text-ink'}`}>
                     {dayNumber}
                   </p>
-                  <p className={`text-[10px] ${isSelected ? 'text-white/90 font-medium' : 'text-ink-mute'}`}>
-                    {monthName}
+                  <p className={`text-[10px] ${isOffDay ? 'text-rose-600/80 font-bold' : isSelected ? 'text-white/90 font-medium' : 'text-ink-mute'}`}>
+                    {isOffDay ? 'مغلق 🚫' : monthName}
                   </p>
                 </button>
               );
             })}
           </div>
+
+          {/* Off-Day Alert Notice if an off day is active */}
+          {isDateOffDay(selectedDate) && (
+            <div className="bg-rose-50 border-2 border-rose-300 p-5 rounded-2xl text-center space-y-2.5 shadow-sm">
+              <div className="flex items-center justify-center gap-2 text-rose-800 font-bold text-sm sm:text-base">
+                <Ban className="w-5 h-5 text-rose-600 shrink-0" />
+                <span>عفواً، صالون TrimMind مغلق يوم ({getDayFullName(selectedDate)}) - إجازة أسبوعية رسمية</span>
+              </div>
+              <p className="text-xs text-rose-700 max-w-lg mx-auto leading-relaxed">
+                الحجز الإلكتروني غير متاح في أيام الإجازة. تم تحديد أقرب موعد متاح لك: <strong>يوم {getDayFullName(findNextAvailableOpenDate(selectedDate))}</strong> ({findNextAvailableOpenDate(selectedDate)}).
+              </p>
+              <button
+                type="button"
+                onClick={() => setSelectedDate(findNextAvailableOpenDate(selectedDate))}
+                className="mt-1 inline-flex items-center gap-1.5 px-4 py-2 rounded-full bg-rose-600 text-white font-bold text-xs hover:bg-rose-700 shadow-sm transition-colors"
+              >
+                <span>الانتقال لأقرب يوم عمل متاح ({getDayFullName(findNextAvailableOpenDate(selectedDate))})</span>
+              </button>
+            </div>
+          )}
 
           {/* Normal Mode: Smart Queue Card Assignment */}
           {bookingType === 'normal' ? (

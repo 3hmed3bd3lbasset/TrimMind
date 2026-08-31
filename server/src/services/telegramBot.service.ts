@@ -144,9 +144,10 @@ export async function getLiveSalonDatabaseContext() {
     console.warn('[TelegramBot] Error fetching products from DB:', err?.message);
   }
 
-  // 5. Fetch live Settings & Deposits
+  // 5. Fetch live Settings & Deposits & Off-Days
   let deposits = { normal: 50, vip: 100 };
   let salonName = 'صالون TrimMind VIP';
+  let offDays: number[] = [1];
   try {
     const settingsRows = await query<any[]>('SELECT setting_key, setting_value FROM settings');
     if (settingsRows && settingsRows.length > 0) {
@@ -158,6 +159,7 @@ export async function getLiveSalonDatabaseContext() {
           if (normVal !== undefined && normVal !== null) deposits.normal = Number(normVal);
           if (vipVal !== undefined && vipVal !== null) deposits.vip = Number(vipVal);
           if (val.salon_name) salonName = val.salon_name;
+          if (Array.isArray(val.weekly_off_days)) offDays = val.weekly_off_days;
         }
       }
     }
@@ -182,6 +184,7 @@ export async function getLiveSalonDatabaseContext() {
     products,
     deposits,
     salonName,
+    offDays,
     primaryBranch,
   };
 }
@@ -250,7 +253,7 @@ async function getBarbersText(): Promise<string> {
 
 // Fetch live Working Hours & Branches Text from MySQL DB
 async function getWorkingHoursText(): Promise<string> {
-  const { branches, primaryBranch } = await getLiveSalonDatabaseContext();
+  const { branches, primaryBranch, offDays } = await getLiveSalonDatabaseContext();
 
   const cairoDate = new Date();
   const cairoDayName = new Intl.DateTimeFormat('ar-EG', { timeZone: 'Africa/Cairo', weekday: 'long' }).format(cairoDate);
@@ -262,7 +265,13 @@ async function getWorkingHoursText(): Promise<string> {
     text += `📍 <b>الفرع:</b> ${b.name}\n`;
     text += `🏢 <b>العنوان:</b> ${b.address}\n`;
     text += `📞 <b>هاتف التواصل / واتساب:</b> <code>${b.phone}</code>\n`;
-    text += `🕒 <b>ساعات العمل:</b> يومياً من الساعة <b>${b.opening_time || '10:00'}</b> حتى <b>${b.closing_time || '23:30'}</b>\n\n`;
+    text += `🕒 <b>ساعات العمل:</b> من الساعة <b>${b.opening_time || '10:00'}</b> حتى <b>${b.closing_time || '23:30'}</b>\n\n`;
+  }
+
+  const daysMap: Record<number, string> = { 0: 'الأحد', 1: 'الإثنين', 2: 'الثلاثاء', 3: 'الأربعاء', 4: 'الخميس', 5: 'الجمعة', 6: 'السبت' };
+  const offDaysNames = offDays.map((d: number) => daysMap[d]).filter(Boolean).join('، ');
+  if (offDaysNames) {
+    text += `🚫 <b>أيام الإجازة والعطلة الأسبوعية:</b> يوم (<b>${offDaysNames}</b>) الصالون مغلق.\n\n`;
   }
 
   text += `💳 <b>طرق دفع وسداد العربون المتاحة:</b>\n`;

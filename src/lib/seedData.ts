@@ -250,6 +250,7 @@ export const INITIAL_SETTINGS: SalonSettings = {
   bank_account_info: '',
   manager_report_phone: '01285694670',
   recall_days_threshold: 40,
+  weekly_off_days: [1], // Monday is off by default
 };
 
 export const INITIAL_PROFILES: Profile[] = [
