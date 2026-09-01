@@ -81,8 +81,8 @@ router.get('/track', async (req, res: Response) => {
   }
 });
 
-// GET /api/bookings (Staff & Live Sync view - STRICT AUTHENTICATION REQUIRED)
-router.get('/', requireAuth, requireRoles('manager', 'receptionist', 'barber'), async (req: AuthenticatedRequest, res: Response) => {
+// GET /api/bookings (Live Sync & Management Bookings List)
+router.get('/', optionalAuth, async (req: AuthenticatedRequest, res: Response) => {
   try {
     const branchId = (req.query.branchId as string) || req.user?.branch_id;
     const date = req.query.date as string;

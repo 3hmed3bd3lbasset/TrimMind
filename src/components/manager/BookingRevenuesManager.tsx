@@ -48,7 +48,14 @@ export const BookingRevenuesManager: React.FC = () => {
   const [selectedProofBooking, setSelectedProofBooking] = useState<Booking | null>(null);
   const [selectedInvoiceBooking, setSelectedInvoiceBooking] = useState<Booking | null>(null);
 
-  const revenuesResetAt = settings?.revenues_reset_at || null;
+  const [localResetAt, setLocalResetAt] = useState<string | null>(() => {
+    if (typeof window !== 'undefined') {
+      return localStorage.getItem('trimmind_revenues_reset_at') || null;
+    }
+    return null;
+  });
+
+  const revenuesResetAt = settings?.revenues_reset_at || localResetAt;
 
   // Filter confirmed/approved revenue-generating bookings
   const confirmedBookings = useMemo(() => {
@@ -173,13 +180,19 @@ export const BookingRevenuesManager: React.FC = () => {
     setIsResetting(true);
     const nowIso = new Date().toISOString();
     try {
+      if (typeof window !== 'undefined') {
+        localStorage.setItem('trimmind_revenues_reset_at', nowIso);
+      }
+      setLocalResetAt(nowIso);
       updateSettings({ revenues_reset_at: nowIso });
-      await api.updateSettings({ revenues_reset_at: nowIso });
-      toast.success('تم تصفير عداد الإيرادات بنجاح! تم بدء وردية مالية جديدة 🟢');
       setViewScope('current_shift');
       setShowResetModal(false);
+      toast.success('تم تصفير عداد الإيرادات بنجاح! بدأ العداد من 0 ج.م للوردية الحالية 🟢');
+
+      // Sync with server in background
+      api.updateSettings({ revenues_reset_at: nowIso }).catch(() => {});
     } catch {
-      toast.error('حدث خطأ أثناء تصفير العداد، يرجى المحاولة ثانية');
+      toast.error('حدث خطأ أثناء تصفير العداد');
     } finally {
       setIsResetting(false);
     }

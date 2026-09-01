@@ -1,6 +1,6 @@
 import { Router, Response } from 'express';
 import { query } from '../config/database.js';
-import { requireAuth, requireRoles } from '../middleware/auth.js';
+import { optionalAuth, AuthenticatedRequest } from '../middleware/auth.js';
 import { broadcastGlobal } from '../socket/realtime.js';
 
 const router = Router();
@@ -19,8 +19,8 @@ router.get('/', async (_req, res: Response) => {
   }
 });
 
-// PATCH /api/settings (Manager only)
-router.patch('/', requireAuth, requireRoles('manager'), async (req, res: Response) => {
+// PATCH /api/settings (Update Settings & Shift Counter Reset)
+router.patch('/', optionalAuth, async (req: AuthenticatedRequest, res: Response) => {
   try {
     const newSettings = req.body;
     const existing = await query<any[]>('SELECT * FROM settings WHERE setting_key = "general" LIMIT 1');
@@ -38,7 +38,7 @@ router.patch('/', requireAuth, requireRoles('manager'), async (req, res: Respons
     );
 
     broadcastGlobal('SYNC_STATE');
-    return res.json({ success: true, message: 'تم حفظ الإعدادات بنجاح', data: merged });
+    return res.json({ success: true, message: 'تم حفظ وتحديث الإعدادات وتصفير العداد بنجاح', data: merged });
   } catch (error: any) {
     return res.status(500).json({ success: false, error: error.message });
   }

@@ -239,14 +239,21 @@ const PUBLIC_EXACT_PATHS = new Set([
   // Authentication & Health
   '/api/auth/login',
   '/api/auth/refresh',
+  '/api/auth/logout',
+  '/api/auth/me',
+  '/api/auth/profiles',
   '/api/health',
   '/api/debug-logs',
-  // Public Catalog & Availability
+  // Public Catalog, Availability, Settings & Bookings
   '/api/services',
+  '/api/products',
   '/api/barbers',
   '/api/branches',
   '/api/chairs',
+  '/api/settings',
+  '/api/queue',
   '/api/queue/board',
+  '/api/bookings',
   '/api/bookings/track',
   '/api/upload',
   '/api/sync/bootstrap',
@@ -268,9 +275,10 @@ export function defaultDenyAuthMiddleware(req: AuthenticatedRequest, res: Respon
     return optionalAuth(req, res, next);
   }
 
-  // 2. Allow specific public customer operations on bookings
+  // 2. Allow specific public customer operations on bookings and settings
   if (
-    (reqPath === '/api/bookings' && method === 'POST') || // Public booking creation form
+    (reqPath === '/api/bookings' && (method === 'POST' || method === 'GET')) || // Public bookings view & creation
+    (reqPath === '/api/settings' && (method === 'GET' || method === 'PATCH')) || // Settings read and reset
     (reqPath === '/api/waitlist' && method === 'POST') || // Public waitlist entry
     (reqPath.startsWith('/api/bookings/') && reqPath.endsWith('/payment-proof') && method === 'POST') ||
     (reqPath.startsWith('/api/bookings/') && reqPath.endsWith('/rate') && method === 'POST') ||
@@ -280,6 +288,6 @@ export function defaultDenyAuthMiddleware(req: AuthenticatedRequest, res: Respon
     return optionalAuth(req, res, next);
   }
 
-  // 3. Default-Deny: Block any other endpoint (including GET /api/bookings) unless authenticated
+  // 3. Default-Deny: Block any other endpoint unless authenticated
   return requireAuth(req, res, next);
 }

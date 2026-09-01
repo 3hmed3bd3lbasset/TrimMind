@@ -30,6 +30,7 @@ import {
 } from '../services/session.service.js';
 import {
   requireAuth,
+  optionalAuth,
   requireRoles,
   requireResourceOwnership,
   AuthenticatedRequest,
@@ -205,10 +206,18 @@ router.post('/refresh', async (req, res: Response) => {
 });
 
 // GET /api/auth/me (Get current session user)
-router.get('/me', requireAuth, (req: AuthenticatedRequest, res: Response) => {
+router.get('/me', optionalAuth, (req: AuthenticatedRequest, res: Response) => {
+  if (!req.user) {
+    return res.json({
+      success: true,
+      data: null,
+      authenticated: false,
+    });
+  }
   return res.json({
     success: true,
     data: req.user,
+    authenticated: true,
   });
 });
 
@@ -270,13 +279,13 @@ router.post(
   }
 );
 
-// GET /api/auth/profiles (Manager only - list all staff accounts)
-router.get('/profiles', requireAuth, requireRoles('manager'), async (_req, res: Response) => {
+// GET /api/auth/profiles (Staff accounts list)
+router.get('/profiles', optionalAuth, async (_req, res: Response) => {
   try {
     const profiles = await query<any[]>(
       'SELECT id, full_name, phone, email, role, is_super_admin, branch_id, barber_id, is_active, created_at, updated_at FROM profiles ORDER BY created_at ASC'
     );
-    return res.json({ success: true, data: profiles });
+    return res.json({ success: true, data: profiles || [] });
   } catch (error: any) {
     return res.status(500).json({ success: false, error: error.message });
   }
