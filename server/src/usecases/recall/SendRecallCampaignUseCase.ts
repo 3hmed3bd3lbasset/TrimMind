@@ -30,7 +30,9 @@ export class SendRecallCampaignUseCase {
       const barberName = c.last_barber || 'محمد الحداد';
       const serviceName = c.last_service || 'قص شعر وتصفيف كلاسيكي';
 
-      let msg = customMessageTemplate || `أهلاً يا [اسم العميل]! 💈✨\nوحشتنا في صالون TrimMind (الحداد VIP).. بقالك فترة ما شرفتناش من بعد آخر [الخدمة] مع كابتن [الكابتن]!\n\nجاهزين لك دائماً بأفضل تجربة عناية وحلاقة ملكية تليق بك 👑✂️\n\n👉 احجز موعدك القادم بضغطة واحدة من هنا:\nhttps://trimmind.up.railway.app\n\nنتشرف بزيارتك دائماً! ❤️`;
+      let msg =
+        customMessageTemplate ||
+        `أهلاً بك يا [اسم العميل]، وحشتنا في صالون الحداد. بقالك فترة ما شرفتناش من بعد آخر زيارة لخدمة [الخدمة] مع كابتن [الكابتن].\n\nجاهزين لك دائماً ومجهزين لك أفضل تجربة واهتمام يليق بحضرتك.\n\nتقدر تختار ميعادك القادم وخدمتك بكل سهولة من خلال موقعنا الرسمي:\nhttps://trimmind.up.railway.app/booking\n\nمستنيينك تنورنا ونتمنى لك يوم جميل ومميز ❤️`;
 
       msg = msg
         .replace(/\[اسم العميل\]/g, clientName)

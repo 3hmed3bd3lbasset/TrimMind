@@ -6,8 +6,18 @@ export async function findRecallCandidates(branchId: string, thresholdDays: numb
 }
 
 export function generateRecallMessage(customerName: string, lastBarber: string, lastService: string): string {
-  const name = customerName || 'عزيزنا العميل';
-  return `أهلاً يا ${name}! 💈✨\nوحشتنا في صالون TrimMind (الحداد VIP).. بقالك فترة ما شرفتناش من بعد آخر ${lastService} مع كابتن ${lastBarber}!\n\nجاهزين لك دائماً بأفضل تجربة عناية وحلاقة ملكية تليق بك 👑✂️\n\n👉 احجز موعدك القادم بضغطة واحدة من هنا:\nhttps://trimmind.up.railway.app\n\nنتشرف بزيارتك دائماً! ❤️`;
+  const name = (customerName || 'يا فندم').replace(/عميل واتساب|\(|\)|\d+/g, '').trim() || 'يا فندم';
+  const barberText = lastBarber ? ` مع كابتن ${lastBarber}` : '';
+  const serviceText = lastService ? ` لخدمة ${lastService}` : '';
+
+  return `أهلاً بك يا ${name}، وحشتنا في صالون الحداد. بقالك فترة ما شرفتناش من بعد آخر زيارة${serviceText}${barberText}.
+
+جاهزين لك دائماً ومجهزين لك أفضل تجربة واهتمام يليق بحضرتك.
+
+تقدر تختار ميعادك القادم وخدمتك بكل سهولة من خلال موقعنا الرسمي:
+https://trimmind.up.railway.app/booking
+
+مستنيينك تنورنا ونتمنى لك يوم جميل ومميز ❤️`;
 }
 
 export async function sendRecallCampaign(

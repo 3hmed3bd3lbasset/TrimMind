@@ -59,6 +59,7 @@ const state: WhatsAppState = {
 let sock: any = null;
 let isInitializing = false;
 let isSocketOpen = false;
+const lastRedirectSentMap = new Map<string, number>();
 
 // Global in-memory debug log buffer for live diagnostics
 const debugLogs: Array<{ time: string; type: string; data: any }> = [];
@@ -522,10 +523,30 @@ export async function initWhatsApp(): Promise<WhatsAppState> {
         }
 
         const pushName = msg.pushName || '';
+        const cleanName = pushName.replace(/عميل واتساب|\(|\)|\d+/g, '').trim();
+        const targetPhone = senderPhone || remoteJid;
 
-        // Automated Clean Redirection to Web Booking Platform & Telegram Bot
-        const redirectMessage = `أهلاً بك يا ${pushName || 'فندم'} في صالون TrimMind VIP 💈👑\n\nنحيطكم علماً بأن حجز المواعيد والاستعلام عن الدور والأسعار متاح بالكامل عبر منصتنا الإلكترونية وبوت التلجرام الرسمي:\n\n🌐 رابط الحجز المباشر: https://trimmind.up.railway.app/booking\n🤖 بوت التلجرام للاستعلام ومتابعة الدور: https://t.me/TrimMind_bot\n\nيسعدنا تشريفكم دائماً بأرقى مستوى خدمة ملكية! ✨`;
-        sendWhatsAppText(senderPhone || remoteJid, redirectMessage).catch(() => {});
+        // Rate-limiting redirect responses:
+        // If the customer already received the redirect message in the last 12 hours, ignore subsequent messages.
+        const now = Date.now();
+        const lastSent = lastRedirectSentMap.get(targetPhone) || 0;
+
+        if (now - lastSent > 12 * 60 * 60 * 1000) {
+          lastRedirectSentMap.set(targetPhone, now);
+
+          const redirectMessage = `أهلاً بك يا ${cleanName || 'فندم'} في صالون الحداد.
+
+حجز المواعيد واختيار كابتن الحلاقة ومعرفة الأسعار والخدمات متاح مباشرة وبكل سهولة من خلال موقعنا الرسمي:
+https://trimmind.up.railway.app/booking
+
+تقدر تحجز وتختار ميعادك المناسب في ثواني وتتابع دورك لحظة بلحظة.
+
+مستنيينك تنورنا ونتمنى لك تجربة راقية ومميزة ❤️`;
+
+          sendWhatsAppText(targetPhone, redirectMessage).catch(() => {});
+        } else {
+          logDebug('IGNORED_FOLLOWUP_MESSAGE_NO_CHAT', { targetPhone, text });
+        }
       }
     });
 
