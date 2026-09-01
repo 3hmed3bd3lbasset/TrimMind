@@ -13,11 +13,15 @@ interface ThermalInvoiceProps {
 
 export const ThermalInvoice: React.FC<ThermalInvoiceProps> = ({ booking, isOpen, onClose }) => {
   const { branches, barbers, services, settings } = useSalonStore();
+  const overlayRef = React.useRef<HTMLDivElement>(null);
 
   useBodyScrollLock(isOpen);
 
   useEffect(() => {
     if (!isOpen) return;
+    if (overlayRef.current) {
+      overlayRef.current.scrollTop = 0;
+    }
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') onClose();
     };
@@ -55,14 +59,15 @@ export const ThermalInvoice: React.FC<ThermalInvoiceProps> = ({ booking, isOpen,
 
   return (
     <div
-      className="modal-overlay font-sans"
+      ref={overlayRef}
+      className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/75 backdrop-blur-sm overflow-y-auto font-sans"
       onClick={(e) => {
         if (e.target === e.currentTarget) {
           onClose();
         }
       }}
     >
-      <div className="modal-container max-w-lg bg-white border border-border p-6 shadow-2xl space-y-6 rounded-3xl">
+      <div className="bg-white border border-border p-4 sm:p-6 shadow-2xl space-y-4 rounded-3xl max-w-md w-full my-auto max-h-[92dvh] overflow-y-auto animate-in fade-in zoom-in-95 duration-150 text-right">
         <div className="flex items-center justify-between border-b border-border pb-3">
           <div className="flex items-center gap-2">
             <Printer className="w-5 h-5 text-forest" />
@@ -79,7 +84,7 @@ export const ThermalInvoice: React.FC<ThermalInvoiceProps> = ({ booking, isOpen,
         {/* The Printable Thermal Receipt Body */}
         <div
           id="thermal-receipt"
-          className="bg-white text-neutral-900 font-mono p-5 rounded-xl shadow-inner max-w-xs mx-auto text-[12px] space-y-3 leading-tight border border-slate-300"
+          className="bg-white text-neutral-900 font-mono p-4 sm:p-5 rounded-2xl shadow-inner w-full mx-auto text-[12px] space-y-3 leading-tight border border-slate-300"
           dir="rtl"
         >
           {/* Header */}

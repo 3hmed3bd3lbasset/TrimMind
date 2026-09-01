@@ -226,6 +226,7 @@ body.modal-open {
   border-radius: var(--radius-lg);
   box-shadow: var(--shadow-3);
   max-height: min(92vh, 92dvh);
+  margin: auto;
   overflow-y: auto;
   overscroll-behavior: contain;
   -webkit-overflow-scrolling: touch;
