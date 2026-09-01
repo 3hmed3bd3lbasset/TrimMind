@@ -75,16 +75,7 @@ export const BarberManager: React.FC = () => {
     setIsUploading(true);
     const toastId = toast.loading('جاري معالجة وضبط الصورة بأعلى جودة...');
     try {
-      const reader = new FileReader();
-      reader.onload = (ev) => {
-        const result = ev.target?.result as string;
-        if (result) {
-          setPhotoUrl(result);
-        }
-      };
-      reader.readAsDataURL(file);
-
-      const hdPhotoData = await processHighQualityPhoto(file, 1600, 0.92).catch(() => null);
+      const hdPhotoData = await processHighQualityPhoto(file, 1200, 0.85);
       if (hdPhotoData) {
         setPhotoUrl(hdPhotoData);
       }
@@ -92,8 +83,21 @@ export const BarberManager: React.FC = () => {
       toast.success('تمت معالجة وضبط صورة الكابتن بنجاح ✨', { id: toastId });
     } catch (err) {
       console.error('Error processing high-res barber photo:', err);
-      setIsUploading(false);
-      toast.error('تعذر معالجة الصورة، يرجى المحاولة مرة أخرى', { id: toastId });
+      // Safe fallback
+      const reader = new FileReader();
+      reader.onload = (ev) => {
+        const result = ev.target?.result as string;
+        if (result) {
+          setPhotoUrl(result);
+        }
+        setIsUploading(false);
+        toast.success('تمت معالجة الصورة بنجاح', { id: toastId });
+      };
+      reader.onerror = () => {
+        setIsUploading(false);
+        toast.error('تعذر معالجة الصورة، يرجى المحاولة مرة أخرى', { id: toastId });
+      };
+      reader.readAsDataURL(file);
     }
   };
 

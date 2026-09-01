@@ -161,18 +161,29 @@ export function playCallChime() {
 
 /**
  * Automatically compress customer uploaded receipt images to lightweight high-quality format
+ * Handles any image size (from 1KB to 100MB+) using memory-efficient object URLs
  */
 export async function compressImage(file: File, maxWidth: number = 1200, quality: number = 0.75): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.readAsDataURL(file);
-    reader.onload = (event) => {
+  return new Promise((resolve) => {
+    if (!file) {
+      resolve('');
+      return;
+    }
+
+    try {
+      const objectUrl = URL.createObjectURL(file);
       const img = new Image();
-      img.src = event.target?.result as string;
+
       img.onload = () => {
+        URL.revokeObjectURL(objectUrl);
         const canvas = document.createElement('canvas');
-        let width = img.width;
-        let height = img.height;
+        let width = img.naturalWidth || img.width;
+        let height = img.naturalHeight || img.height;
+
+        if (width <= 0 || height <= 0) {
+          fallbackFileReader(file, resolve);
+          return;
+        }
 
         if (width > maxWidth) {
           height = Math.round((height * maxWidth) / width);
@@ -183,51 +194,74 @@ export async function compressImage(file: File, maxWidth: number = 1200, quality
         canvas.height = height;
         const ctx = canvas.getContext('2d');
         if (!ctx) {
-          resolve(event.target?.result as string);
+          fallbackFileReader(file, resolve);
           return;
         }
 
+        ctx.imageSmoothingEnabled = true;
+        ctx.imageSmoothingQuality = 'high';
+        ctx.fillStyle = '#ffffff';
+        ctx.fillRect(0, 0, width, height);
         ctx.drawImage(img, 0, 0, width, height);
-        const compressedDataUrl = canvas.toDataURL('image/jpeg', quality);
-        resolve(compressedDataUrl);
+
+        try {
+          const compressedDataUrl = canvas.toDataURL('image/jpeg', quality);
+          resolve(compressedDataUrl);
+        } catch {
+          fallbackFileReader(file, resolve);
+        }
       };
-      img.onerror = () => resolve(event.target?.result as string);
-    };
-    reader.onerror = (err) => reject(err);
+
+      img.onerror = () => {
+        URL.revokeObjectURL(objectUrl);
+        fallbackFileReader(file, resolve);
+      };
+
+      img.src = objectUrl;
+    } catch {
+      fallbackFileReader(file, resolve);
+    }
   });
 }
 
+function fallbackFileReader(file: File, resolve: (val: string) => void) {
+  try {
+    const reader = new FileReader();
+    reader.onload = (e) => resolve((e.target?.result as string) || '');
+    reader.onerror = () => resolve('');
+    reader.readAsDataURL(file);
+  } catch {
+    resolve('');
+  }
+}
+
 /**
- * High-Definition Image Processor: Handles any image size (from 1MB to 50MB+ camera shots)
+ * High-Definition Image Processor: Handles any image size (from 1KB to 100MB+ DSLR/Phone shots)
  * Produces ultra-crisp, high-definition portraits and photos with bicubic smoothing,
  * optimal contrast, and memory-safe storage for Barbers, Branches, and Services.
  */
 export async function processHighQualityPhoto(
   file: File,
-  maxDimension: number = 1600,
-  quality: number = 0.92
+  maxDimension: number = 1200,
+  quality: number = 0.85
 ): Promise<string> {
-  return new Promise((resolve, reject) => {
+  return new Promise((resolve) => {
     if (!file) {
-      reject(new Error('No file provided'));
+      resolve('');
       return;
     }
 
-    const reader = new FileReader();
-    reader.onload = (event) => {
-      const rawDataUrl = event.target?.result as string;
-      if (!rawDataUrl) {
-        reject(new Error('Failed to read image data'));
-        return;
-      }
-
+    try {
+      const objectUrl = URL.createObjectURL(file);
       const img = new Image();
+
       img.onload = () => {
+        URL.revokeObjectURL(objectUrl);
         let width = img.naturalWidth || img.width;
         let height = img.naturalHeight || img.height;
 
         if (width <= 0 || height <= 0) {
-          resolve(rawDataUrl);
+          fallbackFileReader(file, resolve);
           return;
         }
 
@@ -248,7 +282,7 @@ export async function processHighQualityPhoto(
         const ctx = canvas.getContext('2d', { alpha: false });
 
         if (!ctx) {
-          resolve(rawDataUrl);
+          fallbackFileReader(file, resolve);
           return;
         }
 
@@ -264,24 +298,31 @@ export async function processHighQualityPhoto(
         // Try modern WebP first with high quality, fallback to JPEG
         try {
           const webpData = canvas.toDataURL('image/webp', quality);
-          if (webpData && webpData.startsWith('data:image/webp')) {
+          if (webpData && webpData.startsWith('data:image/webp') && webpData.length > 50) {
             resolve(webpData);
             return;
           }
-        } catch (e) {
-          // ignore
+        } catch {
+          // fallback to jpeg
         }
 
-        const jpegData = canvas.toDataURL('image/jpeg', quality);
-        resolve(jpegData);
+        try {
+          const jpegData = canvas.toDataURL('image/jpeg', quality);
+          resolve(jpegData);
+        } catch {
+          fallbackFileReader(file, resolve);
+        }
       };
 
-      img.onerror = () => resolve(rawDataUrl);
-      img.src = rawDataUrl;
-    };
+      img.onerror = () => {
+        URL.revokeObjectURL(objectUrl);
+        fallbackFileReader(file, resolve);
+      };
 
-    reader.onerror = (err) => reject(err);
-    reader.readAsDataURL(file);
+      img.src = objectUrl;
+    } catch {
+      fallbackFileReader(file, resolve);
+    }
   });
 }
 

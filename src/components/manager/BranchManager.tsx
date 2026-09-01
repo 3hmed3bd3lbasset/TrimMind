@@ -81,14 +81,26 @@ export const BranchManager: React.FC = () => {
     setIsUploading(true);
     const toastId = toast.loading('جاري معالجة وضبط صورة الفرع بأعلى جودة (HD)...');
     try {
-      const hdBranchData = await processHighQualityPhoto(file, 1800, 0.92);
-      setImageUrl(hdBranchData);
+      const hdBranchData = await processHighQualityPhoto(file, 1200, 0.85);
+      if (hdBranchData) {
+        setImageUrl(hdBranchData);
+      }
       setIsUploading(false);
       toast.success('تم تحميل وتعيين صورة الفرع بدقة HD بنجاح ✨', { id: toastId });
     } catch (err) {
       console.error('Error processing high-res branch image:', err);
-      setIsUploading(false);
-      toast.error('تعذر معالجة الصورة، يرجى المحاولة مجدداً', { id: toastId });
+      const reader = new FileReader();
+      reader.onload = (ev) => {
+        const result = ev.target?.result as string;
+        if (result) setImageUrl(result);
+        setIsUploading(false);
+        toast.success('تم تحميل الصورة بنجاح', { id: toastId });
+      };
+      reader.onerror = () => {
+        setIsUploading(false);
+        toast.error('تعذر معالجة الصورة، يرجى المحاولة مجدداً', { id: toastId });
+      };
+      reader.readAsDataURL(file);
     }
   };
 
