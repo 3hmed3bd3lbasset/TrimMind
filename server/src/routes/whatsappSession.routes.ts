@@ -38,9 +38,6 @@ function requireManagerOrAgent(req: Request, res: Response, next: any) {
   });
 }
 
-// Protect all session routes with manager or agent credentials
-router.use(requireManagerOrAgent);
-
 // 1. Get WhatsApp status
 router.get('/status', async (_req: Request, res: Response) => {
   let state = getWhatsAppState();
