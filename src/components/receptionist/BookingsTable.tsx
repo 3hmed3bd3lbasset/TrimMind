@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useSalonStore } from '../../lib/store';
 import { useBodyScrollLock } from '../../lib/useBodyScrollLock';
 import { Booking, BookingStatus } from '../../types';
@@ -24,6 +24,7 @@ import {
   Bot,
   UserCheck,
   ShieldAlert,
+  Calendar,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { PaymentProofModal } from './PaymentProofModal';
@@ -41,7 +42,38 @@ export const BookingsTable: React.FC<BookingsTableProps> = ({ branchId }) => {
     useSalonStore();
   const [filterStatus, setFilterStatus] = useState<string>('all');
   const [filterSource, setFilterSource] = useState<'all' | 'whatsapp' | 'custom_pricing' | 'web'>('all');
+  const [filterDate, setFilterDate] = useState<string>('all');
   const [searchQuery, setSearchQuery] = useState('');
+
+  const weekDays = useMemo(() => {
+    const days = [];
+    const today = new Date();
+    const arabicDays = ['الأحد', 'الإثنين', 'الثلاثاء', 'الأربعاء', 'الخميس', 'الجمعة', 'السبت'];
+    const arabicMonths = ['يناير', 'فبراير', 'مارس', 'أبريل', 'مايو', 'يونيو', 'يوليو', 'أغسطس', 'سبتمبر', 'أكتوبر', 'نوفمبر', 'ديسمبر'];
+
+    for (let i = 0; i < 7; i++) {
+      const date = new Date(today);
+      date.setDate(today.getDate() + i);
+
+      const year = date.getFullYear();
+      const month = String(date.getMonth() + 1).padStart(2, '0');
+      const day = String(date.getDate()).padStart(2, '0');
+      const dateStr = `${year}-${month}-${day}`;
+
+      const dayName = i === 0 ? 'اليوم' : arabicDays[date.getDay()];
+      const subLabel = `${arabicDays[date.getDay()]} ${date.getDate()} ${arabicMonths[date.getMonth()]}`;
+
+      days.push({
+        dateStr,
+        dayName,
+        subLabel,
+        fullDayName: arabicDays[date.getDay()],
+        dayNum: date.getDate(),
+        isToday: i === 0,
+      });
+    }
+    return days;
+  }, []);
 
   // Modals state
   const [selectedProofBooking, setSelectedProofBooking] = useState<Booking | null>(null);
@@ -100,12 +132,18 @@ export const BookingsTable: React.FC<BookingsTableProps> = ({ branchId }) => {
           ? b.status === 'custom_pricing_requested' || Boolean((b as any).custom_line_items?.length)
           : b.source !== 'whatsapp' && !b.ai_brief;
 
+      const bookingDate = (b as any).booking_date || (b.starts_at ? b.starts_at.slice(0, 10) : '');
+      const matchesDate =
+        filterDate === 'all'
+          ? true
+          : (bookingDate === filterDate || (b.starts_at && b.starts_at.startsWith(filterDate)));
+
       const matchesSearch =
         b.id.toLowerCase().includes(searchQuery.toLowerCase()) ||
         (b.customer_name || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
         (b.customer_phone || '').includes(searchQuery);
 
-      return matchesStatus && matchesSource && matchesSearch;
+      return matchesStatus && matchesSource && matchesDate && matchesSearch;
     })
     .sort((a, b) => {
       const timeA = new Date(a.created_at || a.starts_at || 0).getTime();
@@ -191,6 +229,51 @@ export const BookingsTable: React.FC<BookingsTableProps> = ({ branchId }) => {
               </button>
             )
           )}
+        </div>
+      </div>
+
+      {/* Week Days Filter Bar */}
+      <div className="clinic-card p-3 sm:p-4 bg-white/90 shadow-clinic-1 space-y-2">
+        <div className="flex items-center justify-between">
+          <span className="text-xs font-bold text-ink-soft flex items-center gap-1.5">
+            <Calendar className="w-4 h-4 text-forest" />
+            <span>عرض حجوزات الأيام:</span>
+          </span>
+          <button
+            onClick={() => setFilterDate('all')}
+            className={`px-3 py-1 rounded-full text-xs font-bold transition-all cursor-pointer ${
+              filterDate === 'all'
+                ? 'bg-forest text-paper shadow-sm'
+                : 'bg-paper-warm text-ink-soft hover:bg-white border border-border'
+            }`}
+          >
+            جميع الحجوزات ({branchBookings.length})
+          </button>
+        </div>
+        <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar pb-1 text-xs">
+          {weekDays.map((day: any) => {
+            const isSelected = filterDate === day.dateStr;
+            const count = branchBookings.filter(
+              (b) => ((b as any).booking_date === day.dateStr || (b.starts_at && b.starts_at.startsWith(day.dateStr)))
+            ).length;
+
+            return (
+              <button
+                key={day.dateStr}
+                onClick={() => setFilterDate(day.dateStr)}
+                className={`px-3.5 py-1.5 rounded-xl font-bold whitespace-nowrap transition-all text-xs flex items-center gap-1.5 cursor-pointer ${
+                  isSelected
+                    ? 'bg-forest text-paper shadow-clinic-1 scale-[1.02]'
+                    : 'bg-paper-warm text-ink-soft hover:bg-white border border-border/80'
+                }`}
+              >
+                <span>{day.dayName}</span>
+                <span className={`text-[10px] font-mono px-1.5 py-0.5 rounded-full ${isSelected ? 'bg-white/20 text-white' : 'bg-forest/10 text-forest font-bold'}`}>
+                  {count}
+                </span>
+              </button>
+            );
+          })}
         </div>
       </div>
 
