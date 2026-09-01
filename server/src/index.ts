@@ -114,7 +114,7 @@ app.use('/api/upload', uploadRoutes);
 app.use('/api/audit-logs', auditRoutes);
 app.use('/api/ai', aiRoutes);
 app.use('/api/agent-tools', agentToolsRoutes);
-app.use('/api/whatsapp', agentToolsRoutes);
+app.use('/api/whatsapp', whatsappSessionRoutes);
 app.use('/api/whatsapp-session', whatsappSessionRoutes);
 app.use('/api/waitlist', waitlistRoutes);
 app.use('/api/recall', recallRoutes);
