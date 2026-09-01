@@ -185,4 +185,10 @@ export const api = {
       headers: { 'Content-Type': 'multipart/form-data' },
     });
   },
+
+  // WhatsApp Session Management
+  getWhatsAppStatus: () => apiClient.get('/whatsapp-session/status'),
+  getWhatsAppQR: (force = false) => apiClient.post('/whatsapp-session/get-qr', { force }),
+  pairWhatsAppPhone: (phone: string) => apiClient.post('/whatsapp-session/pair', { phone }),
+  resetWhatsAppSession: () => apiClient.post('/whatsapp-session/reset'),
 };

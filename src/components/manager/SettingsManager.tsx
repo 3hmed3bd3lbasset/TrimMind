@@ -12,6 +12,8 @@ import {
   Sparkles,
   Calendar,
   Ban,
+  Smartphone,
+  QrCode,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 
@@ -236,6 +238,27 @@ export const SettingsManager: React.FC = () => {
                   className="w-full bg-paper-warm border border-border focus:border-forest rounded-xl px-3 py-2.5 text-xs text-ink outline-none font-mono"
                 />
               </div>
+            </div>
+
+            <div className="p-3 bg-forest/5 rounded-xl border border-forest/20 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+              <div className="flex items-center gap-2">
+                <Smartphone className="w-4 h-4 text-forest shrink-0" />
+                <div>
+                  <div className="text-[11px] font-bold text-ink">ربط رقم الواتساب بالمنظومة (QR Code)</div>
+                  <div className="text-[10px] text-ink-mute">توليد رمز QR ومسحه لربط أي رقم هاتف بدون قيود</div>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  sessionStorage.setItem('manager_active_tab', 'whatsapp_connect');
+                  window.location.reload();
+                }}
+                className="btn-clinic-primary text-[11px] font-bold px-3.5 py-1.5 flex items-center gap-1.5 shrink-0"
+              >
+                <QrCode className="w-3.5 h-3.5" />
+                <span>إدارة وربط الـ QR الآن</span>
+              </button>
             </div>
           </div>
 

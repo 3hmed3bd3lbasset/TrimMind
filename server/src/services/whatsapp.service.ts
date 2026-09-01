@@ -44,6 +44,7 @@ interface WhatsAppState {
   qrCodeRaw: string | null;
   pairingCode: string | null;
   phoneNumber: string | null;
+  phone?: string | null;
   lastConnectedAt: string | null;
 }
 
@@ -52,7 +53,7 @@ const state: WhatsAppState = {
   qrCodeDataUrl: null,
   qrCodeRaw: null,
   pairingCode: null,
-  phoneNumber: '201005437633',
+  phoneNumber: null,
   lastConnectedAt: null,
 };
 
@@ -438,7 +439,37 @@ export async function initWhatsApp(): Promise<WhatsAppState> {
         state.pairingCode = null;
         state.lastConnectedAt = new Date().toISOString();
         isInitializing = false;
-        logDebug('CONNECTION_OPEN_SUCCESS', { user: sock?.user });
+
+        let connectedPhone = '';
+        if (sock?.user?.id) {
+          const rawId = sock.user.id.split(':')[0].replace(/[^0-9]/g, '');
+          if (rawId.startsWith('20') && rawId.length === 12) {
+            connectedPhone = '0' + rawId.substring(2);
+          } else {
+            connectedPhone = rawId;
+          }
+          state.phoneNumber = connectedPhone;
+          state.phone = connectedPhone;
+        }
+
+        logDebug('CONNECTION_OPEN_SUCCESS', { user: sock?.user, connectedPhone });
+
+        try {
+          if (connectedPhone) {
+            query(
+              `INSERT INTO settings (setting_key, setting_value, updated_at) 
+               VALUES ('whatsapp_session_info', ?, NOW()) 
+               ON DUPLICATE KEY UPDATE setting_value = VALUES(setting_value), updated_at = NOW()`,
+              [JSON.stringify({ phone: connectedPhone, connected_at: state.lastConnectedAt, status: 'connected' })]
+            ).catch(() => {});
+          }
+        } catch {}
+
+        broadcastGlobal('WHATSAPP_STATUS_CHANGED', {
+          status: 'connected',
+          phone: connectedPhone,
+          connectedAt: state.lastConnectedAt,
+        });
       }
     });
 

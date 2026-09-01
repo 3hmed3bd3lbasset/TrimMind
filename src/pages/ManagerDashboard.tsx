@@ -16,6 +16,7 @@ import { AIInsightsPanel } from '../components/manager/AIInsightsPanel';
 import { CustomerRecallManager } from '../components/manager/CustomerRecallManager';
 import { WaitlistManager } from '../components/manager/WaitlistManager';
 import { WhatsAppROIAnalytics } from '../components/manager/WhatsAppROIAnalytics';
+import { WhatsAppConnectionManager } from '../components/manager/WhatsAppConnectionManager';
 import { NotificationBell } from '../components/common/NotificationBell';
 import {
   Shield,
@@ -40,6 +41,8 @@ import {
   ArrowRight,
   MessageSquare,
   Send,
+  Smartphone,
+  QrCode,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 
@@ -47,6 +50,7 @@ export default function ManagerDashboard() {
   const { currentUser, branches } = useSalonStore();
   const [activeTab, setActiveTab] = useState<
     | 'analytics'
+    | 'whatsapp_connect'
     | 'whatsapp_roi'
     | 'insights'
     | 'recall'
@@ -197,6 +201,13 @@ export default function ManagerDashboard() {
       desc: 'المشروبات ومنتجات العناية باللحية',
       icon: Coffee,
       category: 'الخدمات والمنتجات',
+    },
+    {
+      id: 'whatsapp_connect',
+      label: 'ربط رقم الواتساب (WhatsApp QR)',
+      desc: 'ربط وإلغاء ربط أرقام الواتساب، توليد رمز QR، وفحص حالة الاتصال الحية',
+      icon: Smartphone,
+      category: 'إعدادات المنظومة',
     },
     {
       id: 'settings',
@@ -482,6 +493,7 @@ export default function ManagerDashboard() {
         {activeTab === 'chairs' && <ChairManager />}
         {activeTab === 'services' && <ServiceManager />}
         {activeTab === 'products' && <ProductManager />}
+        {activeTab === 'whatsapp_connect' && <WhatsAppConnectionManager />}
         {activeTab === 'settings' && <SettingsManager />}
         {activeTab === 'managers' && isSuperAdmin && <ManagersManager />}
         {activeTab === 'audit' && <AuditLogViewer />}
