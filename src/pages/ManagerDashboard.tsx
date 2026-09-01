@@ -79,6 +79,8 @@ export default function ManagerDashboard() {
   useEffect(() => {
     let isMounted = true;
     const fetchLatestDbData = async () => {
+      const user = useSalonStore.getState().currentUser;
+      if (!user) return;
       try {
         const [bookingsRes, profilesRes] = await Promise.allSettled([
           api.getBookings(),
@@ -100,13 +102,13 @@ export default function ManagerDashboard() {
         ) {
           useSalonStore.setState({ profiles: (profilesRes.value as any).data });
         }
-      } catch (err) {
-        console.warn('ManagerDashboard DB sync note:', err);
+      } catch {
+        // Silent
       }
     };
 
     fetchLatestDbData();
-    const interval = setInterval(fetchLatestDbData, 15000);
+    const interval = setInterval(fetchLatestDbData, 20000);
     return () => {
       isMounted = false;
       clearInterval(interval);

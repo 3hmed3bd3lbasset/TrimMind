@@ -203,15 +203,15 @@ export const WhatsAppConnectionManager: React.FC = () => {
               </div>
 
               <div className="mt-1 text-[11px] text-ink-mute flex flex-wrap items-center gap-x-4 gap-y-1">
-                {phoneNumber && (
-                  <span className="font-mono font-bold text-ink-soft bg-paper-warm px-2 py-0.5 rounded-md border border-border">
+                {isConnected && phoneNumber && (
+                  <span className="font-mono font-bold text-emerald-800 bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-200">
                     رقم الهاتف: {phoneNumber}
                   </span>
                 )}
-                {lastConnectedAt && (
+                {isConnected && lastConnectedAt && (
                   <span className="flex items-center gap-1">
                     <Clock className="w-3 h-3 text-forest" />
-                    <span>تاريخ آخر اتصال: {new Date(lastConnectedAt).toLocaleString('ar-EG')}</span>
+                    <span>تاريخ الربط: {new Date(lastConnectedAt).toLocaleString('ar-EG')}</span>
                   </span>
                 )}
               </div>
@@ -381,19 +381,19 @@ export const WhatsAppConnectionManager: React.FC = () => {
             <div className="space-y-4">
               <div className="space-y-1">
                 <label className="font-bold text-ink-soft">أدخل رقم هاتف الواتساب المطلوب ربطه:</label>
-                <div className="flex items-center gap-2">
+                <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5 w-full">
                   <input
                     type="text"
                     value={inputPhone}
                     onChange={(e) => setInputPhone(e.target.value)}
                     placeholder="مثال: 01005437633"
                     dir="ltr"
-                    className="flex-1 bg-paper-warm border border-border focus:border-forest rounded-xl px-3 py-2.5 text-xs text-ink font-mono outline-none text-left"
+                    className="w-full sm:flex-1 bg-paper-warm border border-border focus:border-forest rounded-xl px-3.5 py-2.5 text-xs text-ink font-mono outline-none text-left"
                   />
                   <button
                     onClick={handleGeneratePairingCode}
                     disabled={loading}
-                    className="btn-clinic-primary text-xs font-bold shadow-clinic-1 px-4 py-2.5 flex items-center gap-1.5 shrink-0"
+                    className="btn-clinic-primary text-xs font-bold shadow-clinic-1 px-5 py-2.5 flex items-center justify-center gap-1.5 shrink-0 w-full sm:w-auto"
                   >
                     {loading ? <RefreshCw className="w-4 h-4 animate-spin" /> : <KeyRound className="w-4 h-4" />}
                     <span>توليد كود الربط</span>

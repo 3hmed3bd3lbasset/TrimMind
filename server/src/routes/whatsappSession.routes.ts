@@ -40,11 +40,7 @@ function requireManagerOrAgent(req: Request, res: Response, next: any) {
 
 // 1. Get WhatsApp status
 router.get('/status', async (_req: Request, res: Response) => {
-  let state = getWhatsAppState();
-  if (state.status === 'disconnected') {
-    initWhatsApp();
-    state = getWhatsAppState();
-  }
+  const state = getWhatsAppState();
   res.json({
     success: true,
     data: state,

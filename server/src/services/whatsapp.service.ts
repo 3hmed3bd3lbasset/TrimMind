@@ -354,7 +354,22 @@ export async function generatePairingCode(phoneNumber: string = '01005437633'): 
   throw new Error('جاري تجهيز السيرفر، اضغط على زر التوليد مرة أخرى.');
 }
 
+let reconnectTimer: any = null;
+
+function scheduleReconnect(delayMs: number) {
+  if (reconnectTimer) clearTimeout(reconnectTimer);
+  reconnectTimer = setTimeout(() => {
+    reconnectTimer = null;
+    initWhatsApp();
+  }, delayMs);
+}
+
 export async function initWhatsApp(): Promise<WhatsAppState> {
+  if (reconnectTimer) {
+    clearTimeout(reconnectTimer);
+    reconnectTimer = null;
+  }
+
   if (isInitializing) {
     return getWhatsAppState();
   }
@@ -365,6 +380,7 @@ export async function initWhatsApp(): Promise<WhatsAppState> {
 
   if (sock) {
     try {
+      sock.ev?.removeAllListeners();
       sock.ws?.close();
       sock.end(undefined);
     } catch {}
@@ -422,15 +438,10 @@ export async function initWhatsApp(): Promise<WhatsAppState> {
 
         if (isLoggedOut) {
           logDebug('LOGGED_OUT_WIPING_STALE_CREDS', { statusCode, authDir: AUTH_DIR });
-          try {
-            if (fs.existsSync(AUTH_DIR)) {
-              fs.rmSync(AUTH_DIR, { recursive: true, force: true });
-              fs.mkdirSync(AUTH_DIR, { recursive: true });
-            }
-          } catch {}
-          setTimeout(() => initWhatsApp(), 1500);
-        } else {
-          setTimeout(() => initWhatsApp(), 4000);
+          wipeAuthDir();
+          scheduleReconnect(2000);
+        } else if (statusCode !== 440) {
+          scheduleReconnect(5000);
         }
       } else if (connection === 'open') {
         isSocketOpen = true;
