@@ -131,16 +131,25 @@ export const PaymentProofModal: React.FC<PaymentProofModalProps> = ({
     onClose();
   };
 
+  const overlayRef = React.useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (isOpen && overlayRef.current) {
+      overlayRef.current.scrollTop = 0;
+    }
+  }, [isOpen]);
+
   return (
     <div
-      className="modal-overlay"
+      ref={overlayRef}
+      className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/75 backdrop-blur-sm overflow-y-auto"
       onClick={(e) => {
         if (e.target === e.currentTarget) {
           onClose();
         }
       }}
     >
-      <div className="modal-container max-w-2xl p-6 sm:p-7 space-y-5 font-sans text-ink">
+      <div className="bg-white rounded-3xl max-w-2xl w-full p-5 sm:p-7 space-y-4 font-sans text-ink shadow-2xl border border-border my-auto max-h-[92vh] overflow-y-auto animate-in fade-in zoom-in-95 duration-150 text-right">
         {/* Header */}
         <div className="flex items-center justify-between border-b border-border pb-4">
           <div className="flex items-center gap-3">
@@ -162,7 +171,7 @@ export const PaymentProofModal: React.FC<PaymentProofModalProps> = ({
           </button>
         </div>
 
-        {/* 2-Hour Auto-Purge Security Notice */}
+        {/* 30-Minute Auto-Purge Security Notice */}
         {proof?.status === 'approved' && (
           <div
             className={`p-3.5 rounded-2xl border text-xs flex items-center justify-between gap-3 ${
@@ -175,8 +184,8 @@ export const PaymentProofModal: React.FC<PaymentProofModalProps> = ({
               <Clock className="w-4 h-4 shrink-0" />
               <span>
                 {isImageExpired
-                  ? 'تم حذف وإتلاف صورة الإيصال تلقائياً بعد مرور ساعتين على تأكيد ومراجعة الحساب للحفاظ على المساحة والأمان.'
-                  : `سياسة الحفظ الآمن: تم تأكيد الإيصال وسيتم حذف الصورة تلقائياً بعد ساعتين (متبقي ${remainingMinutes} دقيقة).`}
+                  ? 'تم حذف وإتلاف صورة الإيصال تلقائياً بعد مرور 30 دقيقة على تأكيد الحجز للحفاظ على مساحة التخزين والأمان.'
+                  : `سياسة الحفظ الآمن: تم تأكيد الإيصال وسيتم حذف الصورة تلقائياً بعد 30 دقيقة (متبقي ${remainingMinutes} دقيقة).`}
               </span>
             </div>
             <span className="font-mono font-bold text-[10px] bg-white px-2 py-0.5 rounded-full border border-border shrink-0">

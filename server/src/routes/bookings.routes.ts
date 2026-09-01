@@ -528,13 +528,35 @@ router.patch(
         }).catch(() => {});
       }
 
-      // 3. WhatsApp Notification on Completed Service (Thank You & Rating)
-      else if (status === 'completed' && customerPhone) {
-        import('../services/whatsapp.service.js').then(({ sendWhatsAppText }) => {
-          const barberName = booking.barber_name || booking.barberName || 'محمد الحداد';
-          const msg = `👑 شكرًا لزيارتك TrimMind! 💈✨\n\nنتمنى تكون استمتعت بتجربتك مع الكابتن ${barberName} ❤️\n\n⭐ قيّم تجربتك:\nhttps://trimmind.up.railway.app/track?q=${booking.id}\n\nشكرًا لاختيارك TrimMind، ونستناك دايمًا! 💈❤️`;
-          sendWhatsAppText(customerPhone, msg).catch((e) => console.error('WA Completed Send Error:', e));
-        }).catch(() => {});
+      // 3. WhatsApp Notification & Revenue Record on Completed Service
+      else if (status === 'completed') {
+        const totalBill = Number(booking.total_at_booking || booking.service_price_at_booking || 180);
+        const depositFee = Number(booking.booking_fee_at_booking || (booking.booking_type === 'vip' ? 100 : 50));
+        const remainingAmount = Math.max(0, totalBill - depositFee);
+
+        // Record remaining balance collection upon service completion in salon
+        if (remainingAmount > 0) {
+          query(
+            `INSERT INTO financial_records (id, booking_id, branch_id, barber_id, amount, type, payment_method, reference_number, notes, recorded_by, created_at)
+             VALUES (?, ?, ?, ?, ?, 'service_final', 'cash', ?, 'سداد باقي قيمة الفاتورة نقداً عند انتهاء الخدمة بالصالون', 'receptionist', NOW())`,
+            [
+              uuidv4(),
+              booking.id,
+              booking.branch_id || 'branch-elhdad',
+              booking.barber_id || null,
+              remainingAmount,
+              booking.id,
+            ]
+          ).catch((err) => console.warn('Financial record remaining collection error:', err));
+        }
+
+        if (customerPhone) {
+          import('../services/whatsapp.service.js').then(({ sendWhatsAppText }) => {
+            const barberName = booking.barber_name || booking.barberName || 'محمد الحداد';
+            const msg = `👑 شكرًا لزيارتك TrimMind! 💈✨\n\nنتمنى تكون استمتعت بتجربتك مع الكابتن ${barberName} ❤️\n\n⭐ قيّم تجربتك:\nhttps://trimmind.up.railway.app/track?q=${booking.id}\n\nشكرًا لاختيارك TrimMind، ونستناك دايمًا! 💈❤️`;
+            sendWhatsAppText(customerPhone, msg).catch((e) => console.error('WA Completed Send Error:', e));
+          }).catch(() => {});
+        }
       }
 
       // 4. WhatsApp Notification on Cancelled / Rejected

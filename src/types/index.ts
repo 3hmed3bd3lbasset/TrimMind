@@ -54,6 +54,7 @@ export interface SalonSettings {
   manager_report_phone?: string;
   recall_days_threshold?: number;
   weekly_off_days?: number[]; // 0=Sunday, 1=Monday, 2=Tuesday, 3=Wednesday, 4=Thursday, 5=Friday, 6=Saturday
+  revenues_reset_at?: string | null; // Timestamp for zeroing/resetting shift revenues counter
 }
 
 export interface Branch {

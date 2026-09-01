@@ -7,10 +7,10 @@ import { query } from '../config/database.js';
 const uploadDir = process.env.UPLOAD_DIR || 'uploads';
 
 export function initCleanupCron() {
-  // Run every 15 minutes to purge images older than 2 hours after confirmation
-  cron.schedule('*/15 * * * *', async () => {
+  // Run every 5 minutes to purge images older than 30 minutes after confirmation
+  cron.schedule('*/5 * * * *', async () => {
     try {
-      // Find proofs reviewed/confirmed > 2 hours ago
+      // Find proofs reviewed/confirmed > 30 minutes ago
       const expiredProofs = await query<any[]>(
         `SELECT pp.id, pp.image_path, pp.booking_id 
          FROM payment_proofs pp
@@ -18,13 +18,13 @@ export function initCleanupCron() {
          WHERE pp.is_image_purged = 0
            AND (b.status IN ('confirmed', 'completed', 'in_service', 'rejected', 'cancelled'))
            AND (
-             pp.reviewed_at < DATE_SUB(NOW(), INTERVAL 2 HOUR)
-             OR (pp.reviewed_at IS NULL AND pp.submitted_at < DATE_SUB(NOW(), INTERVAL 3 HOUR))
+             pp.reviewed_at < DATE_SUB(NOW(), INTERVAL 30 MINUTE)
+             OR (pp.reviewed_at IS NULL AND pp.submitted_at < DATE_SUB(NOW(), INTERVAL 45 MINUTE))
            )`
       );
 
       if (expiredProofs && expiredProofs.length > 0) {
-        console.log(`🧹 Auto-Purge: Found ${expiredProofs.length} expired receipt image(s) to remove`);
+        console.log(`🧹 Auto-Purge: Found ${expiredProofs.length} expired receipt image(s) to remove (30 min retention reached)`);
 
         for (const proof of expiredProofs) {
           if (proof.image_path && !proof.image_path.startsWith('http')) {
@@ -38,11 +38,30 @@ export function initCleanupCron() {
             }
           }
 
-          // Mark as purged in DB
+          // Mark as purged and clear image_path in DB
           await query(
-            'UPDATE payment_proofs SET is_image_purged = 1, purged_at = NOW() WHERE id = ?',
+            'UPDATE payment_proofs SET is_image_purged = 1, image_path = NULL, purged_at = NOW() WHERE id = ?',
             [proof.id]
           );
+
+          // Update in-memory / persistent bookings DB
+          try {
+            const { getPersistentDb, addOrUpdatePersistentBooking } = await import('./persistentStorage.service.js');
+            const pBookings = getPersistentDb().bookings || [];
+            const targetB = pBookings.find((b: any) => b.id === proof.booking_id);
+            if (targetB && targetB.payment_proof) {
+              if (typeof targetB.payment_proof === 'string') {
+                const parsed = JSON.parse(targetB.payment_proof);
+                parsed.is_image_purged = true;
+                parsed.image_path = null;
+                targetB.payment_proof = JSON.stringify(parsed);
+              } else {
+                targetB.payment_proof.is_image_purged = true;
+                targetB.payment_proof.image_path = null;
+              }
+              addOrUpdatePersistentBooking(targetB);
+            }
+          } catch {}
         }
       }
     } catch (error: any) {
@@ -60,7 +79,7 @@ export function initCleanupCron() {
     }
   });
 
-  console.log('⏰ 2-Hour Receipt Auto-Purge & Daily Session GC Scheduled Tasks initialized.');
+  console.log('⏰ 30-Minute Receipt Auto-Purge & Daily Session GC Scheduled Tasks initialized.');
 }
 
 export async function ensureInitialDbData() {

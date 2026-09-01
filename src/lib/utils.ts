@@ -286,7 +286,7 @@ export async function processHighQualityPhoto(
 }
 
 /**
- * Check if a payment receipt image has expired (2 hours after review/confirmation)
+ * Check if a payment receipt image has expired (30 minutes after review/confirmation)
  */
 export function isReceiptImageExpired(proof?: any): boolean {
   if (!proof) return false;
@@ -294,23 +294,23 @@ export function isReceiptImageExpired(proof?: any): boolean {
   if (proof.status === 'approved' && proof.reviewed_at) {
     const reviewedTime = new Date(proof.reviewed_at).getTime();
     const diffMs = Date.now() - reviewedTime;
-    const diffHours = diffMs / (1000 * 60 * 60);
-    return diffHours >= 2; // Expired after 2 hours
+    const diffMinutes = diffMs / (1000 * 60);
+    return diffMinutes >= 30; // Expired after 30 minutes to conserve DB storage
   }
   return false;
 }
 
 /**
- * Calculate remaining retention minutes for receipt image (out of 120 min)
+ * Calculate remaining retention minutes for receipt image (out of 30 min)
  */
 export function getRemainingReceiptImageMinutes(proof?: any): number {
   if (!proof || proof.is_image_purged || proof.status !== 'approved' || !proof.reviewed_at) {
-    return 120;
+    return 30;
   }
   const reviewedTime = new Date(proof.reviewed_at).getTime();
   const diffMs = Date.now() - reviewedTime;
   const diffMinutes = Math.floor(diffMs / (1000 * 60));
-  return Math.max(0, 120 - diffMinutes);
+  return Math.max(0, 30 - diffMinutes);
 }
 
 export const BOOKING_STATUS_CONFIG: Record<
