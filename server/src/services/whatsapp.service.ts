@@ -257,22 +257,36 @@ export function getWhatsAppState(): WhatsAppState {
   };
 }
 
+function wipeAuthDir() {
+  try {
+    if (fs.existsSync(AUTH_DIR)) {
+      const entries = fs.readdirSync(AUTH_DIR);
+      for (const entry of entries) {
+        const fullPath = path.join(AUTH_DIR, entry);
+        try {
+          if (fs.lstatSync(fullPath).isDirectory()) {
+            fs.rmSync(fullPath, { recursive: true, force: true });
+          } else {
+            fs.unlinkSync(fullPath);
+          }
+        } catch {}
+      }
+    }
+  } catch {}
+}
+
 export async function resetWhatsAppSession(): Promise<WhatsAppState> {
   logDebug('RESET_SESSION_CALLED', {});
   isSocketOpen = false;
   if (sock) {
     try {
+      sock.ev?.removeAllListeners();
       sock.ws?.close();
       sock.end(undefined);
     } catch {}
     sock = null;
   }
-  try {
-    if (fs.existsSync(AUTH_DIR)) {
-      fs.rmSync(AUTH_DIR, { recursive: true, force: true });
-    }
-    fs.mkdirSync(AUTH_DIR, { recursive: true });
-  } catch {}
+  wipeAuthDir();
   state.status = 'disconnected';
   state.qrCodeDataUrl = null;
   state.qrCodeRaw = null;
@@ -287,13 +301,13 @@ export async function getOrGenerateQRCode(forceReset = false): Promise<string> {
     return '';
   }
 
-  if (forceReset) {
+  if (forceReset || state.status === 'disconnected') {
     await resetWhatsAppSession();
-  } else if (!sock || state.status === 'disconnected') {
+  } else if (!sock) {
     initWhatsApp();
   }
 
-  for (let i = 0; i < 30; i++) {
+  for (let i = 0; i < 40; i++) {
     if (state.qrCodeDataUrl) {
       return state.qrCodeDataUrl;
     }
@@ -304,8 +318,7 @@ export async function getOrGenerateQRCode(forceReset = false): Promise<string> {
     await new Promise((r) => setTimeout(r, 400));
   }
 
-  if (state.qrCodeDataUrl) return state.qrCodeDataUrl;
-  throw new Error('جاري تجهيز رمز QR من واتساب، اضغط على تحديث بعد ثانية.');
+  return state.qrCodeDataUrl || '';
 }
 
 export async function generatePairingCode(phoneNumber: string = '01005437633'): Promise<string> {
