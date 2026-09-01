@@ -136,10 +136,17 @@ export const QueueList: React.FC<QueueListProps> = ({ branchId }) => {
           (c.branch_id === branchId || !branchId) &&
           booking?.barber_id &&
           c.barber_id === booking.barber_id &&
-          c.status !== 'in_service'
+          c.status !== 'in_service' &&
+          c.status !== 'cleaning'
       ) ||
       chairs.find((c) => (c.branch_id === branchId || !branchId) && c.status === 'available') ||
+      chairs.find((c) => c.status !== 'in_service') ||
       chairs[0];
+
+    const chosenChairId = matchingChair?.id;
+
+    // 4. Transition booking status with explicit chairId
+    transitionBookingStatus(bookingIdToUse, 'in_service', 'تم استدعاء العميل وبدء الحلاقة على الكرسي', chosenChairId);
 
     if (matchingChair) {
       updateChair(matchingChair.id, {
@@ -147,9 +154,6 @@ export const QueueList: React.FC<QueueListProps> = ({ branchId }) => {
         current_booking_id: bookingIdToUse,
       });
     }
-
-    // 4. Transition booking status
-    transitionBookingStatus(bookingIdToUse, 'in_service', 'تم استدعاء العميل وبدء الحلاقة على الكرسي');
 
     // 5. Send API status update
     try {
@@ -159,7 +163,7 @@ export const QueueList: React.FC<QueueListProps> = ({ branchId }) => {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           status: 'in_service',
-          chair_id: matchingChair?.id,
+          chair_id: chosenChairId,
           note: 'تم استدعاء العميل وتسكينه على الكرسي',
         }),
       });

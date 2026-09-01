@@ -379,15 +379,28 @@ router.patch(
       }
 
       booking.status = status;
+      const targetChairId = req.body?.chair_id || payloadBooking?.chair_id || booking.chair_id;
+      if (targetChairId) {
+        booking.chair_id = targetChairId;
+      }
       addOrUpdatePersistentBooking(booking);
 
-      await query('UPDATE bookings SET status = ?, updated_at = NOW() WHERE id = ?', [status, req.params.id]).catch(() => {});
+      if (status === 'in_service' && targetChairId) {
+        await query('UPDATE bookings SET status = ?, chair_id = ?, updated_at = NOW() WHERE id = ?', [status, targetChairId, req.params.id]).catch(() => {});
+        // Unlink any other chair holding this booking
+        await query('UPDATE chairs SET status = "available", current_booking_id = NULL WHERE current_booking_id = ?', [req.params.id]).catch(() => {});
+        // Assign to the selected chair
+        await query('UPDATE chairs SET status = "in_service", current_booking_id = ? WHERE id = ?', [req.params.id, targetChairId]).catch(() => {});
+      } else {
+        await query('UPDATE bookings SET status = ?, updated_at = NOW() WHERE id = ?', [status, req.params.id]).catch(() => {});
+      }
 
       // Free chair if completed or cancelled
-      if ((status === 'completed' || status === 'cancelled') && booking.chair_id) {
+      if ((status === 'completed' || status === 'cancelled') && (booking.chair_id || targetChairId)) {
+        const chairToFree = booking.chair_id || targetChairId;
         await query(
-          'UPDATE chairs SET status = "available", current_booking_id = NULL, service_ends_at = NULL WHERE id = ?',
-          [booking.chair_id]
+          'UPDATE chairs SET status = "available", current_booking_id = NULL, service_ends_at = NULL WHERE id = ? OR current_booking_id = ?',
+          [chairToFree, req.params.id]
         ).catch(() => {});
       }
 

@@ -85,12 +85,14 @@ export const ChairGrid: React.FC<ChairGridProps> = ({ branchId, onSelectChair })
         {branchChairs.map((chair) => {
           const barber = barbers.find((b) => b.id === chair.barber_id);
           const currentBooking = bookings.find(
-            (b) => b.id === chair.current_booking_id || (b.chair_id === chair.id && b.status === 'in_service')
+            (b) =>
+              b.status === 'in_service' &&
+              (b.chair_id === chair.id || (!b.chair_id && chair.current_booking_id === b.id))
           );
 
-          const isAvailable = chair.status === 'available' || !chair.status;
-          const isInService = chair.status === 'in_service' || !!currentBooking;
           const isCleaning = chair.status === 'cleaning';
+          const isInService = !isCleaning && (chair.status === 'in_service' || !!currentBooking);
+          const isAvailable = !isCleaning && !isInService;
 
           return (
             <div

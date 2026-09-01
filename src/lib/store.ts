@@ -132,7 +132,8 @@ interface SalonStore {
   transitionBookingStatus: (
     bookingId: string,
     toStatus: BookingStatus,
-    note?: string
+    note?: string,
+    chairId?: string
   ) => void;
 
   cancelBooking: (bookingId: string, reason?: string) => void;
@@ -601,16 +602,18 @@ export const useSalonStore = create<SalonStore>((set, get) => ({
         });
       },
 
-      transitionBookingStatus: (bookingId, toStatus, note) => {
+      transitionBookingStatus: (bookingId, toStatus, note, chairId) => {
         const { bookings, chairs, currentUser, auditLogs, queue, barbers } = get();
 
-        let chairIdToUpdate: string | undefined;
+        let chairIdToUpdate: string | undefined = chairId;
         let targetBooking: Booking | undefined;
 
         const found = bookings.find((b) => b.id === bookingId);
         if (found) {
           targetBooking = found;
-          chairIdToUpdate = found.chair_id;
+          if (!chairIdToUpdate) {
+            chairIdToUpdate = found.chair_id;
+          }
           if (!chairIdToUpdate && toStatus === 'in_service') {
             const availableChair =
               chairs.find((c) => c.barber_id === found.barber_id && c.status !== 'in_service') ||
@@ -640,7 +643,7 @@ export const useSalonStore = create<SalonStore>((set, get) => ({
         if (toStatus === 'in_service' && targetBooking) {
           playCallChime();
           const barber = barbers.find((b) => b.id === targetBooking?.barber_id);
-          const chair = chairs.find((c) => c.id === targetBooking?.chair_id);
+          const chair = chairs.find((c) => c.id === (chairIdToUpdate || targetBooking?.chair_id));
           set({
             lastCalledCustomer: {
               customerName: targetBooking.customer_name,
@@ -671,6 +674,14 @@ export const useSalonStore = create<SalonStore>((set, get) => ({
                   service_ends_at: undefined,
                 };
               }
+            } else if (c.current_booking_id === bookingId) {
+              // Unlink from any other chair
+              return {
+                ...c,
+                status: 'available' as const,
+                current_booking_id: undefined,
+                service_ends_at: undefined,
+              };
             }
             return c;
           });
@@ -1248,7 +1259,15 @@ export const useSalonStore = create<SalonStore>((set, get) => ({
       },
       updateChair: (id, updates) => {
         set((state) => ({
-          chairs: state.chairs.map((c) => (c.id === id ? { ...c, ...updates } : c)),
+          chairs: state.chairs.map((c) => {
+            if (c.id === id) {
+              return { ...c, ...updates };
+            }
+            if (updates.current_booking_id && c.current_booking_id === updates.current_booking_id) {
+              return { ...c, current_booking_id: undefined, status: 'available' };
+            }
+            return c;
+          }),
         }));
         broadcastEvent('SYNC_STATE');
         api.updateChair(id, updates).catch((e) => console.warn('API updateChair notice:', e?.message));
