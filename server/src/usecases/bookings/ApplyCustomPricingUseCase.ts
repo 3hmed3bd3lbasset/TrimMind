@@ -25,7 +25,17 @@ export class ApplyCustomPricingUseCase {
   ) {}
 
   public async execute(payload: ApplyCustomPricingPayload): Promise<{ success: boolean; message: string; booking: any }> {
-    const booking = await this.bookingRepo.findById(payload.bookingId);
+    let booking = await this.bookingRepo.findById(payload.bookingId);
+    if (!booking) {
+      const { getPersistentDb } = await import('../../services/persistentStorage.service.js');
+      const pMatch = (getPersistentDb().bookings || []).find(
+        (b: any) => b.id === payload.bookingId || b.bookingId === payload.bookingId
+      );
+      if (pMatch) {
+        booking = pMatch as any;
+      }
+    }
+
     if (!booking) {
       throw new Error('لم يتم العثور على الحجز المطلوب للتسعير المخصص');
     }
@@ -36,15 +46,50 @@ export class ApplyCustomPricingUseCase {
     const finalTotal = Math.max(0, Number(payload.totalPrice));
     const finalDeposit = Number(payload.depositRequired || 50);
 
-    const updatedBooking = await this.bookingRepo.updateCustomPricing({
+    let updatedBooking: any = null;
+    try {
+      updatedBooking = await this.bookingRepo.updateCustomPricing({
+        bookingId: payload.bookingId,
+        serviceName: finalServiceName,
+        totalAmount: finalTotal,
+        depositRequired: finalDeposit,
+        discount: finalDiscount,
+        customLineItems: payload.items || [],
+        barberId: payload.barberId,
+        barberName: payload.barberName,
+      });
+    } catch {
+      updatedBooking = {
+        ...booking,
+        id: payload.bookingId,
+        bookingId: payload.bookingId,
+        service_name: finalServiceName,
+        total_at_booking: finalTotal,
+        discount_at_booking: finalDiscount,
+        booking_fee_at_booking: finalDeposit,
+        custom_line_items: payload.items || [],
+        status: 'confirmed',
+      };
+    }
+
+    // Sync to Persistent Storage
+    const { addOrUpdatePersistentBooking } = await import('../../services/persistentStorage.service.js');
+    addOrUpdatePersistentBooking({
+      ...(booking || {}),
+      id: payload.bookingId,
       bookingId: payload.bookingId,
+      service_name: finalServiceName,
       serviceName: finalServiceName,
+      total_at_booking: finalTotal,
       totalAmount: finalTotal,
-      depositRequired: finalDeposit,
-      discount: finalDiscount,
-      customLineItems: payload.items || [],
-      barberId: payload.barberId,
-      barberName: payload.barberName,
+      service_price_at_booking: finalTotal,
+      booking_fee_at_booking: finalDeposit,
+      discount_at_booking: finalDiscount,
+      custom_line_items: payload.items || [],
+      barber_id: payload.barberId || (booking as any)?.barberId || (booking as any)?.barber_id,
+      barber_name: payload.barberName || (booking as any)?.barberName || (booking as any)?.barber_name,
+      status: 'confirmed',
+      updated_at: new Date().toISOString(),
     });
 
     // Broadcast Realtime Events

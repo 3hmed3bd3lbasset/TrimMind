@@ -35,7 +35,7 @@ export const PaymentProofModal: React.FC<PaymentProofModalProps> = ({
   isOpen,
   onClose,
 }) => {
-  const { reviewPaymentProof } = useSalonStore();
+  const { reviewPaymentProof, bookings } = useSalonStore();
   const [rejectionReason, setRejectionReason] = useState('المبلغ المحول غير مطابق لقيمة العربون المطلوبة');
   const [showRejectForm, setShowRejectForm] = useState(false);
 
@@ -52,21 +52,37 @@ export const PaymentProofModal: React.FC<PaymentProofModalProps> = ({
 
   if (!isOpen || !booking) return null;
 
-  const rawProof = booking.payment_proof;
+  const currentStoreBooking = bookings.find((b: any) => b.id === booking.id);
+  const storeProof = currentStoreBooking?.payment_proof || (currentStoreBooking as any)?.paymentProof;
+  const rawProof = booking.payment_proof || (booking as any).paymentProof || storeProof;
   let proof: any = null;
   try {
     proof = typeof rawProof === 'string' ? JSON.parse(rawProof) : rawProof;
   } catch {
     proof = rawProof;
   }
+  if (!proof && storeProof) {
+    try {
+      proof = typeof storeProof === 'string' ? JSON.parse(storeProof) : storeProof;
+    } catch {
+      proof = storeProof;
+    }
+  }
 
   const isImageExpired = isReceiptImageExpired(proof);
   const remainingMinutes = getRemainingReceiptImageMinutes(proof);
   const imageSrc =
     proof?.image_path ||
+    proof?.imagePath ||
     proof?.image_url ||
     proof?.imageUrl ||
     proof?.url ||
+    proof?.dataUrl ||
+    storeProof?.image_path ||
+    (booking as any)?.image_path ||
+    (booking as any)?.imagePath ||
+    (booking as any)?.proofImage ||
+    (booking as any)?.receiptImage ||
     (typeof rawProof === 'string' && (rawProof as string).startsWith('data:') ? (rawProof as string) : null);
 
   const isPendingReview =

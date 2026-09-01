@@ -392,21 +392,81 @@ export class MySQLBookingRepository implements IBookingRepository {
     try {
       const rows = await query<any[]>(
         `SELECT b.*, 
-                COALESCE(s.name, 'خدمة الصالون') as service_name, 
-                COALESCE(bar.full_name, 'كابتن الصالون') as barber_name,
+                COALESCE(b.service_name, s.name, 'خدمة الصالون') as service_name, 
+                COALESCE(b.barber_name, bar.full_name, 'كابتن الصالون') as barber_name,
                 COALESCE(br.name, 'الحداد - ELHDAD') as branch_name
          FROM bookings b
          LEFT JOIN services s ON b.service_id = s.id
          LEFT JOIN barbers bar ON b.barber_id = bar.id
          LEFT JOIN branches br ON b.branch_id = br.id
-         WHERE b.id = ? LIMIT 1`,
-        [bookingId]
+         WHERE b.id = ? OR b.id LIKE ? LIMIT 1`,
+        [bookingId, `%${bookingId}%`]
       );
-      if (!rows || rows.length === 0) return null;
+      if (!rows || rows.length === 0) {
+        // Fallback to Persistent Volume DB & In-Memory Storage
+        const pBookings = getPersistentDb().bookings || [];
+        const pMatch = pBookings.find(
+          (x: any) =>
+            x.id === bookingId ||
+            x.bookingId === bookingId ||
+            x.id?.toLowerCase() === bookingId?.toLowerCase()
+        );
+        if (pMatch) {
+          const rawProof = pMatch.payment_proof || (pMatch as any).paymentProof;
+          let proofObj = typeof rawProof === 'string' ? JSON.parse(rawProof) : rawProof;
+          return new Booking(
+            pMatch.id || bookingId,
+            pMatch.customer_id || pMatch.customerId,
+            pMatch.customer_name || pMatch.customerName || 'عميل محترم',
+            pMatch.customer_phone || pMatch.customerPhone || '',
+            pMatch.branch_id || pMatch.branchId || 'branch-elhdad',
+            pMatch.barber_id || pMatch.barberId || null,
+            pMatch.chair_id || pMatch.chairId || null,
+            pMatch.service_id || pMatch.serviceId || 'srv-custom',
+            pMatch.additional_service_ids || [],
+            pMatch.booking_type || pMatch.bookingType || 'normal',
+            pMatch.status || 'custom_pricing_requested',
+            pMatch.starts_at || pMatch.startsAt || new Date().toISOString(),
+            pMatch.ends_at || pMatch.endsAt || null,
+            pMatch.booking_date || new Date().toISOString().slice(0, 10),
+            pMatch.queue_number || pMatch.queueNumber || 1,
+            Number(pMatch.service_price_at_booking || 0),
+            Number(pMatch.booking_fee_at_booking || 50),
+            Number(pMatch.discount_at_booking || 0),
+            Number(pMatch.items_total_at_booking || 0),
+            Number(pMatch.total_at_booking || 0),
+            pMatch.secure_token || `SEC-${bookingId}`,
+            pMatch.notes,
+            pMatch.created_at || new Date().toISOString(),
+            pMatch.items || [],
+            proofObj || null,
+            pMatch.service_name || pMatch.serviceName || 'خدمة مخصصة',
+            pMatch.barber_name || pMatch.barberName || 'كابتن الصالون',
+            pMatch.branch_name || pMatch.branchName || 'الحداد - ELHDAD',
+            pMatch.source || 'web',
+            pMatch.ai_brief,
+            pMatch.confidence_score || 90,
+            pMatch.needs_human_attention || false,
+            pMatch.handoff_expires_at,
+            pMatch.custom_line_items || []
+          );
+        }
+        return null;
+      }
       const b = rows[0];
 
       const items = (await query<any[]>('SELECT * FROM booking_items WHERE booking_id = ?', [bookingId]).catch(() => [])) || [];
-      const proofs = (await query<any[]>('SELECT * FROM payment_proofs WHERE booking_id = ? LIMIT 1', [bookingId]).catch(() => [])) || [];
+      let proofs = (await query<any[]>('SELECT * FROM payment_proofs WHERE booking_id = ? LIMIT 1', [bookingId]).catch(() => [])) || [];
+
+      // Check persistent DB if payment proof image is missing in MySQL table
+      if (proofs.length === 0 || !proofs[0].image_path) {
+        const pBookings = getPersistentDb().bookings || [];
+        const pMatch = pBookings.find((x: any) => x.id === bookingId || x.bookingId === bookingId);
+        if (pMatch?.payment_proof) {
+          const pProof = typeof pMatch.payment_proof === 'string' ? JSON.parse(pMatch.payment_proof) : pMatch.payment_proof;
+          proofs = [pProof];
+        }
+      }
 
       let additionalIds: string[] = [];
       if (b.additional_service_ids) {
@@ -437,19 +497,19 @@ export class MySQLBookingRepository implements IBookingRepository {
         b.ends_at,
         b.booking_date,
         b.queue_number,
-        Number(b.service_price_at_booking || 180),
+        Number(b.service_price_at_booking || 0),
         Number(b.booking_fee_at_booking || 50),
         Number(b.discount_at_booking || 0),
         Number(b.items_total_at_booking || 0),
-        Number(b.total_at_booking || 180),
+        Number(b.total_at_booking || 0),
         b.secure_token,
         b.notes,
         b.created_at,
         items,
         proofs[0] || null,
-        b.service_name,
-        b.barber_name,
-        b.branch_name,
+        b.service_name || 'خدمة صالون',
+        b.barber_name || 'كابتن الصالون',
+        b.branch_name || 'الحداد - ELHDAD',
         b.source || 'web',
         b.ai_brief || undefined,
         Number(b.confidence_score || 90),
@@ -459,6 +519,12 @@ export class MySQLBookingRepository implements IBookingRepository {
       );
     } catch (err) {
       console.warn('MySQLBookingRepository.findById error ignored:', err);
+      // Fallback
+      const pBookings = getPersistentDb().bookings || [];
+      const pMatch = pBookings.find((x: any) => x.id === bookingId || x.bookingId === bookingId);
+      if (pMatch) {
+        return pMatch as any;
+      }
       return null;
     }
   }

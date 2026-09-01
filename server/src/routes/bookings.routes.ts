@@ -720,8 +720,10 @@ router.post('/:id/customize-and-dispatch', optionalAuth, async (req: Authenticat
   try {
     const bookingId = req.params.id;
     const {
-      customLineItems = [],
+      customLineItems,
+      items,
       totalAmount,
+      totalPrice,
       discount = 0,
       notes,
       barberId,
@@ -730,15 +732,18 @@ router.post('/:id/customize-and-dispatch', optionalAuth, async (req: Authenticat
       depositRequired = 50,
     } = req.body;
 
-    const { container } = await import('../index.js');
+    const finalItems = customLineItems || items || [];
+    const finalTotal = totalPrice !== undefined ? Number(totalPrice) : Number(totalAmount || 0);
+
+    const { container } = await import('../container.js');
     const result = await container.applyCustomPricingUseCase.execute({
       bookingId,
-      items: customLineItems,
-      subtotal: Number(totalAmount || 0) + Number(discount || 0),
+      items: finalItems,
+      subtotal: finalTotal + Number(discount || 0),
       discount: Number(discount || 0),
-      totalPrice: Number(totalAmount || 180),
+      totalPrice: finalTotal,
       depositRequired: Number(depositRequired || 50),
-      remainingBalance: Math.max(0, Number(totalAmount || 180) - Number(depositRequired || 50)),
+      remainingBalance: Math.max(0, finalTotal - Number(depositRequired || 50)),
       barberId,
       barberName,
       serviceName,

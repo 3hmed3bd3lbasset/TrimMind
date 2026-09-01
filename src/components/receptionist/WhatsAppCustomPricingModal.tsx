@@ -6,11 +6,12 @@ import { api } from '../../lib/api';
 import {
   X,
   Sparkles,
-  Send,
   Plus,
   Trash2,
   User,
   Scissors,
+  CheckCircle2,
+  ZoomIn,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 
@@ -41,17 +42,40 @@ export const WhatsAppCustomPricingModal: React.FC<WhatsAppCustomPricingModalProp
 
   const [selectedBarberId, setSelectedBarberId] = useState(booking.barber_id || '');
   const [selectedBarberName, setSelectedBarberName] = useState(booking.barber_name || 'محمد الحداد');
-  const [customServiceName, setCustomServiceName] = useState(booking.service_name || 'باقة مخصصة VIP');
-  
+  const [customServiceName, setCustomServiceName] = useState(
+    booking.service_name || (booking as any).serviceName || 'باقة مخصصة VIP'
+  );
+
+  // Extract raw receipt image if present
+  const rawProof = booking.payment_proof || (booking as any).paymentProof;
+  let proofObj: any = null;
+  try {
+    proofObj = typeof rawProof === 'string' ? JSON.parse(rawProof) : rawProof;
+  } catch {
+    proofObj = rawProof;
+  }
+  const receiptImg =
+    proofObj?.image_path ||
+    proofObj?.image_url ||
+    proofObj?.imageUrl ||
+    proofObj?.url ||
+    (typeof rawProof === 'string' && rawProof.startsWith('data:') ? rawProof : null);
+
   // Line items state
-  const initialItems = booking.custom_line_items && booking.custom_line_items.length > 0
-    ? booking.custom_line_items
-    : [
-        { name: booking.service_name || 'قص شعر كلاسيكي وتظبيط لحية', price: booking.total_at_booking || 220 }
-      ];
+  const initialItems =
+    booking.custom_line_items && booking.custom_line_items.length > 0
+      ? booking.custom_line_items
+      : [
+          {
+            name: booking.service_name || (booking as any).serviceName || 'قص شعر كلاسيكي وتظبيط لحية',
+            price: Number(booking.total_at_booking || 200),
+          },
+        ];
   const [items, setItems] = useState<Array<{ name: string; price: number }>>(initialItems);
   const [discount, setDiscount] = useState<number>(booking.discount_at_booking || 0);
-  const [deposit, setDeposit] = useState<number>(booking.booking_fee_at_booking || 50);
+  const [deposit, setDeposit] = useState<number>(
+    booking.booking_fee_at_booking || proofObj?.transferred_amount || (booking.booking_type === 'vip' ? 100 : 50)
+  );
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   // Quick add item state
@@ -97,7 +121,7 @@ export const WhatsAppCustomPricingModal: React.FC<WhatsAppCustomPricingModalProp
     setSelectedBarberId(barberId);
     const b = barbers.find((item) => item.id === barberId);
     if (b) {
-      setSelectedBarberName(b.full_name || b.name || 'كابتن الحلاقة');
+      setSelectedBarberName(b.full_name || b.name || 'كابتن الصالون');
     }
   };
 
@@ -122,7 +146,7 @@ export const WhatsAppCustomPricingModal: React.FC<WhatsAppCustomPricingModalProp
       };
 
       const res: any = await api.customizeAndDispatchBooking(booking.id, payload);
-      toast.success('تم تسعير الحجز وإرسال الفاتورة للعميل على الواتساب بنجاح! 🚀');
+      toast.success('تم تسعير واعتماد الحجز والفاتورة بنجاح! 🚀');
       if (onSuccess) {
         onSuccess(res?.data || { ...booking, ...payload, status: 'confirmed' });
       }
@@ -143,84 +167,104 @@ export const WhatsAppCustomPricingModal: React.FC<WhatsAppCustomPricingModalProp
         }
       }}
     >
-      <div className="modal-container max-w-2xl bg-[#121218] border border-amber-500/30 text-white shadow-2xl">
-        
+      <div className="modal-container max-w-2xl bg-[#faf7f0] border-2 border-forest/20 text-ink shadow-2xl p-0 overflow-hidden rounded-3xl animate-in fade-in zoom-in-95 duration-200">
         {/* Header */}
-        <div className="px-6 py-4 bg-gradient-to-r from-amber-950/40 via-amber-900/20 to-black border-b border-amber-500/20 flex items-center justify-between">
+        <div className="px-6 py-4 bg-white border-b border-border flex items-center justify-between shadow-xs">
           <div className="flex items-center gap-3">
-            <div className="p-2.5 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-400">
-              <Sparkles className="w-5 h-5" />
+            <div className="w-11 h-11 rounded-2xl bg-amber-500/15 text-amber-800 border border-amber-500/30 flex items-center justify-center shadow-xs">
+              <Sparkles className="w-6 h-6 text-amber-700" />
             </div>
             <div>
-              <h2 className="text-lg font-bold text-white flex items-center gap-2">
-                تسعير واعتماد حجز الواتساب
-                <span className="text-xs px-2 py-0.5 rounded-full bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 font-mono">
+              <h2 className="font-serif text-lg sm:text-xl font-bold text-ink flex items-center gap-2">
+                <span>تسعير واعتماد الحجز والفاتورة</span>
+                <span className="text-xs px-2.5 py-0.5 rounded-full bg-forest/10 border border-forest/20 text-forest font-mono">
                   #{booking.id}
                 </span>
               </h2>
-              <p className="text-xs text-gray-400">
-                تخصيص بنود الفاتورة وإرسالها مباشرة لرقم العميل مع رابط التتبع
+              <p className="text-xs text-ink-mute">
+                مراجعة واعتماد بنود الفاتورة وتثبيت الموعد المعتمد للعميل
               </p>
             </div>
           </div>
           <button
             onClick={onClose}
-            className="p-2 rounded-lg text-gray-400 hover:text-white hover:bg-white/10 transition-colors"
+            className="p-2 rounded-xl text-ink-mute hover:text-ink hover:bg-paper-warm transition-colors"
           >
             <X className="w-5 h-5" />
           </button>
         </div>
 
         {/* Content */}
-        <div className="p-6 space-y-6 max-h-[75vh] overflow-y-auto">
-          
-          {/* Customer & AI Brief Card */}
-          <div className="bg-white/5 border border-white/10 rounded-xl p-4 space-y-3">
-            <div className="flex flex-wrap items-center justify-between gap-2 border-b border-white/10 pb-3">
+        <div className="p-6 space-y-5 max-h-[75vh] overflow-y-auto">
+          {/* Customer Info Card & Custom Request Details */}
+          <div className="bg-white border border-border rounded-2xl p-4 space-y-3 shadow-xs">
+            <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border/80 pb-3">
               <div className="flex items-center gap-2">
-                <User className="w-4 h-4 text-amber-400" />
-                <span className="font-semibold text-white">{booking.customer_name}</span>
-                <span className="text-xs text-gray-400 font-mono">({booking.customer_phone})</span>
+                <div className="w-8 h-8 rounded-xl bg-forest/10 text-forest flex items-center justify-center font-bold">
+                  <User className="w-4 h-4" />
+                </div>
+                <div>
+                  <span className="font-bold text-ink text-sm block">{booking.customer_name}</span>
+                  <span className="text-xs text-ink-mute font-mono">{booking.customer_phone}</span>
+                </div>
               </div>
               <div className="flex items-center gap-2">
-                <span className="text-xs px-2.5 py-1 rounded-lg bg-amber-500/10 border border-amber-500/20 text-amber-300">
-                  {booking.booking_type === 'vip' ? '👑 جلسة VIP ملكية' : '💈 جلسة عادية'}
+                <span className={`text-xs px-2.5 py-1 rounded-xl font-bold border ${
+                  booking.booking_type === 'vip'
+                    ? 'bg-amber-50 text-amber-800 border-amber-300'
+                    : 'bg-forest/10 text-forest border-forest/20'
+                }`}>
+                  {booking.booking_type === 'vip' ? '👑 تجربة VIP الملكية' : '✂️ تجربة عادية'}
                 </span>
-                {booking.confidence_score && (
-                  <span className={`text-xs px-2.5 py-1 rounded-lg border font-medium ${
-                    booking.confidence_score >= 85
-                      ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-300'
-                      : 'bg-amber-500/10 border-amber-500/30 text-amber-300'
-                  }`}>
-                    🎯 دقة الفهم: {booking.confidence_score}%
-                  </span>
-                )}
               </div>
             </div>
 
-            {booking.ai_brief ? (
-              <div className="bg-amber-500/5 border border-amber-500/20 rounded-lg p-3">
-                <div className="text-xs font-semibold text-amber-400 mb-1 flex items-center gap-1.5">
-                  <Sparkles className="w-3.5 h-3.5" />
-                  ملخص رغبات العميل من محادثة الواتساب:
-                </div>
-                <p className="text-xs text-gray-300 whitespace-pre-line leading-relaxed font-sans">
-                  {booking.ai_brief}
-                </p>
+            {/* Custom Request Text (What the customer wrote) */}
+            <div className="bg-amber-50/80 border border-amber-300 rounded-xl p-3.5 space-y-1">
+              <div className="text-xs font-bold text-amber-950 flex items-center gap-1.5">
+                <Sparkles className="w-3.5 h-3.5 text-amber-700" />
+                <span>طلب وتفاصيل باقة العميل المخصصة:</span>
               </div>
-            ) : (
-              <div className="text-xs text-gray-400">
-                الخدمة المسجلة مبدئياً: <span className="text-white font-medium">{booking.service_name || 'باقة الصالون'}</span>
+              <p className="text-xs text-ink font-medium leading-relaxed">
+                {booking.service_name || (booking as any).serviceName || (booking.notes && booking.notes.replace('[طلب تخصيص خدمة]:', '')) || 'باقة الصالون المخصصة'}
+              </p>
+            </div>
+
+            {/* Receipt Preview Thumbnail if uploaded */}
+            {receiptImg && (
+              <div className="pt-1 flex items-center justify-between bg-paper-warm/80 p-2.5 rounded-xl border border-border">
+                <div className="flex items-center gap-2.5">
+                  <img
+                    src={receiptImg}
+                    alt="Receipt preview"
+                    className="w-12 h-12 rounded-lg object-cover border border-border shadow-xs"
+                  />
+                  <div>
+                    <span className="text-xs font-bold text-ink block">صورة إيصال التحويل مرفوعة</span>
+                    <span className="text-[10px] text-ink-mute font-mono">
+                      المبلغ المحول: {formatCurrency(deposit)}
+                    </span>
+                  </div>
+                </div>
+                <a
+                  href={receiptImg}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="px-3 py-1.5 rounded-lg bg-white hover:bg-forest hover:text-white text-forest border border-forest/20 text-xs font-bold flex items-center gap-1 transition-colors shadow-2xs cursor-pointer"
+                >
+                  <ZoomIn className="w-3.5 h-3.5" />
+                  <span>معاينة الإيصال</span>
+                </a>
               </div>
             )}
           </div>
 
-          {/* Barber Selection & Custom Name */}
+          {/* Barber Selection & Custom Title */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div>
-              <label className="block text-xs font-medium text-gray-300 mb-1.5 flex items-center gap-1.5">
-                <Scissors className="w-3.5 h-3.5 text-amber-400" />
-                الكابتن المسؤول:
+            <div className="space-y-1.5">
+              <label className="block text-xs font-bold text-ink-soft flex items-center gap-1.5">
+                <Scissors className="w-3.5 h-3.5 text-forest" />
+                <span>الكابتن المسؤول:</span>
               </label>
               <select
                 value={selectedBarberId}
@@ -230,7 +274,7 @@ export const WhatsAppCustomPricingModal: React.FC<WhatsAppCustomPricingModalProp
                   const found = barbers.find((b) => b.id === bId);
                   if (found) setSelectedBarberName(found.full_name || found.name || 'كابتن الصالون');
                 }}
-                className="w-full bg-black/40 border border-white/10 rounded-xl px-3.5 py-2.5 text-sm text-white focus:border-amber-500 focus:outline-none transition-colors"
+                className="w-full bg-white border border-border focus:border-forest rounded-xl p-3 text-xs text-ink outline-none shadow-xs font-bold"
               >
                 <option value="">-- اختر كابتن الصالون --</option>
                 {barbers.map((b) => (
@@ -241,35 +285,35 @@ export const WhatsAppCustomPricingModal: React.FC<WhatsAppCustomPricingModalProp
               </select>
             </div>
 
-            <div>
-              <label className="block text-xs font-medium text-gray-300 mb-1.5">
-                عنوان الباقة في الفاتورة:
+            <div className="space-y-1.5">
+              <label className="block text-xs font-bold text-ink-soft">
+                عنوان الباقة المعتمد في الفاتورة:
               </label>
               <input
                 type="text"
                 value={customServiceName}
                 onChange={(e) => setCustomServiceName(e.target.value)}
                 placeholder="مثال: باقة العريس VIP / تنظيف بشرة مع حلاقة"
-                className="w-full bg-black/40 border border-white/10 rounded-xl px-3.5 py-2.5 text-sm text-white focus:border-amber-500 focus:outline-none transition-colors"
+                className="w-full bg-white border border-border focus:border-forest rounded-xl p-3 text-xs text-ink outline-none shadow-xs font-bold"
               />
             </div>
           </div>
 
           {/* Quick Add Preset Services */}
-          <div>
-            <label className="block text-xs font-medium text-gray-400 mb-2">
-              ⚡ إضافة سريعة من قائمة خدمات الصالون:
+          <div className="space-y-2">
+            <label className="block text-xs font-bold text-ink-soft">
+              ⚡ إضافة سريعة من قائمة خدمات وباقات الصالون:
             </label>
-            <div className="flex flex-wrap gap-2">
+            <div className="flex flex-wrap gap-1.5">
               {services.slice(0, 8).map((srv) => (
                 <button
                   key={srv.id}
                   type="button"
                   onClick={() => handleSelectServicePreset(srv)}
-                  className="text-xs px-2.5 py-1.5 rounded-lg bg-white/5 hover:bg-amber-500/20 border border-white/10 hover:border-amber-500/30 text-gray-300 hover:text-amber-300 transition-colors flex items-center gap-1.5"
+                  className="text-xs px-3 py-1.5 rounded-xl bg-white hover:bg-forest hover:text-white border border-border text-ink transition-all flex items-center gap-1 shadow-2xs font-medium cursor-pointer"
                 >
                   <Plus className="w-3 h-3" />
-                  {srv.name} ({srv.price} ج)
+                  <span>{srv.name} ({srv.price} ج)</span>
                 </button>
               ))}
             </div>
@@ -277,31 +321,32 @@ export const WhatsAppCustomPricingModal: React.FC<WhatsAppCustomPricingModalProp
 
           {/* Line Items Table */}
           <div className="space-y-3">
-            <label className="block text-xs font-bold text-white uppercase tracking-wider">
-              بنود الفاتورة المعتمدة:
+            <label className="block text-xs font-bold text-ink uppercase tracking-wider">
+              بنود وتفاصيل الفاتورة:
             </label>
 
             <div className="space-y-2">
               {items.map((item, index) => (
                 <div
                   key={index}
-                  className="flex items-center gap-3 bg-black/40 border border-white/10 rounded-xl p-3"
+                  className="flex items-center gap-3 bg-white border border-border rounded-xl p-3 shadow-xs"
                 >
-                  <div className="flex-1">
-                    <span className="text-sm font-medium text-white">{item.name}</span>
+                  <div className="flex-1 min-w-0">
+                    <span className="text-xs font-bold text-ink block truncate">{item.name}</span>
                   </div>
                   <div className="flex items-center gap-2">
                     <input
                       type="number"
                       value={item.price}
                       onChange={(e) => handleUpdateItemPrice(index, Number(e.target.value))}
-                      className="w-24 bg-white/10 border border-white/20 rounded-lg px-2.5 py-1.5 text-sm text-white font-mono text-center focus:border-amber-500 focus:outline-none"
+                      className="w-24 bg-paper-warm border border-border focus:border-forest rounded-lg px-2.5 py-1.5 text-xs text-ink font-mono font-bold text-center outline-none"
                     />
-                    <span className="text-xs text-gray-400">ج.م</span>
+                    <span className="text-xs text-ink-mute">ج.م</span>
                     <button
                       type="button"
                       onClick={() => handleRemoveItem(index)}
-                      className="p-1.5 rounded-lg text-rose-400 hover:bg-rose-500/20 transition-colors"
+                      className="p-1.5 rounded-lg text-rose-600 hover:bg-rose-50 transition-colors"
+                      title="حذف البند"
                     >
                       <Trash2 className="w-4 h-4" />
                     </button>
@@ -311,70 +356,67 @@ export const WhatsAppCustomPricingModal: React.FC<WhatsAppCustomPricingModalProp
             </div>
 
             {/* Add Custom Line Item Form */}
-            <div className="flex gap-2 pt-2">
+            <div className="flex gap-2 pt-1">
               <input
                 type="text"
                 placeholder="إضافة خدمة مخصصة (مثال: صبغة شعر إيطالي)"
                 value={newItemName}
                 onChange={(e) => setNewItemName(e.target.value)}
-                className="flex-1 bg-black/40 border border-white/10 rounded-xl px-3.5 py-2 text-sm text-white focus:border-amber-500 focus:outline-none"
+                className="flex-1 bg-white border border-border focus:border-forest rounded-xl p-2.5 text-xs text-ink outline-none shadow-xs"
               />
               <input
                 type="number"
                 placeholder="السعر ج.م"
                 value={newItemPrice}
                 onChange={(e) => setNewItemPrice(e.target.value)}
-                className="w-28 bg-black/40 border border-white/10 rounded-xl px-3 py-2 text-sm text-white font-mono text-center focus:border-amber-500 focus:outline-none"
+                className="w-28 bg-white border border-border focus:border-forest rounded-xl p-2.5 text-xs text-ink font-mono font-bold text-center outline-none shadow-xs"
               />
               <button
                 type="button"
                 onClick={handleAddItem}
-                className="px-4 py-2 bg-amber-500/20 hover:bg-amber-500/30 border border-amber-500/40 text-amber-300 rounded-xl text-sm font-semibold flex items-center gap-1.5 transition-colors"
+                className="px-4 py-2 bg-forest/10 hover:bg-forest hover:text-white border border-forest/20 text-forest rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all shadow-xs cursor-pointer"
               >
                 <Plus className="w-4 h-4" />
-                إضافة
+                <span>إضافة</span>
               </button>
             </div>
           </div>
 
           {/* Financial Calculation Box */}
-          <div className="bg-gradient-to-br from-amber-950/30 to-black border border-amber-500/30 rounded-xl p-4 space-y-3">
-            <div className="flex justify-between items-center text-xs text-gray-400">
+          <div className="bg-paper-warm p-5 rounded-2xl border-2 border-forest/20 space-y-3 shadow-clinic-1">
+            <div className="flex justify-between items-center text-xs text-ink-soft">
               <span>إجمالي بنود الخدمات:</span>
-              <span className="font-mono text-sm text-white">{formatCurrency(subtotal)}</span>
+              <span className="font-mono text-sm font-bold text-ink">{formatCurrency(subtotal)}</span>
             </div>
 
-            <div className="flex justify-between items-center text-xs text-gray-300">
-              <span className="flex items-center gap-1">
-                خصم إضافي خاص (ج.م):
-              </span>
+            <div className="flex justify-between items-center text-xs text-ink-soft">
+              <span>خصم إضافي خاص (ج.م):</span>
               <input
                 type="number"
                 value={discount}
                 onChange={(e) => setDiscount(Math.max(0, Number(e.target.value)))}
-                className="w-24 bg-white/10 border border-white/20 rounded-lg px-2.5 py-1 text-xs text-amber-300 font-mono text-center focus:border-amber-500 focus:outline-none"
+                className="w-24 bg-white border border-border focus:border-forest rounded-lg px-2.5 py-1 text-xs text-forest font-mono font-bold text-center outline-none"
               />
             </div>
 
-            <div className="flex justify-between items-center text-xs text-emerald-400 border-t border-white/10 pt-2">
+            <div className="flex justify-between items-center text-xs text-emerald-700 font-bold border-t border-border pt-2">
               <span>العربون المسدد بالإيصال (خصم فوري):</span>
-              <span className="font-mono font-bold">-{formatCurrency(deposit)} ✓</span>
+              <span className="font-mono">-{formatCurrency(deposit)} ✓</span>
             </div>
 
-            <div className="flex justify-between items-center text-sm font-bold text-white border-t border-amber-500/20 pt-2">
-              <span className="text-amber-400">المتبقي المطلوب دفعه بالصالون:</span>
-              <span className="text-lg font-mono text-amber-300">{formatCurrency(remaining)}</span>
+            <div className="flex justify-between items-center text-sm font-bold text-ink border-t border-border pt-2">
+              <span className="text-forest font-serif">المتبقي المطلوب دفعه بالصالون:</span>
+              <span className="text-lg font-serif font-bold text-forest">{formatCurrency(remaining)}</span>
             </div>
           </div>
-
         </div>
 
         {/* Footer Actions */}
-        <div className="px-6 py-4 bg-black/60 border-t border-white/10 flex items-center justify-between gap-4">
+        <div className="px-6 py-4 bg-white border-t border-border flex items-center justify-between gap-4 shadow-xs">
           <button
             type="button"
             onClick={onClose}
-            className="px-4 py-2.5 rounded-xl border border-white/10 text-gray-300 hover:text-white hover:bg-white/5 text-sm font-medium transition-colors"
+            className="btn-clinic-ghost py-3.5 px-6 font-bold text-xs"
           >
             إلغاء
           </button>
@@ -383,19 +425,18 @@ export const WhatsAppCustomPricingModal: React.FC<WhatsAppCustomPricingModalProp
             type="button"
             disabled={isSubmitting || items.length === 0}
             onClick={handleDispatch}
-            className="flex-1 max-w-sm px-6 py-2.5 rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-black font-bold text-sm shadow-lg shadow-amber-500/20 flex items-center justify-center gap-2 transition-all disabled:opacity-50"
+            className="btn-clinic-primary flex-1 max-w-sm py-3.5 px-6 font-bold text-sm flex items-center justify-center gap-2 shadow-md cursor-pointer active:scale-95 disabled:opacity-50"
           >
             {isSubmitting ? (
-              <span className="flex items-center gap-2">جارٍ الاعتماد والإرسال...</span>
+              <span>جاري اعتماد الفاتورة...</span>
             ) : (
               <>
-                <Send className="w-4 h-4" />
-                اعتماد وإرسال الفاتورة للواتساب 📲
+                <span>اعتماد الفاتورة والحجز</span>
+                <CheckCircle2 className="w-4 h-4" />
               </>
             )}
           </button>
         </div>
-
       </div>
     </div>
   );
