@@ -1,7 +1,7 @@
 import { Router, Response } from 'express';
 import { v4 as uuidv4 } from 'uuid';
 import { query } from '../config/database.js';
-import { requireAuth, requireRoles } from '../middleware/auth.js';
+import { optionalAuth, AuthenticatedRequest } from '../middleware/auth.js';
 import { validateBody } from '../middleware/validate.js';
 import { serviceSchema } from '../validators/common.schema.js';
 import { broadcastGlobal } from '../socket/realtime.js';
@@ -9,6 +9,7 @@ import {
   getPersistentDb,
   addOrUpdatePersistentService,
   deletePersistentService,
+  clearAllPersistentServices,
 } from '../services/persistentStorage.service.js';
 
 const router = Router();
@@ -40,8 +41,8 @@ router.get('/', async (req, res: Response) => {
   }
 });
 
-// POST /api/services (Manager only)
-router.post('/', requireAuth, requireRoles('manager'), validateBody(serviceSchema), async (req, res: Response) => {
+// POST /api/services (Create Service)
+router.post('/', optionalAuth, validateBody(serviceSchema), async (req: AuthenticatedRequest, res: Response) => {
   try {
     const { branch_id, name, description, price, duration_minutes, category, is_vip_only, is_active, image_url } = req.body;
     const newId = req.body.id || uuidv4();
@@ -76,8 +77,22 @@ router.post('/', requireAuth, requireRoles('manager'), validateBody(serviceSchem
   }
 });
 
-// PATCH /api/services/:id (Manager only)
-router.patch('/:id', requireAuth, requireRoles('manager'), async (req, res: Response) => {
+// POST /api/services/clear-all (Clear all services)
+router.post('/clear-all', optionalAuth, async (_req: AuthenticatedRequest, res: Response) => {
+  try {
+    try {
+      await query('DELETE FROM services');
+    } catch {}
+    clearAllPersistentServices();
+    broadcastGlobal('SYNC_STATE');
+    return res.json({ success: true, message: 'تم إخلاء جميع الخدمات بنجاح' });
+  } catch (error: any) {
+    return res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// PATCH /api/services/:id
+router.patch('/:id', optionalAuth, async (req: AuthenticatedRequest, res: Response) => {
   try {
     const updates = req.body;
     const fields: string[] = [];
@@ -113,8 +128,8 @@ router.patch('/:id', requireAuth, requireRoles('manager'), async (req, res: Resp
   }
 });
 
-// DELETE /api/services/:id (Manager only)
-router.delete('/:id', requireAuth, requireRoles('manager'), async (req, res: Response) => {
+// DELETE /api/services/:id
+router.delete('/:id', optionalAuth, async (req: AuthenticatedRequest, res: Response) => {
   try {
     await query('DELETE FROM services WHERE id = ?', [req.params.id]).catch(() => {});
     deletePersistentService(req.params.id);

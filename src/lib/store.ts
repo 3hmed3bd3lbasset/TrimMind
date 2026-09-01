@@ -1202,6 +1202,7 @@ export const useSalonStore = create<SalonStore>((set, get) => ({
       clearAllBranches: () => {
         set({ branches: [], barbers: [], chairs: [] });
         broadcastEvent('SYNC_STATE');
+        api.clearAllBranches().catch((e) => console.warn('API clearAllBranches notice:', e?.message));
       },
 
       addBarber: (barber) => {
@@ -1244,6 +1245,7 @@ export const useSalonStore = create<SalonStore>((set, get) => ({
           profiles: state.profiles.filter((p) => p.role !== 'barber'),
         }));
         broadcastEvent('SYNC_STATE');
+        api.clearAllBarbers().catch((e) => console.warn('API clearAllBarbers notice:', e?.message));
       },
 
       addChair: (chair) => {
@@ -1279,6 +1281,11 @@ export const useSalonStore = create<SalonStore>((set, get) => ({
         broadcastEvent('SYNC_STATE');
         api.deleteChair(id).catch((e) => console.warn('API deleteChair notice:', e?.message));
       },
+      clearAllChairs: () => {
+        set({ chairs: [] });
+        broadcastEvent('SYNC_STATE');
+        api.clearAllChairs().catch((e) => console.warn('API clearAllChairs notice:', e?.message));
+      },
 
       addService: (service) => {
         const newService: Service = {
@@ -1304,6 +1311,11 @@ export const useSalonStore = create<SalonStore>((set, get) => ({
         broadcastEvent('SYNC_STATE');
         api.deleteService(id).catch((e) => console.warn('API deleteService notice:', e?.message));
       },
+      clearAllServices: () => {
+        set({ services: [] });
+        broadcastEvent('SYNC_STATE');
+        api.clearAllServices().catch((e) => console.warn('API clearAllServices notice:', e?.message));
+      },
 
       addProduct: (product) => {
         const newProduct: Product = {
@@ -1327,6 +1339,11 @@ export const useSalonStore = create<SalonStore>((set, get) => ({
         }));
         broadcastEvent('SYNC_STATE');
         api.deleteProduct(id).catch((e) => console.warn('API deleteProduct notice:', e?.message));
+      },
+      clearAllProducts: () => {
+        set({ products: [] });
+        broadcastEvent('SYNC_STATE');
+        api.clearAllProducts().catch((e) => console.warn('API clearAllProducts notice:', e?.message));
       },
 
       addManager: (manager) => {

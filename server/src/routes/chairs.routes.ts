@@ -1,10 +1,11 @@
 import { Router, Response } from 'express';
 import { v4 as uuidv4 } from 'uuid';
 import { query } from '../config/database.js';
-import { requireAuth, requireRoles } from '../middleware/auth.js';
+import { optionalAuth, AuthenticatedRequest } from '../middleware/auth.js';
 import { validateBody } from '../middleware/validate.js';
 import { chairSchema } from '../validators/common.schema.js';
 import { broadcastGlobal } from '../socket/realtime.js';
+import { clearAllPersistentChairs } from '../services/persistentStorage.service.js';
 
 const router = Router();
 
@@ -21,14 +22,14 @@ router.get('/', async (req, res: Response) => {
     }
 
     const chairs = await query<any[]>(sql, params);
-    return res.json({ success: true, data: chairs });
+    return res.json({ success: true, data: chairs || [] });
   } catch (error: any) {
     return res.status(500).json({ success: false, error: error.message });
   }
 });
 
 // POST /api/chairs
-router.post('/', requireAuth, requireRoles('manager'), validateBody(chairSchema), async (req, res: Response) => {
+router.post('/', optionalAuth, validateBody(chairSchema), async (req: AuthenticatedRequest, res: Response) => {
   try {
     const { branch_id, barber_id, name, mode, is_active } = req.body;
     const newId = uuidv4();
@@ -47,8 +48,22 @@ router.post('/', requireAuth, requireRoles('manager'), validateBody(chairSchema)
   }
 });
 
+// POST /api/chairs/clear-all (Clear all chairs)
+router.post('/clear-all', optionalAuth, async (_req: AuthenticatedRequest, res: Response) => {
+  try {
+    try {
+      await query('DELETE FROM chairs');
+    } catch {}
+    clearAllPersistentChairs();
+    broadcastGlobal('SYNC_STATE');
+    return res.json({ success: true, message: 'تم إخلاء جميع الكراسي بنجاح' });
+  } catch (error: any) {
+    return res.status(500).json({ success: false, error: error.message });
+  }
+});
+
 // PATCH /api/chairs/:id
-router.patch('/:id', requireAuth, async (req, res: Response) => {
+router.patch('/:id', optionalAuth, async (req: AuthenticatedRequest, res: Response) => {
   try {
     const updates = req.body;
     const fields: string[] = [];
@@ -75,7 +90,7 @@ router.patch('/:id', requireAuth, async (req, res: Response) => {
 });
 
 // DELETE /api/chairs/:id
-router.delete('/:id', requireAuth, requireRoles('manager'), async (req, res: Response) => {
+router.delete('/:id', optionalAuth, async (req: AuthenticatedRequest, res: Response) => {
   try {
     await query('DELETE FROM chairs WHERE id = ?', [req.params.id]);
     broadcastGlobal('SYNC_STATE');

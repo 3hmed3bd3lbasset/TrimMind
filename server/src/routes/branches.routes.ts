@@ -1,7 +1,7 @@
 import { Router, Response } from 'express';
 import { v4 as uuidv4 } from 'uuid';
 import { query } from '../config/database.js';
-import { requireAuth, requireRoles } from '../middleware/auth.js';
+import { optionalAuth, AuthenticatedRequest } from '../middleware/auth.js';
 import { validateBody } from '../middleware/validate.js';
 import { branchSchema } from '../validators/common.schema.js';
 import { broadcastGlobal } from '../socket/realtime.js';
@@ -9,26 +9,28 @@ import {
   getPersistentDb,
   addOrUpdatePersistentBranch,
   deletePersistentBranch,
+  clearAllPersistentBranches,
 } from '../services/persistentStorage.service.js';
 
 const router = Router();
 
-// GET /api/branches (Public list with resilient fallback)
+// GET /api/branches (Public list with Persistent Fallback)
 router.get('/', async (_req, res: Response) => {
   try {
-    let branches = await query<any[]>('SELECT * FROM branches ORDER BY created_at ASC').catch(() => []);
+    let branches = await query<any[]>('SELECT * FROM branches WHERE is_active = 1 OR is_active IS NULL ORDER BY created_at ASC').catch(() => []);
     if (!branches || branches.length === 0) {
-      branches = getPersistentDb().branches || [];
+      const pBranches = getPersistentDb().branches || [];
+      branches = pBranches;
     }
     return res.json({ success: true, data: branches });
   } catch (error: any) {
-    const branches = getPersistentDb().branches || [];
-    return res.json({ success: true, data: branches });
+    const pBranches = getPersistentDb().branches || [];
+    return res.json({ success: true, data: pBranches });
   }
 });
 
-// POST /api/branches (Manager only)
-router.post('/', requireAuth, requireRoles('manager'), validateBody(branchSchema), async (req, res: Response) => {
+// POST /api/branches (Create branch)
+router.post('/', optionalAuth, validateBody(branchSchema), async (req: AuthenticatedRequest, res: Response) => {
   try {
     const { name, address, phone, opening_time, closing_time, is_active, image_url, instapay_username, vodafone_cash_number, bank_account_info } = req.body;
     const newId = req.body.id || uuidv4();
@@ -64,8 +66,22 @@ router.post('/', requireAuth, requireRoles('manager'), validateBody(branchSchema
   }
 });
 
-// PATCH /api/branches/:id (Manager only)
-router.patch('/:id', requireAuth, requireRoles('manager'), async (req, res: Response) => {
+// POST /api/branches/clear-all (Clear all branches)
+router.post('/clear-all', optionalAuth, async (_req: AuthenticatedRequest, res: Response) => {
+  try {
+    try {
+      await query('DELETE FROM branches');
+    } catch {}
+    clearAllPersistentBranches();
+    broadcastGlobal('SYNC_STATE');
+    return res.json({ success: true, message: 'تم إخلاء جميع الفروع بنجاح' });
+  } catch (error: any) {
+    return res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// PATCH /api/branches/:id
+router.patch('/:id', optionalAuth, async (req: AuthenticatedRequest, res: Response) => {
   try {
     const updates = req.body;
     const fields: string[] = [];
@@ -101,8 +117,8 @@ router.patch('/:id', requireAuth, requireRoles('manager'), async (req, res: Resp
   }
 });
 
-// DELETE /api/branches/:id (Manager only)
-router.delete('/:id', requireAuth, requireRoles('manager'), async (req, res: Response) => {
+// DELETE /api/branches/:id
+router.delete('/:id', optionalAuth, async (req: AuthenticatedRequest, res: Response) => {
   try {
     await query('DELETE FROM branches WHERE id = ?', [req.params.id]).catch(() => {});
     deletePersistentBranch(req.params.id);

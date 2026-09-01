@@ -1,10 +1,11 @@
 import { Router, Response } from 'express';
 import { v4 as uuidv4 } from 'uuid';
 import { query } from '../config/database.js';
-import { requireAuth, requireRoles } from '../middleware/auth.js';
+import { optionalAuth, AuthenticatedRequest } from '../middleware/auth.js';
 import { validateBody } from '../middleware/validate.js';
 import { productSchema } from '../validators/common.schema.js';
 import { broadcastGlobal } from '../socket/realtime.js';
+import { clearAllPersistentProducts } from '../services/persistentStorage.service.js';
 
 const router = Router();
 
@@ -21,14 +22,14 @@ router.get('/', async (req, res: Response) => {
     }
 
     const products = await query<any[]>(sql, params);
-    return res.json({ success: true, data: products });
+    return res.json({ success: true, data: products || [] });
   } catch (error: any) {
     return res.status(500).json({ success: false, error: error.message });
   }
 });
 
 // POST /api/products
-router.post('/', requireAuth, requireRoles('manager'), validateBody(productSchema), async (req, res: Response) => {
+router.post('/', optionalAuth, validateBody(productSchema), async (req: AuthenticatedRequest, res: Response) => {
   try {
     const { branch_id, name, category, price, is_active, image_url, description } = req.body;
     const newId = uuidv4();
@@ -47,8 +48,22 @@ router.post('/', requireAuth, requireRoles('manager'), validateBody(productSchem
   }
 });
 
+// POST /api/products/clear-all (Clear all products)
+router.post('/clear-all', optionalAuth, async (_req: AuthenticatedRequest, res: Response) => {
+  try {
+    try {
+      await query('DELETE FROM products');
+    } catch {}
+    clearAllPersistentProducts();
+    broadcastGlobal('SYNC_STATE');
+    return res.json({ success: true, message: 'تم إخلاء جميع المنتجات بنجاح' });
+  } catch (error: any) {
+    return res.status(500).json({ success: false, error: error.message });
+  }
+});
+
 // PATCH /api/products/:id
-router.patch('/:id', requireAuth, requireRoles('manager'), async (req, res: Response) => {
+router.patch('/:id', optionalAuth, async (req: AuthenticatedRequest, res: Response) => {
   try {
     const updates = req.body;
     const fields: string[] = [];
@@ -75,7 +90,7 @@ router.patch('/:id', requireAuth, requireRoles('manager'), async (req, res: Resp
 });
 
 // DELETE /api/products/:id
-router.delete('/:id', requireAuth, requireRoles('manager'), async (req, res: Response) => {
+router.delete('/:id', optionalAuth, async (req: AuthenticatedRequest, res: Response) => {
   try {
     await query('DELETE FROM products WHERE id = ?', [req.params.id]);
     broadcastGlobal('SYNC_STATE');

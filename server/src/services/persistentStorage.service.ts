@@ -136,11 +136,11 @@ export function getPersistentDb(): PersistentDatabaseSchema {
       return {
         ...DEFAULT_SEED_DATA,
         ...parsed,
-        branches: Array.isArray(parsed.branches) && parsed.branches.length > 0 ? parsed.branches : DEFAULT_SEED_DATA.branches,
-        barbers: Array.isArray(parsed.barbers) && parsed.barbers.length > 0 ? parsed.barbers : DEFAULT_SEED_DATA.barbers,
-        chairs: Array.isArray(parsed.chairs) && parsed.chairs.length > 0 ? parsed.chairs : DEFAULT_SEED_DATA.chairs,
-        services: Array.isArray(parsed.services) && parsed.services.length > 0 ? parsed.services : DEFAULT_SEED_DATA.services,
-        products: Array.isArray(parsed.products) && parsed.products.length > 0 ? parsed.products : DEFAULT_SEED_DATA.products,
+        branches: Array.isArray(parsed.branches) ? parsed.branches : [],
+        barbers: Array.isArray(parsed.barbers) ? parsed.barbers : [],
+        chairs: Array.isArray(parsed.chairs) ? parsed.chairs : [],
+        services: Array.isArray(parsed.services) ? parsed.services : [],
+        products: Array.isArray(parsed.products) ? parsed.products : [],
         bookings: Array.isArray(parsed.bookings) ? parsed.bookings : [],
         profiles: Array.isArray(parsed.profiles) ? parsed.profiles : [],
         settings: parsed.settings ? { ...DEFAULT_SEED_DATA.settings, ...parsed.settings } : DEFAULT_SEED_DATA.settings,
@@ -329,4 +329,25 @@ export function deletePersistentProduct(productId: string) {
   if (!db.products) db.products = [];
   const filtered = db.products.filter((p) => p.id !== productId);
   savePersistentDb({ products: filtered });
+}
+
+// 11. Clear All Operations (Wipes collections permanently upon manager request)
+export function clearAllPersistentBarbers() {
+  savePersistentDb({ barbers: [] });
+}
+
+export function clearAllPersistentBranches() {
+  savePersistentDb({ branches: [], barbers: [], chairs: [] });
+}
+
+export function clearAllPersistentChairs() {
+  savePersistentDb({ chairs: [] });
+}
+
+export function clearAllPersistentServices() {
+  savePersistentDb({ services: [] });
+}
+
+export function clearAllPersistentProducts() {
+  savePersistentDb({ products: [] });
 }

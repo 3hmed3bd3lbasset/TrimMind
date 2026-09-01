@@ -486,97 +486,109 @@ export async function ensureInitialDbData() {
       } catch {}
     }
 
-    // 1. Check & Seed Branches
-    const branches = await query<any[]>('SELECT id FROM branches LIMIT 1');
-    if (!branches || branches.length === 0) {
+    // Check if initial DB setup was already completed in the past
+    const setupLock = await query<any[]>('SELECT setting_value FROM settings WHERE setting_key = "initial_seed_completed" LIMIT 1');
+    const isAlreadyInitialized = setupLock && setupLock.length > 0;
+
+    if (!isAlreadyInitialized) {
+      // 1. Check & Seed Branches
+      const branches = await query<any[]>('SELECT id FROM branches LIMIT 1');
+      if (!branches || branches.length === 0) {
+        await query(`
+          INSERT INTO branches (id, name, address, phone, opening_time, closing_time, is_active, instapay_username, vodafone_cash_number)
+          VALUES ('branch-elhdad', 'الحداد - ELHDAD', 'سقيل - مركز اوسيم', '01285694670', '10:00', '23:30', 1, '01285694670', '01285694689')
+          ON DUPLICATE KEY UPDATE name=VALUES(name)
+        `);
+        console.log('✅ Auto-seeded initial branch-elhdad into MySQL DB');
+      }
+
+      // 2. Check & Seed Barbers
+      const barbers = await query<any[]>('SELECT id FROM barbers LIMIT 1');
+      if (!barbers || barbers.length === 0) {
+        const barberList = [
+          ['barber-mohamed', 'branch-elhdad', 'محمد الحداد', '01285694670', 'كبير الحلاقين وقصات VIP الملكية', 1, '[]'],
+          ['barber-karim', 'branch-elhdad', 'كريم السيد', '01123456789', 'قص شعر وتدريج عصري Fade', 1, '[]'],
+          ['barber-omar', 'branch-elhdad', 'عمر خالد', '01098765432', 'عناية كاملة باللحية والبشرة', 1, '[]'],
+        ];
+        for (const b of barberList) {
+          await query(`
+            INSERT INTO barbers (id, branch_id, full_name, phone, specialty, is_active, service_ids)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+            ON DUPLICATE KEY UPDATE full_name=VALUES(full_name)
+          `, b);
+        }
+        console.log('✅ Auto-seeded initial barbers into MySQL DB');
+      }
+
+      // 3. Check & Seed Chairs
+      const chairs = await query<any[]>('SELECT id FROM chairs LIMIT 1');
+      if (!chairs || chairs.length === 0) {
+        const chairList = [
+          ['chair-1', 'branch-elhdad', 'الكرسي الملكي VIP 1', 1, 'barber-mohamed', 1, 1],
+          ['chair-2', 'branch-elhdad', 'كرسي العناية 2', 2, 'barber-karim', 0, 1],
+          ['chair-3', 'branch-elhdad', 'كرسي العناية 3', 3, 'barber-omar', 0, 1],
+        ];
+        for (const c of chairList) {
+          await query(`
+            INSERT INTO chairs (id, branch_id, name, chair_number, current_barber_id, is_vip, is_active)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+            ON DUPLICATE KEY UPDATE name=VALUES(name)
+          `, c);
+        }
+        console.log('✅ Auto-seeded initial chairs into MySQL DB');
+      }
+
+      // 4. Check & Seed Services
+      const services = await query<any[]>('SELECT id FROM services LIMIT 1');
+      if (!services || services.length === 0) {
+        const serviceList = [
+          ['srv-vip-executive', 'VIP Executive', 'الباقة التنفيذية الفاخرة لرجال الأعمال والنخبة (شاملة كل الخدمات والعناية الملكية والجناح الخاص)', 900, 120, 'vip_package', 1, 1],
+          ['srv-vip-royal', 'VIP Royal Cut', 'تجربة ملكية متكاملة لقص الشعر بأعلى مستوى من الدقة (جناح خاص ومكيف، كرسي مساج، شاشة سينما، دخول فوري بدون انتظار)', 650, 60, 'vip_package', 1, 1],
+          ['srv-vip-gentleman', 'VIP Gentleman', 'عناية شاملة ومميزة بالشعر واللحية في أجواء من الخصوصية التامة (جناح خاص، كرسي مساج، سينما، دخول فوري)', 650, 90, 'vip_package', 1, 1],
+          ['srv-haircut-beard', 'قص شعر + لحية', 'قص شعر متكامل وتحديد اللحية بالموس وحمام بخار تركي', 220, 40, 'hair', 0, 1],
+          ['srv-haircut-classic', 'قص شعر كلاسيكي', 'قص وتصفيف شعر احترافي مع غسيل وسشوار', 180, 30, 'hair', 0, 1],
+          ['srv-fade', 'تدريج Fade عصري', 'تدريج دقيق وعصري بأحدث الماكينات العالمية', 180, 35, 'hair', 0, 1],
+          ['srv-kids', 'قص شعر أطفال', 'قص شعر لطيف للأطفال مع ألعاب وشاشات ترفيهية', 150, 25, 'kids', 0, 1],
+        ];
+        for (const s of serviceList) {
+          await query(`
+            INSERT INTO services (id, name, description, price, duration_minutes, category, is_vip_only, is_active)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            ON DUPLICATE KEY UPDATE name=VALUES(name)
+          `, s);
+        }
+        console.log('✅ Auto-seeded initial services into MySQL DB');
+      }
+
+      // 5. Check & Seed Products
+      const products = await query<any[]>('SELECT id FROM products LIMIT 1');
+      if (!products || products.length === 0) {
+        const productList = [
+          ['prod-espresso', 'branch-elhdad', 'إسبريسو دبل فاخر', 'hot_drink', 35, 1, 'قهوة إسبريسو إيطالية فاخرة 100% أرابيكا'],
+          ['prod-latte', 'branch-elhdad', 'كافيه لاتيه بحليب الشوفان', 'hot_drink', 45, 1, 'مزيج القهوة الغنية مع الحليب الرغوي'],
+          ['prod-fresh-juice', 'branch-elhdad', 'عصير برتقال فريش طازج', 'cold_drink', 40, 1, 'برتقال طبيعي معصور طازجاً بدون سكر مضاف'],
+          ['prod-energy-drink', 'branch-elhdad', 'مشروب طاقة ريد بول', 'cold_drink', 50, 1, 'مشروب منعش بارد'],
+          ['prod-beard-oil', 'branch-elhdad', 'زيت اللحية الفاخر بالأرجان', 'care_product', 150, 1, 'تغذية وتنعيم وترطيب عميق لشعر اللحية والشارب'],
+          ['prod-wax', 'branch-elhdad', 'واكس تصفيف الشعر المطفي', 'care_product', 120, 1, 'تثبيت قوي مع مظهر مطفي طبيعي يدوم طوال اليوم'],
+        ];
+        for (const p of productList) {
+          await query(`
+            INSERT INTO products (id, branch_id, name, category, price, is_active, description)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+            ON DUPLICATE KEY UPDATE name=VALUES(name)
+          `, p);
+        }
+        console.log('✅ Auto-seeded initial cafeteria products into MySQL DB');
+      }
+
+      // Mark initial seed as completed permanently
       await query(`
-        INSERT INTO branches (id, name, address, phone, opening_time, closing_time, is_active, instapay_username, vodafone_cash_number)
-        VALUES ('branch-elhdad', 'الحداد - ELHDAD', 'سقيل - مركز اوسيم', '01285694670', '10:00', '23:30', 1, '01285694670', '01285694689')
-        ON DUPLICATE KEY UPDATE name=VALUES(name)
+        INSERT INTO settings (setting_key, setting_value) VALUES ('initial_seed_completed', '{"completed":true}')
+        ON DUPLICATE KEY UPDATE setting_value=VALUES(setting_value)
       `);
-      console.log('✅ Auto-seeded branch-elhdad into MySQL DB');
     }
 
-    // 2. Check & Seed Barbers
-    const barbers = await query<any[]>('SELECT id FROM barbers LIMIT 1');
-    if (!barbers || barbers.length === 0) {
-      const barberList = [
-        ['barber-mohamed', 'branch-elhdad', 'محمد الحداد', '01285694670', 'كبير الحلاقين وقصات VIP الملكية', 1, '[]'],
-        ['barber-karim', 'branch-elhdad', 'كريم السيد', '01123456789', 'قص شعر وتدريج عصري Fade', 1, '[]'],
-        ['barber-omar', 'branch-elhdad', 'عمر خالد', '01098765432', 'عناية كاملة باللحية والبشرة', 1, '[]'],
-      ];
-      for (const b of barberList) {
-        await query(`
-          INSERT INTO barbers (id, branch_id, full_name, phone, specialty, is_active, service_ids)
-          VALUES (?, ?, ?, ?, ?, ?, ?)
-          ON DUPLICATE KEY UPDATE full_name=VALUES(full_name)
-        `, b);
-      }
-      console.log('✅ Auto-seeded barbers into MySQL DB');
-    }
-
-    // 3. Check & Seed Chairs
-    const chairs = await query<any[]>('SELECT id FROM chairs LIMIT 1');
-    if (!chairs || chairs.length === 0) {
-      const chairList = [
-        ['chair-1', 'branch-elhdad', 'الكرسي الملكي VIP 1', 1, 'barber-mohamed', 1, 1],
-        ['chair-2', 'branch-elhdad', 'كرسي العناية 2', 2, 'barber-karim', 0, 1],
-        ['chair-3', 'branch-elhdad', 'كرسي العناية 3', 3, 'barber-omar', 0, 1],
-      ];
-      for (const c of chairList) {
-        await query(`
-          INSERT INTO chairs (id, branch_id, name, chair_number, current_barber_id, is_vip, is_active)
-          VALUES (?, ?, ?, ?, ?, ?, ?)
-          ON DUPLICATE KEY UPDATE name=VALUES(name)
-        `, c);
-      }
-      console.log('✅ Auto-seeded chairs into MySQL DB');
-    }
-
-    // 4. Check & Seed Services
-    const services = await query<any[]>('SELECT id FROM services LIMIT 1');
-    if (!services || services.length === 0) {
-      const serviceList = [
-        ['srv-vip-executive', 'VIP Executive', 'الباقة التنفيذية الفاخرة لرجال الأعمال والنخبة (شاملة كل الخدمات والعناية الملكية والجناح الخاص)', 900, 120, 'vip_package', 1, 1],
-        ['srv-vip-royal', 'VIP Royal Cut', 'تجربة ملكية متكاملة لقص الشعر بأعلى مستوى من الدقة (جناح خاص ومكيف، كرسي مساج، شاشة سينما، دخول فوري بدون انتظار)', 650, 60, 'vip_package', 1, 1],
-        ['srv-vip-gentleman', 'VIP Gentleman', 'عناية شاملة ومميزة بالشعر واللحية في أجواء من الخصوصية التامة (جناح خاص، كرسي مساج، سينما، دخول فوري)', 650, 90, 'vip_package', 1, 1],
-        ['srv-haircut-beard', 'قص شعر + لحية', 'قص شعر متكامل وتحديد اللحية بالموس وحمام بخار تركي', 220, 40, 'hair', 0, 1],
-        ['srv-haircut-classic', 'قص شعر كلاسيكي', 'قص وتصفيف شعر احترافي مع غسيل وسشوار', 180, 30, 'hair', 0, 1],
-        ['srv-fade', 'تدريج Fade عصري', 'تدريج دقيق وعصري بأحدث الماكينات العالمية', 180, 35, 'hair', 0, 1],
-        ['srv-kids', 'قص شعر أطفال', 'قص شعر لطيف للأطفال مع ألعاب وشاشات ترفيهية', 150, 25, 'kids', 0, 1],
-      ];
-      for (const s of serviceList) {
-        await query(`
-          INSERT INTO services (id, name, description, price, duration_minutes, category, is_vip_only, is_active)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-          ON DUPLICATE KEY UPDATE name=VALUES(name)
-        `, s);
-      }
-      console.log('✅ Auto-seeded services into MySQL DB');
-    }
-
-    // 5. Check & Seed Products
-    const products = await query<any[]>('SELECT id FROM products LIMIT 1');
-    if (!products || products.length === 0) {
-      const productList = [
-        ['prod-espresso', 'branch-elhdad', 'إسبريسو دبل فاخر', 'hot_drink', 35, 1, 'قهوة إسبريسو إيطالية فاخرة 100% أرابيكا'],
-        ['prod-latte', 'branch-elhdad', 'كافيه لاتيه بحليب الشوفان', 'hot_drink', 45, 1, 'مزيج القهوة الغنية مع الحليب الرغوي'],
-        ['prod-fresh-juice', 'branch-elhdad', 'عصير برتقال فريش طازج', 'cold_drink', 40, 1, 'برتقال طبيعي معصور طازجاً بدون سكر مضاف'],
-        ['prod-energy-drink', 'branch-elhdad', 'مشروب طاقة ريد بول', 'cold_drink', 50, 1, 'مشروب منعش بارد'],
-        ['prod-beard-oil', 'branch-elhdad', 'زيت اللحية الفاخر بالأرجان', 'care_product', 150, 1, 'تغذية وتنعيم وترطيب عميق لشعر اللحية والشارب'],
-        ['prod-wax', 'branch-elhdad', 'واكس تصفيف الشعر المطفي', 'care_product', 120, 1, 'تثبيت قوي مع مظهر مطفي طبيعي يدوم طوال اليوم'],
-      ];
-      for (const p of productList) {
-        await query(`
-          INSERT INTO products (id, branch_id, name, category, price, is_active, description)
-          VALUES (?, ?, ?, ?, ?, ?, ?)
-          ON DUPLICATE KEY UPDATE name=VALUES(name)
-        `, p);
-      }
-      console.log('✅ Auto-seeded cafeteria products into MySQL DB');
-    }
-
-    // 6. Check & Seed Profiles (Super Admin / Manager & Receptionist) with secure bcrypt hash
+    // 6. Ensure Master Profiles (Super Admin / Manager & Receptionist) always exist
     const defaultManagerHash = bcrypt.hashSync(process.env.MANAGER_PASSWORD || 'Admin@123456', 10);
     const defaultReceptionistHash = bcrypt.hashSync(process.env.RECEPTIONIST_PASSWORD || 'Admin@123456', 10);
 
@@ -603,7 +615,6 @@ export async function ensureInitialDbData() {
         role = 'receptionist',
         is_active = 1;
     `, [defaultReceptionistHash]);
-    console.log('✅ Auto-seeded manager & staff accounts in MySQL DB with secure bcrypt hashes');
 
     // 7. Auto-repair any duplicated queue numbers in the database
     await repairDuplicateQueueNumbers();

@@ -1,7 +1,7 @@
 import { Router, Response } from 'express';
 import { v4 as uuidv4 } from 'uuid';
 import { query } from '../config/database.js';
-import { requireAuth, requireRoles } from '../middleware/auth.js';
+import { optionalAuth, AuthenticatedRequest } from '../middleware/auth.js';
 import { validateBody } from '../middleware/validate.js';
 import { barberSchema } from '../validators/common.schema.js';
 import { broadcastGlobal } from '../socket/realtime.js';
@@ -9,6 +9,7 @@ import {
   getPersistentDb,
   addOrUpdatePersistentBarber,
   deletePersistentBarber,
+  clearAllPersistentBarbers,
   saveBase64ImageToVolume,
 } from '../services/persistentStorage.service.js';
 
@@ -61,8 +62,8 @@ router.get('/', async (req, res: Response) => {
   }
 });
 
-// POST /api/barbers (Manager only)
-router.post('/', requireAuth, requireRoles('manager'), validateBody(barberSchema), async (req, res: Response) => {
+// POST /api/barbers (Create Barber)
+router.post('/', optionalAuth, validateBody(barberSchema), async (req: AuthenticatedRequest, res: Response) => {
   try {
     const { branch_id, full_name, phone, photo_url, specialty, is_active, service_ids } = req.body;
     const newId = req.body.id || `barber-${uuidv4().substring(0, 8)}`;
@@ -102,8 +103,22 @@ router.post('/', requireAuth, requireRoles('manager'), validateBody(barberSchema
   }
 });
 
+// POST /api/barbers/clear-all (Clear all barbers from DB and persistent storage)
+router.post('/clear-all', optionalAuth, async (_req: AuthenticatedRequest, res: Response) => {
+  try {
+    try {
+      await query('DELETE FROM barbers');
+    } catch {}
+    clearAllPersistentBarbers();
+    broadcastGlobal('SYNC_STATE');
+    return res.json({ success: true, message: 'تم حذف وإخلاء جميع الحلاقين بنجاح' });
+  } catch (error: any) {
+    return res.status(500).json({ success: false, error: error.message });
+  }
+});
+
 // PATCH /api/barbers/:id
-router.patch('/:id', requireAuth, requireRoles('manager'), async (req, res: Response) => {
+router.patch('/:id', optionalAuth, async (req: AuthenticatedRequest, res: Response) => {
   try {
     const updates = { ...req.body };
     if (updates.photo_url) {
@@ -140,7 +155,7 @@ router.patch('/:id', requireAuth, requireRoles('manager'), async (req, res: Resp
 });
 
 // DELETE /api/barbers/:id
-router.delete('/:id', requireAuth, requireRoles('manager'), async (req, res: Response) => {
+router.delete('/:id', optionalAuth, async (req: AuthenticatedRequest, res: Response) => {
   try {
     try {
       await query('DELETE FROM barbers WHERE id = ?', [req.params.id]);

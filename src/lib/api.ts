@@ -131,26 +131,31 @@ export const api = {
   createBranch: (data: any) => apiClient.post('/branches', data),
   updateBranch: (id: string, data: any) => apiClient.patch(`/branches/${id}`, data),
   deleteBranch: (id: string) => apiClient.delete(`/branches/${id}`),
+  clearAllBranches: () => apiClient.post('/branches/clear-all'),
 
   getBarbers: (branchId?: string) => apiClient.get('/barbers', { params: { branchId } }),
   createBarber: (data: any) => apiClient.post('/barbers', data),
   updateBarber: (id: string, data: any) => apiClient.patch(`/barbers/${id}`, data),
   deleteBarber: (id: string) => apiClient.delete(`/barbers/${id}`),
+  clearAllBarbers: () => apiClient.post('/barbers/clear-all'),
 
   getChairs: (branchId?: string) => apiClient.get('/chairs', { params: { branchId } }),
   createChair: (data: any) => apiClient.post('/chairs', data),
   updateChair: (id: string, data: any) => apiClient.patch(`/chairs/${id}`, data),
   deleteChair: (id: string) => apiClient.delete(`/chairs/${id}`),
+  clearAllChairs: () => apiClient.post('/chairs/clear-all'),
 
   getServices: (branchId?: string) => apiClient.get('/services', { params: { branchId } }),
   createService: (data: any) => apiClient.post('/services', data),
   updateService: (id: string, data: any) => apiClient.patch(`/services/${id}`, data),
   deleteService: (id: string) => apiClient.delete(`/services/${id}`),
+  clearAllServices: () => apiClient.post('/services/clear-all'),
 
   getProducts: (branchId?: string) => apiClient.get('/products', { params: { branchId } }),
   createProduct: (data: any) => apiClient.post('/products', data),
   updateProduct: (id: string, data: any) => apiClient.patch(`/products/${id}`, data),
   deleteProduct: (id: string) => apiClient.delete(`/products/${id}`),
+  clearAllProducts: () => apiClient.post('/products/clear-all'),
 
   getSettings: () => apiClient.get('/settings'),
   updateSettings: (settings: any) => apiClient.patch('/settings', settings),
