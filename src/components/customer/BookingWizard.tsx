@@ -113,6 +113,8 @@ export const BookingWizard: React.FC = () => {
   const [currentStep, setCurrentStep] = useState<number>(1);
   const [branchId, setBranchId] = useState<string>(selectedBranchId || branches[0]?.id || 'branch-elhdad');
   const [bookingType, setBookingType] = useState<'normal' | 'vip'>('normal');
+  const [isCustomService, setIsCustomService] = useState<boolean>(false);
+  const [customServiceText, setCustomServiceText] = useState<string>('');
   const [selectedServiceId, setSelectedServiceId] = useState<string>(services[0]?.id || '');
   const [additionalServiceIds, setAdditionalServiceIds] = useState<string[]>([]);
   const [barberId, setBarberId] = useState<string>(barbers[0]?.id || '');
@@ -220,15 +222,17 @@ export const BookingWizard: React.FC = () => {
 
   // Calculate pricing
   const primaryService = services.find((s) => s.id === selectedServiceId);
-  const additionalServices = services.filter((s) => additionalServiceIds.includes(s.id));
+  const additionalServices = isCustomService ? [] : services.filter((s) => additionalServiceIds.includes(s.id));
 
-  const totalServicePrice =
-    (primaryService?.price || 0) +
-    additionalServices.reduce((sum, s) => sum + s.price, 0);
+  const totalServicePrice = isCustomService
+    ? 0
+    : (primaryService?.price || 0) +
+      additionalServices.reduce((sum, s) => sum + s.price, 0);
 
-  const totalDurationMinutes =
-    (primaryService?.duration_minutes || 30) +
-    additionalServices.reduce((sum, s) => sum + s.duration_minutes, 0);
+  const totalDurationMinutes = isCustomService
+    ? 45
+    : (primaryService?.duration_minutes || 30) +
+      additionalServices.reduce((sum, s) => sum + s.duration_minutes, 0);
 
   const bookingFee =
     bookingType === 'vip' ? settings.booking_fee_vip : settings.booking_fee_normal;
@@ -389,9 +393,15 @@ export const BookingWizard: React.FC = () => {
       toast.error('يرجى اختيار الفرع أولاً');
       return;
     }
-    if (currentStep === 2 && !selectedServiceId) {
-      toast.error('يرجى اختيار الخدمة المطلوبة');
-      return;
+    if (currentStep === 2) {
+      if (isCustomService && !customServiceText.trim()) {
+        toast.error('يرجى كتابة مواصفات الخدمة المخصصة أولاً');
+        return;
+      }
+      if (!isCustomService && !selectedServiceId) {
+        toast.error('يرجى اختيار الخدمة المطلوبة');
+        return;
+      }
     }
     if (currentStep === 3 && !barberId) {
       toast.error('يرجى اختيار الحلاق المفضل');
@@ -471,17 +481,29 @@ export const BookingWizard: React.FC = () => {
       .map(([pId, qty]) => ({ productId: pId, quantity: qty }));
 
     try {
+      const finalServiceName = isCustomService
+        ? (customServiceText.trim() || 'خدمة مخصصة على مزاجك')
+        : undefined;
+
+      const finalNotes = isCustomService
+        ? `[طلب تخصيص خدمة]: ${customServiceText.trim()}${notes ? ` | ${notes}` : ''}`
+        : notes;
+
       const newBooking = await createBooking({
         customerName,
         customerPhone,
         branchId,
         barberId,
-        serviceId: selectedServiceId,
-        additionalServiceIds,
+        serviceId: isCustomService ? 'srv-custom' : selectedServiceId,
+        serviceName: finalServiceName,
+        servicePrice: isCustomService ? 0 : totalServicePrice,
+        totalAmount: isCustomService ? 0 : grandTotal,
+        additionalServiceIds: isCustomService ? [] : additionalServiceIds,
         bookingType,
         startsAt: startsAtISO,
         endsAt: endsAtDate.toISOString(),
-        notes,
+        status: isCustomService ? 'custom_pricing_requested' : 'pending_review',
+        notes: finalNotes,
         selectedProducts: prodsPayload,
         paymentProof: {
           paymentMethod,
@@ -502,7 +524,11 @@ export const BookingWizard: React.FC = () => {
         colors: ['#1e3a2e', '#c2613d', '#f3eee4'],
       });
 
-      toast.success('تم تأكيد حجزك وإرسال الإيصال للاستقبال بنجاح ✅');
+      toast.success(
+        isCustomService
+          ? 'تم إرسال طلب باقتك المخصصة بنجاح! سيقوم موظف الاستقبال بتسعيرها وتأكيد موعدك فوراً 💈✨'
+          : 'تم تأكيد حجزك وإرسال الإيصال للاستقبال بنجاح ✅'
+      );
     } catch (err: any) {
       setIsSubmitting(false);
       toast.error(err?.message || 'تعذر إرسال الحجز للسيرفر، يرجى إعادة المحاولة');
@@ -627,32 +653,109 @@ export const BookingWizard: React.FC = () => {
             </button>
           </div>
 
-          {/* Services Grid */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {services
-              .filter((s) => s.is_active && (bookingType === 'vip' || !s.is_vip_only))
-              .map((service) => {
-                const isSelected = selectedServiceId === service.id;
-                return (
-                  <ServiceCard
-                    key={service.id}
-                    service={service}
-                    isSelected={isSelected}
-                    onToggleSelect={() => setSelectedServiceId(service.id)}
-                  />
-                );
-              })}
+          {/* Custom Service Toggle Card */}
+          <div
+            onClick={() => {
+              const nextState = !isCustomService;
+              setIsCustomService(nextState);
+              if (nextState) {
+                setSelectedServiceId('srv-custom');
+              } else {
+                setSelectedServiceId(services[0]?.id || '');
+              }
+            }}
+            className={`p-4 rounded-2xl border-2 cursor-pointer transition-all duration-300 flex items-center justify-between gap-4 ${
+              isCustomService
+                ? 'bg-gradient-to-r from-amber-500/15 via-amber-500/10 to-amber-500/15 border-amber-500 shadow-md ring-2 ring-amber-500/20'
+                : 'bg-white/80 border-dashed border-amber-500/50 hover:border-amber-600 hover:bg-white'
+            }`}
+          >
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-amber-500/15 text-amber-700 flex items-center justify-center font-bold">
+                <Sparkles className="w-5 h-5" />
+              </div>
+              <div>
+                <h3 className="font-serif font-bold text-ink text-sm sm:text-base flex items-center gap-2">
+                  <span>تخصيص خدمة على مزاجك</span>
+                  <span className="text-[10px] bg-amber-500 text-white font-sans font-bold px-2 py-0.5 rounded-full">
+                    ميزة جديدة ✨
+                  </span>
+                </h3>
+                <p className="text-[11px] text-ink-mute">
+                  اكتب مواصفات باقتك الخاصة وسيتم مراجعتها وتحديد سعرها من الاستقبال
+                </p>
+              </div>
+            </div>
+            <div className="shrink-0">
+              <span
+                className={`text-xs font-bold px-3.5 py-1.5 rounded-xl border transition-all ${
+                  isCustomService
+                    ? 'bg-amber-500 text-white border-amber-600 shadow-xs'
+                    : 'bg-paper text-ink-soft border-border hover:bg-amber-50 hover:border-amber-400'
+                }`}
+              >
+                {isCustomService ? 'مُفعّل ✓' : 'تخصيص الآن +'}
+              </span>
+            </div>
           </div>
+
+          {/* Custom Service Input Box with prominent highlighted notice */}
+          {isCustomService && (
+            <div className="p-4 sm:p-5 bg-amber-50/80 border-2 border-amber-400 rounded-2xl space-y-3.5 animate-in fade-in slide-in-from-top-2 duration-300 shadow-sm">
+              <div className="p-3 bg-amber-500/15 border border-amber-500/30 rounded-xl text-xs font-bold text-amber-950 flex items-center gap-2.5">
+                <Sparkles className="w-4 h-4 text-amber-700 shrink-0" />
+                <span>سيتم تحديد سعر الخدمة من الاستقبال، وهيظهرلك سعر الخدمة عند قبول حجزك</span>
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="text-xs font-bold text-ink-soft block">
+                  اكتب مواصفات وتفاصيل الخدمة أو الباقة المطلوبة:
+                </label>
+                <textarea
+                  rows={3}
+                  value={customServiceText}
+                  onChange={(e) => setCustomServiceText(e.target.value)}
+                  placeholder="مثال: حلاقة شعر تدريج كيرلي + صبغة رمادي + تنظيف بشرة عميق بالبخار وماسك الفحم وتحديد الذقن بالليزر..."
+                  className="w-full bg-white border border-amber-300 focus:border-amber-600 focus:ring-2 focus:ring-amber-500/20 rounded-xl p-3 text-xs text-ink outline-none transition-all placeholder:text-ink-mute/70 leading-relaxed"
+                />
+              </div>
+            </div>
+          )}
+
+          {/* Standard Services Grid (Shown when not customizing or as alternative) */}
+          {!isCustomService && (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {services
+                .filter((s) => s.is_active && (bookingType === 'vip' || !s.is_vip_only))
+                .map((service) => {
+                  const isSelected = selectedServiceId === service.id;
+                  return (
+                    <ServiceCard
+                      key={service.id}
+                      service={service}
+                      isSelected={isSelected}
+                      onToggleSelect={() => setSelectedServiceId(service.id)}
+                    />
+                  );
+                })}
+            </div>
+          )}
 
           {/* Summary Box */}
           <div className="bg-white/80 p-4 rounded-2xl border border-border flex items-center justify-between text-xs shadow-clinic-1">
             <div>
               <span className="text-ink-mute">الخدمة المختارة: </span>
-              <span className="font-bold text-ink">{primaryService?.name}</span>
+              <span className="font-bold text-ink">
+                {isCustomService
+                  ? customServiceText.trim() || 'خدمة مخصصة على مزاجك ✂️'
+                  : primaryService?.name}
+              </span>
             </div>
             <div className="flex items-center gap-4">
               <span className="text-ink-mute">المدة: {totalDurationMinutes} دقيقة</span>
-              <span className="text-forest font-serif font-bold text-base">{formatCurrency(totalServicePrice)}</span>
+              <span className="text-forest font-serif font-bold text-base">
+                {isCustomService ? 'يُحدد من الاستقبال' : formatCurrency(totalServicePrice)}
+              </span>
             </div>
           </div>
         </div>
@@ -1149,7 +1252,7 @@ export const BookingWizard: React.FC = () => {
                 </div>
                 <div className="flex justify-between text-ink-soft">
                   <span>الخدمة الأساسية:</span>
-                  <span>{formatCurrency(totalServicePrice)}</span>
+                  <span>{isCustomService ? 'يُحدد من الاستقبال' : formatCurrency(totalServicePrice)}</span>
                 </div>
                 {productsTotal > 0 && (
                   <div className="flex justify-between text-ink-soft">
@@ -1158,8 +1261,10 @@ export const BookingWizard: React.FC = () => {
                   </div>
                 )}
                 <div className="border-t border-border pt-2 flex justify-between font-bold text-ink text-sm">
-                  <span>إجمالي الحساب التقديري:</span>
-                  <span className="text-forest font-serif font-bold">{formatCurrency(grandTotal)}</span>
+                  <span>إجمالي الحساب:</span>
+                  <span className="text-forest font-serif font-bold">
+                    {isCustomService ? 'يُحدد من الاستقبال' : formatCurrency(grandTotal)}
+                  </span>
                 </div>
                 <div className="bg-forest/10 p-2.5 rounded-xl border border-forest/20 text-[11px] text-forest flex justify-between font-bold">
                   <span>عربون تأكيد الحجز المطلوب:</span>
@@ -1420,7 +1525,11 @@ export const BookingWizard: React.FC = () => {
               </div>
               <div className="flex justify-between font-bold text-ink">
                 <span>إجمالي الحساب:</span>
-                <span className="text-forest font-serif font-bold">{formatCurrency(confirmedBooking.total_at_booking)}</span>
+                <span className="text-forest font-serif font-bold">
+                  {confirmedBooking.status === 'custom_pricing_requested' || Number(confirmedBooking.total_at_booking) === 0
+                    ? 'سيتم تحديده من الاستقبال'
+                    : formatCurrency(confirmedBooking.total_at_booking)}
+                </span>
               </div>
             </div>
 

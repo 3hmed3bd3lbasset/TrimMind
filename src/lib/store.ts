@@ -88,7 +88,6 @@ interface SalonStore {
   updateReceptionist: (id: string, updates: Partial<Profile>) => void;
   deleteReceptionist: (id: string) => void;
 
-  // Booking Operations
   createBooking: (payload: {
     customerName: string;
     customerPhone: string;
@@ -96,10 +95,14 @@ interface SalonStore {
     barberId?: string;
     chairId?: string;
     serviceId: string;
+    serviceName?: string;
+    servicePrice?: number;
+    totalAmount?: number;
     additionalServiceIds?: string[];
     bookingType: 'normal' | 'vip';
     startsAt: string;
     endsAt: string;
+    status?: BookingStatus;
     notes?: string;
     selectedProducts?: { productId: string; quantity: number }[];
     paymentProof?: {
@@ -316,7 +319,7 @@ export const useSalonStore = create<SalonStore>((set, get) => ({
         const secureToken = `${payload.bookingType === 'vip' ? 'VIP' : 'NOR'}-${bookingId.slice(3)}-${generateToken()}`;
 
         let paymentProofObj: PaymentProof | undefined = undefined;
-        let initialStatus: BookingStatus = 'awaiting_payment';
+        let initialStatus: BookingStatus = payload.status || (payload.paymentProof ? 'pending_review' : 'awaiting_payment');
 
         if (payload.paymentProof) {
           paymentProofObj = {
@@ -329,7 +332,6 @@ export const useSalonStore = create<SalonStore>((set, get) => ({
             status: 'pending_review',
             submitted_at: new Date().toISOString(),
           };
-          initialStatus = 'pending_review';
         }
 
         // Smart atomic conflict-prevention: calculate unique non-conflicting queue number for this branch and date
@@ -346,6 +348,9 @@ export const useSalonStore = create<SalonStore>((set, get) => ({
           assignedQueueNumber++;
         }
 
+        const finalServicePrice = payload.servicePrice !== undefined ? payload.servicePrice : servicePrice;
+        const finalTotal = payload.totalAmount !== undefined ? payload.totalAmount : (finalServicePrice + itemsTotal);
+
         const newBooking: Booking = {
           id: bookingId,
           customer_id: currentUser.id || generateUUID(),
@@ -355,16 +360,17 @@ export const useSalonStore = create<SalonStore>((set, get) => ({
           barber_id: payload.barberId,
           chair_id: payload.chairId,
           service_id: payload.serviceId,
+          service_name: payload.serviceName || service?.name || 'خدمة صالون',
           additional_service_ids: payload.additionalServiceIds,
           booking_type: payload.bookingType,
           status: initialStatus,
           starts_at: payload.startsAt,
           ends_at: payload.endsAt,
-          service_price_at_booking: servicePrice,
+          service_price_at_booking: finalServicePrice,
           booking_fee_at_booking: bookingFee,
           discount_at_booking: 0,
           items_total_at_booking: itemsTotal,
-          total_at_booking: servicePrice + itemsTotal,
+          total_at_booking: finalTotal,
           secure_token: secureToken,
           queue_number: assignedQueueNumber,
           notes: payload.notes,
@@ -384,7 +390,7 @@ export const useSalonStore = create<SalonStore>((set, get) => ({
           target_id: bookingId,
           metadata: {
             booking_type: payload.bookingType,
-            service: service?.name,
+            service: newBooking.service_name || service?.name,
             total: newBooking.total_at_booking,
             queue_number: assignedQueueNumber,
           },
@@ -394,11 +400,13 @@ export const useSalonStore = create<SalonStore>((set, get) => ({
         const newNotification: AppNotification = {
           id: generateUUID(),
           title:
-            status === 'pending_review'
+            initialStatus === 'custom_pricing_requested'
+              ? 'طلب تسعير خدمة مخصصة جديد ✂️'
+              : initialStatus === 'pending_review'
               ? 'طلب حجز جديد بانتظار المراجعة'
               : 'طلب حجز جديد معتمد',
-          message: `قام العميل ${payload.customerName} بطلب حجز ${service?.name || 'خدمة'} (رقم الحجز: ${bookingId})`,
-          type: status === 'pending_review' ? 'pending_review' : 'new_booking',
+          message: `قام العميل ${payload.customerName} بطلب حجز ${newBooking.service_name || service?.name || 'خدمة'} (رقم الحجز: ${bookingId})`,
+          type: initialStatus === 'pending_review' || initialStatus === 'custom_pricing_requested' ? 'pending_review' : 'new_booking',
           target_id: bookingId,
           target_type: 'booking',
           branch_id: payload.branchId,
@@ -431,13 +439,14 @@ export const useSalonStore = create<SalonStore>((set, get) => ({
             barberId: payload.barberId,
             barberName: barber?.full_name,
             serviceId: payload.serviceId,
-            serviceName: service?.name,
-            servicePrice: servicePrice,
-            totalAmount: newBooking.total_at_booking,
+            serviceName: newBooking.service_name || service?.name,
+            servicePrice: finalServicePrice,
+            totalAmount: finalTotal,
             additionalServiceIds: payload.additionalServiceIds,
             bookingType: payload.bookingType,
             startsAt: payload.startsAt,
             endsAt: payload.endsAt,
+            status: initialStatus,
             notes: payload.notes,
             selectedProducts: payload.selectedProducts,
             paymentProof: payload.paymentProof

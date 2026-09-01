@@ -56,7 +56,7 @@ export class ApplyCustomPricingUseCase {
     });
     this.realtimeNotifier.broadcastGlobal('SYNC_STATE', {
       bookingId: payload.bookingId,
-      status: 'awaiting_payment',
+      status: 'confirmed',
     });
 
     // Send WhatsApp Invoice to Customer

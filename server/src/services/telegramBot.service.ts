@@ -362,6 +362,11 @@ export async function trackQueueAndBooking(queryStr: string): Promise<string> {
 
   // Calculate status in Arabic
   const statusMap: Record<string, { label: string; icon: string; desc: string }> = {
+    custom_pricing_requested: {
+      label: 'طلب تسعير باقة مخصصة قيد المراجعة',
+      icon: '✂️💵',
+      desc: 'تم استلام طلب باقتك المخصصة وجارٍ مراجعتها وتحديد السعر من موظف الاستقبال.',
+    },
     pending_review: {
       label: 'قيد مراجعة الدفع والإيصال',
       icon: '⏳',
@@ -428,7 +433,18 @@ export async function trackQueueAndBooking(queryStr: string): Promise<string> {
   const formattedDate = startsAt ? new Date(startsAt).toLocaleDateString('ar-EG', { weekday: 'long', month: 'long', day: 'numeric' }) : 'اليوم';
   const formattedTime = startsAt ? new Date(startsAt).toLocaleTimeString('ar-EG', { hour: '2-digit', minute: '2-digit' }) : 'خلال ساعات العمل';
 
-  return `🎫 <b>بطاقة متابعة الحجز والطابور المباشر:</b>
+  const totalAmount = Number(match.total_at_booking || match.totalAmount || 0);
+  const depositAmount = Number(match.booking_fee_at_booking || (match.booking_type === 'vip' ? 100 : 50));
+  const remainingAmount = Math.max(0, totalAmount - depositAmount);
+
+  let financialSummary = '';
+  if (match.status === 'custom_pricing_requested' || totalAmount === 0) {
+    financialSummary = `💵 <b>السعر الإجمالي:</b> <i>سيتم تحديده من الاستقبال</i>\n💳 <b>عربون الحجز:</b> <code>${depositAmount} ج.م</code>`;
+  } else {
+    financialSummary = `💵 <b>السعر الإجمالي المعتمد:</b> <code>${totalAmount} ج.م</code>\n💳 <b>العربون المسدد:</b> <code>${depositAmount} ج.م</code>\n💰 <b>المتبقي للدفع بالصالون:</b> <code>${remainingAmount} ج.م</code>`;
+  }
+
+  return `🎫 <b>بطاقة متابعة الحجز والفاتورة الحية:</b>
 
 🏷️ <b>رقم الحجز:</b> <code>#${bookingId}</code>
 👤 <b>العميل:</b> ${clientName}
@@ -436,6 +452,8 @@ export async function trackQueueAndBooking(queryStr: string): Promise<string> {
 💈 <b>الكابتن:</b> ${barberName}
 📅 <b>الموعد:</b> ${formattedDate} (${formattedTime})
 
+━━━━━━━━━━━━━━━━━━━━
+${financialSummary}
 ━━━━━━━━━━━━━━━━━━━━
 ${currentStatus.icon} <b>الحالة الحالية:</b> <b>${currentStatus.label}</b>
 🔢 <b>موقعك في الدور:</b> <b>${queuePosText}</b>

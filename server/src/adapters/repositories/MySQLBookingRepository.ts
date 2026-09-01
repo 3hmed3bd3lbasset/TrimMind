@@ -536,7 +536,7 @@ export class MySQLBookingRepository implements IBookingRepository {
   }): Promise<Booking> {
     await query(
       `UPDATE bookings 
-       SET status = 'awaiting_payment',
+       SET status = 'confirmed',
            service_name = ?,
            barber_id = COALESCE(?, barber_id),
            barber_name = COALESCE(?, barber_name),

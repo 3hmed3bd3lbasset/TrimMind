@@ -290,8 +290,18 @@ export const BookingsTable: React.FC<BookingsTableProps> = ({ branchId }) => {
               </div>
 
               {/* Actions Footer */}
-              <div className="flex items-center justify-end pt-1 border-t border-border/70 gap-2 relative z-10">
-                <div className="flex items-center gap-1.5">
+              <div className="flex items-center justify-between pt-1 border-t border-border/70 gap-2 relative z-10">
+                {(b.status === 'custom_pricing_requested' || b.service_id === 'srv-custom') ? (
+                  <button
+                    onClick={() => setSelectedCustomPricingBooking(b)}
+                    className="flex-1 py-2 px-3 rounded-xl bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs shadow-xs flex items-center justify-center gap-1.5 transition-all animate-pulse"
+                  >
+                    <Sparkles className="w-3.5 h-3.5 text-amber-200" />
+                    <span>تسعير واعتماد الحجز 🛠️</span>
+                  </button>
+                ) : null}
+
+                <div className="flex items-center gap-1.5 ml-auto">
                   <button
                     onClick={() => openEditModal(b)}
                     className="p-2 rounded-xl bg-paper-warm hover:bg-white text-forest border border-border shadow-xs"
@@ -426,6 +436,16 @@ export const BookingsTable: React.FC<BookingsTableProps> = ({ branchId }) => {
 
                     <td className="py-3.5 px-4 text-center">
                       <div className="flex items-center justify-center gap-1">
+                        {(b.status === 'custom_pricing_requested' || b.service_id === 'srv-custom') && (
+                          <button
+                            onClick={() => setSelectedCustomPricingBooking(b)}
+                            className="px-2.5 py-1.5 rounded-lg bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs shadow-xs flex items-center gap-1 transition-all animate-pulse"
+                            title="تسعير الخدمة المخصصة وتأكيد الحجز"
+                          >
+                            <Sparkles className="w-3.5 h-3.5 text-amber-200" />
+                            <span>تسعير واعتماد 🛠️</span>
+                          </button>
+                        )}
                         <button
                           onClick={() => openEditModal(b)}
                           className="p-1.5 rounded-lg bg-paper-warm hover:bg-white text-forest border border-border"
