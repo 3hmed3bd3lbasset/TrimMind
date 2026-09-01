@@ -15,6 +15,7 @@ export interface CreateBookingData {
   bookingType: 'normal' | 'vip';
   startsAt?: string;
   endsAt?: string | null;
+  status?: BookingStatus;
   notes?: string | null;
   paymentProof?: {
     imagePath?: string;

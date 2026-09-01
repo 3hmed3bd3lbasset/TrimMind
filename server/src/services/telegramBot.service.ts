@@ -410,19 +410,28 @@ export async function trackQueueAndBooking(queryStr: string): Promise<string> {
     desc: 'الحجز مسجل في النظام.',
   };
 
-  // Calculate Queue Position
-  let queuePosText = 'جاهز عند الحضور';
+  // Calculate Queue Position & Exact Turn Number
+  const myQueueNum = match.queue_number || match.queueNumber;
+  let queuePosText = myQueueNum ? `الدور #${myQueueNum}` : 'مسجل في طابور اليوم';
   try {
     const queueRows = await query<any[]>(
       `SELECT COUNT(*) as ahead_count FROM bookings 
        WHERE branch_id = ? 
          AND status IN ('confirmed', 'customer_arrived', 'in_service')
-         AND created_at < ?`,
-      [match.branch_id || 'branch-elhdad', match.created_at || new Date().toISOString()]
+         AND queue_number < ?
+         AND (booking_date = ? OR starts_at LIKE ?)`,
+      [
+        match.branch_id || 'branch-elhdad',
+        myQueueNum || 999,
+        match.booking_date || (match.starts_at ? match.starts_at.slice(0, 10) : new Date().toISOString().slice(0, 10)),
+        `${(match.starts_at ? match.starts_at.slice(0, 10) : new Date().toISOString().slice(0, 10))}%`,
+      ]
     ).catch(() => [{ ahead_count: 0 }]);
 
     const ahead = queueRows?.[0]?.ahead_count || 0;
-    queuePosText = ahead === 0 ? 'أنت التالي مباشرة! 👑' : `يوجد ${ahead} عميل في الطابور قبلك`;
+    if (myQueueNum) {
+      queuePosText = ahead === 0 ? `الدور #${myQueueNum} (أنت التالي مباشرة! 👑)` : `الدور #${myQueueNum} (باقي ${ahead} في الانتظار)`;
+    }
   } catch {}
 
   const bookingId = match.id || match.bookingId;
@@ -437,9 +446,20 @@ export async function trackQueueAndBooking(queryStr: string): Promise<string> {
   const depositAmount = Number(match.booking_fee_at_booking || (match.booking_type === 'vip' ? 100 : 50));
   const remainingAmount = Math.max(0, totalAmount - depositAmount);
 
+  const isCustomBooking =
+    match.service_id === 'srv-custom' ||
+    match.status === 'custom_pricing_requested' ||
+    Boolean(match.notes && (match.notes.includes('[طلب تخصيص خدمة]') || match.notes.includes('طلب خدمة مخصصة')));
+
+  const hasBeenPriced =
+    Boolean(
+      (match.custom_line_items && match.custom_line_items !== '[]' && (typeof match.custom_line_items === 'object' ? match.custom_line_items.length > 0 : true)) ||
+      (match.status === 'confirmed' && totalAmount > 0 && match.status !== 'custom_pricing_requested' && !isCustomBooking)
+    );
+
   let financialSummary = '';
-  if (match.status === 'custom_pricing_requested' || totalAmount === 0) {
-    financialSummary = `💵 <b>السعر الإجمالي:</b> <i>سيتم تحديده من الاستقبال</i>\n💳 <b>عربون الحجز:</b> <code>${depositAmount} ج.م</code>`;
+  if (isCustomBooking && (!hasBeenPriced || match.status === 'custom_pricing_requested' || match.status === 'pending_review')) {
+    financialSummary = `💵 <b>السعر الإجمالي:</b> <i>سوف يتم تحديد السعر من موظف الاستقبال عند تأكيد الحجز</i>\n💳 <b>عربون الحجز المسدد:</b> <code>${depositAmount} ج.م</code>`;
   } else {
     financialSummary = `💵 <b>السعر الإجمالي المعتمد:</b> <code>${totalAmount} ج.م</code>\n💳 <b>العربون المسدد:</b> <code>${depositAmount} ج.م</code>\n💰 <b>المتبقي للدفع بالصالون:</b> <code>${remainingAmount} ج.م</code>`;
   }
@@ -456,7 +476,7 @@ export async function trackQueueAndBooking(queryStr: string): Promise<string> {
 ${financialSummary}
 ━━━━━━━━━━━━━━━━━━━━
 ${currentStatus.icon} <b>الحالة الحالية:</b> <b>${currentStatus.label}</b>
-🔢 <b>موقعك في الدور:</b> <b>${queuePosText}</b>
+🔢 <b>رقمك في الدور:</b> <b>${queuePosText}</b>
 📝 <i>${currentStatus.desc}</i>
 ━━━━━━━━━━━━━━━━━━━━
 

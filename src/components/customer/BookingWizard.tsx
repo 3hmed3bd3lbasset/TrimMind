@@ -1252,7 +1252,9 @@ export const BookingWizard: React.FC = () => {
                 </div>
                 <div className="flex justify-between text-ink-soft">
                   <span>الخدمة الأساسية:</span>
-                  <span>{isCustomService ? 'يُحدد من الاستقبال' : formatCurrency(totalServicePrice)}</span>
+                  <span className="font-bold text-ink">
+                    {isCustomService ? 'سوف يتم تحديد السعر من موظف الاستقبال' : formatCurrency(totalServicePrice)}
+                  </span>
                 </div>
                 {productsTotal > 0 && (
                   <div className="flex justify-between text-ink-soft">
@@ -1260,10 +1262,10 @@ export const BookingWizard: React.FC = () => {
                     <span>{formatCurrency(productsTotal)}</span>
                   </div>
                 )}
-                <div className="border-t border-border pt-2 flex justify-between font-bold text-ink text-sm">
+                <div className="border-t border-border pt-2 flex justify-between font-bold text-ink text-sm items-center">
                   <span>إجمالي الحساب:</span>
-                  <span className="text-forest font-serif font-bold">
-                    {isCustomService ? 'يُحدد من الاستقبال' : formatCurrency(grandTotal)}
+                  <span className="text-forest font-serif font-bold text-xs text-left max-w-[200px]">
+                    {isCustomService ? 'سوف يتم تحديد السعر من موظف الاستقبال عند تأكيد الحجز' : formatCurrency(grandTotal)}
                   </span>
                 </div>
                 <div className="bg-forest/10 p-2.5 rounded-xl border border-forest/20 text-[11px] text-forest flex justify-between font-bold">
@@ -1523,12 +1525,22 @@ export const BookingWizard: React.FC = () => {
                 <span className="text-ink-mute">رمز التتبع السري:</span>
                 <span className="font-mono text-forest font-bold">{confirmedBooking.secure_token}</span>
               </div>
-              <div className="flex justify-between font-bold text-ink">
+              <div className="flex justify-between font-bold text-ink items-center">
                 <span>إجمالي الحساب:</span>
-                <span className="text-forest font-serif font-bold">
-                  {confirmedBooking.status === 'custom_pricing_requested' || Number(confirmedBooking.total_at_booking) === 0
-                    ? 'سيتم تحديده من الاستقبال'
+                <span className="text-forest font-serif font-bold text-xs text-left max-w-[200px]">
+                  {isCustomService ||
+                  confirmedBooking.service_id === 'srv-custom' ||
+                  confirmedBooking.status === 'custom_pricing_requested' ||
+                  (confirmedBooking.notes && (confirmedBooking.notes.includes('[طلب تخصيص خدمة]') || confirmedBooking.notes.includes('طلب خدمة مخصصة'))) ||
+                  Number(confirmedBooking.total_at_booking) === 0
+                    ? 'سوف يتم تحديد السعر من موظف الاستقبال عند تأكيد الحجز'
                     : formatCurrency(confirmedBooking.total_at_booking)}
+                </span>
+              </div>
+              <div className="flex justify-between text-xs text-ink-soft">
+                <span>عربون الحجز المسدد:</span>
+                <span className="font-bold text-forest">
+                  {formatCurrency(confirmedBooking.booking_fee_at_booking || bookingFee)} ✓
                 </span>
               </div>
             </div>

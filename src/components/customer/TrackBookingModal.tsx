@@ -598,40 +598,69 @@ export const TrackBookingSection: React.FC = () => {
                 <span>تفاصيل الحساب والفاتورة:</span>
               </p>
               <div className="space-y-2 text-ink-soft">
-                <div className="flex justify-between items-center">
-                  <span>إجمالي قيمة الخدمة:</span>
-                  <strong className="text-ink font-mono text-sm">
-                    {formatCurrency(selectedBooking.total_at_booking || service?.price || 180)}
-                  </strong>
-                </div>
-                <div className="flex justify-between items-center">
-                  <span>العربون المسدد (رسم الحجز):</span>
-                  <span className="text-emerald-700 font-bold bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-200">
-                    {formatCurrency(
-                      selectedBooking.payment_proof?.transferred_amount ||
-                      (selectedBooking.payment_proof as any)?.amount ||
-                      selectedBooking.booking_fee_at_booking ||
-                      (selectedBooking.booking_type === 'vip' ? 100 : 50)
-                    )} ✓
-                  </span>
-                </div>
-                <div className="flex justify-between items-center border-t border-border/80 pt-1.5">
-                  <span className="font-bold text-ink">المتبقي للدفع بالصالون:</span>
-                  <strong className="text-forest font-serif font-bold text-base">
-                    {formatCurrency(
-                      Math.max(
-                        0,
-                        (selectedBooking.total_at_booking || service?.price || 180) -
-                        Number(
-                          selectedBooking.payment_proof?.transferred_amount ||
-                          (selectedBooking.payment_proof as any)?.amount ||
-                          selectedBooking.booking_fee_at_booking ||
-                          (selectedBooking.booking_type === 'vip' ? 100 : 50)
-                        )
-                      )
-                    )}
-                  </strong>
-                </div>
+                {(() => {
+                  const isCustomBooking =
+                    selectedBooking.service_id === 'srv-custom' ||
+                    selectedBooking.status === 'custom_pricing_requested' ||
+                    Boolean(
+                      selectedBooking.notes &&
+                      (selectedBooking.notes.includes('[طلب تخصيص خدمة]') || selectedBooking.notes.includes('طلب خدمة مخصصة'))
+                    );
+
+                  const customItems = (selectedBooking as any).custom_line_items;
+                  const hasBeenPriced =
+                    Boolean(
+                      (customItems && Array.isArray(customItems) && customItems.length > 0) ||
+                      (selectedBooking.status === 'confirmed' &&
+                        Number(selectedBooking.total_at_booking) > 0 &&
+                        !isCustomBooking)
+                    );
+
+                  const isCustomPending = isCustomBooking && (!hasBeenPriced || (selectedBooking.status as any) === 'custom_pricing_requested' || selectedBooking.status === 'pending_review');
+
+                  return (
+                    <>
+                      <div className="flex justify-between items-center gap-2">
+                        <span>إجمالي قيمة الخدمة:</span>
+                        <strong className="text-ink font-mono text-xs sm:text-sm text-left">
+                          {isCustomPending
+                            ? 'سوف يتم تحديد السعر من موظف الاستقبال عند تأكيد الحجز'
+                            : formatCurrency(selectedBooking.total_at_booking || service?.price || 180)}
+                        </strong>
+                      </div>
+                      <div className="flex justify-between items-center">
+                        <span>العربون المسدد (رسم الحجز):</span>
+                        <span className="text-emerald-700 font-bold bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-200">
+                          {formatCurrency(
+                            selectedBooking.payment_proof?.transferred_amount ||
+                            (selectedBooking.payment_proof as any)?.amount ||
+                            selectedBooking.booking_fee_at_booking ||
+                            (selectedBooking.booking_type === 'vip' ? 100 : 50)
+                          )} ✓
+                        </span>
+                      </div>
+                      <div className="flex justify-between items-center border-t border-border/80 pt-1.5">
+                        <span className="font-bold text-ink">المتبقي للدفع بالصالون:</span>
+                        <strong className="text-forest font-serif font-bold text-base">
+                          {isCustomPending
+                            ? 'يُحدد عند اعتماد السعر'
+                            : formatCurrency(
+                                Math.max(
+                                  0,
+                                  (selectedBooking.total_at_booking || service?.price || 180) -
+                                  Number(
+                                    selectedBooking.payment_proof?.transferred_amount ||
+                                    (selectedBooking.payment_proof as any)?.amount ||
+                                    selectedBooking.booking_fee_at_booking ||
+                                    (selectedBooking.booking_type === 'vip' ? 100 : 50)
+                                  )
+                                )
+                              )}
+                        </strong>
+                      </div>
+                    </>
+                  );
+                })()}
                 <div className="flex justify-between text-[11px] pt-1">
                   <span>حالة الدفع:</span>
                   <span className="text-forest font-bold">

@@ -83,9 +83,14 @@ export class MySQLBookingRepository implements IBookingRepository {
         }
 
         // 2. Fetch service & calculate prices
-        let servicePrice = data.servicePrice || 180;
-        let serviceName = data.serviceName || 'قص شعر كلاسيكي';
-        if (data.serviceId) {
+        const isCustomService =
+          data.serviceId === 'srv-custom' ||
+          data.status === 'custom_pricing_requested' ||
+          Boolean(data.notes && (data.notes.includes('[طلب تخصيص خدمة]') || data.notes.includes('طلب خدمة مخصصة')));
+
+        let servicePrice = isCustomService ? 0 : (data.servicePrice ?? 180);
+        let serviceName = data.serviceName || (isCustomService ? 'خدمة مخصصة على مزاجك' : 'قص شعر كلاسيكي');
+        if (data.serviceId && !isCustomService) {
           const serviceRows = await queryConn<any[]>(conn, 'SELECT id, name, price FROM services WHERE id = ? LIMIT 1', [data.serviceId]);
           if (serviceRows && serviceRows.length > 0) {
             if (!data.serviceName || data.serviceName === 'خدمة الصالون' || data.serviceName === 'خدمة محددة') {
@@ -95,7 +100,7 @@ export class MySQLBookingRepository implements IBookingRepository {
           }
         }
 
-        if (data.additionalServiceIds && data.additionalServiceIds.length > 0) {
+        if (data.additionalServiceIds && data.additionalServiceIds.length > 0 && !isCustomService) {
           for (const addId of data.additionalServiceIds) {
             const addSrv = await queryConn<any[]>(conn, 'SELECT price FROM services WHERE id = ? LIMIT 1', [addId]);
             if (addSrv && addSrv.length > 0) {
@@ -179,8 +184,8 @@ export class MySQLBookingRepository implements IBookingRepository {
           }
         }
 
-        const initialStatus: BookingStatus = data.paymentProof ? 'pending_review' : 'awaiting_payment';
-        const total = servicePrice + itemsTotal;
+        const initialStatus: BookingStatus = data.status || (isCustomService ? 'custom_pricing_requested' : (data.paymentProof ? 'pending_review' : 'awaiting_payment'));
+        const total = isCustomService ? (data.totalAmount ?? itemsTotal) : (data.totalAmount ?? (servicePrice + itemsTotal));
 
         let cleanPhone = (data.customerPhone || '').replace(/\D+/g, '');
         if (cleanPhone.startsWith('20') && cleanPhone.length === 12) {
@@ -309,8 +314,13 @@ export class MySQLBookingRepository implements IBookingRepository {
       const barber = pDb.barbers?.find((b: any) => b.id === data.barberId);
       const branch = pDb.branches?.find((br: any) => br.id === data.branchId);
 
-      const servicePrice = data.servicePrice || service?.price || 180;
-      const serviceName = data.serviceName || service?.name || 'قص شعر كلاسيكي';
+      const isCustomService =
+        data.serviceId === 'srv-custom' ||
+        data.status === 'custom_pricing_requested' ||
+        Boolean(data.notes && (data.notes.includes('[طلب تخصيص خدمة]') || data.notes.includes('طلب خدمة مخصصة')));
+
+      const servicePrice = isCustomService ? 0 : (data.servicePrice ?? service?.price ?? 180);
+      const serviceName = data.serviceName || (isCustomService ? 'خدمة مخصصة على مزاجك' : (service?.name || 'قص شعر كلاسيكي'));
       const barberName = (data as any).barberName || barber?.full_name || 'كابتن الصالون';
       const branchName = (data as any).branchName || branch?.name || 'الحداد - ELHDAD';
 
@@ -321,9 +331,9 @@ export class MySQLBookingRepository implements IBookingRepository {
 
       const dayBookings = pBookings.filter((b: any) => (b.booking_date === bookingDate || b.starts_at?.startsWith(bookingDate)) && b.status !== 'cancelled');
       const assignedQueueNumber = dayBookings.length + 1;
-      const initialStatus: BookingStatus = data.paymentProof ? 'pending_review' : 'awaiting_payment';
+      const initialStatus: BookingStatus = data.status || (isCustomService ? 'custom_pricing_requested' : (data.paymentProof ? 'pending_review' : 'awaiting_payment'));
       const bookingFee = data.paymentProof?.amount ? Number(data.paymentProof.amount) : (data.bookingType === 'vip' ? 100 : 50);
-      const total = data.totalAmount || servicePrice;
+      const total = isCustomService ? (data.totalAmount ?? 0) : (data.totalAmount ?? servicePrice);
 
       let fallbackStartsAt = data.startsAt || new Date().toISOString();
       if (data.bookingType === 'normal') {
