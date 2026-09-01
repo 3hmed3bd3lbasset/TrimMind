@@ -1,4 +1,5 @@
 import makeWASocket, {
+  Browsers,
   DisconnectReason,
   fetchLatestBaileysVersion,
   useMultiFileAuthState,
@@ -399,16 +400,14 @@ export async function initWhatsApp(): Promise<WhatsAppState> {
       logger,
       printQRInTerminal: false,
       auth: authState,
-      browser: ['TrimMind Salon', 'Chrome', '120.0.0'],
+      browser: Browsers.macOS('Desktop'),
       syncFullHistory: false,
       generateHighQualityLinkPreview: false,
       connectTimeoutMs: 60000,
       defaultQueryTimeoutMs: 60000,
-      keepAliveIntervalMs: 10000,
-      retryRequestDelayMs: 1000,
-      markOnlineOnConnect: true,
-      emitOwnEvents: true,
-      shouldIgnoreJid: (jid: string) => Boolean(jid?.includes('broadcast')),
+      keepAliveIntervalMs: 30000,
+      retryRequestDelayMs: 2000,
+      markOnlineOnConnect: false,
     });
 
     sock.ev.on('creds.update', saveCreds);
@@ -423,8 +422,13 @@ export async function initWhatsApp(): Promise<WhatsAppState> {
 
       if (qr) {
         state.qrCodeRaw = qr;
-        state.qrCodeDataUrl = await QRCode.toDataURL(qr);
-        state.status = 'qr_ready';
+        try {
+          state.qrCodeDataUrl = await QRCode.toDataURL(qr, { margin: 2, scale: 6 });
+          state.status = 'qr_ready';
+          logDebug('QR_CODE_GENERATED_SUCCESS', { qrLength: qr.length });
+        } catch (qrErr: any) {
+          logDebug('QR_GEN_ERR', { error: qrErr.message });
+        }
       }
 
       if (connection === 'close') {
