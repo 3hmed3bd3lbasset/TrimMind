@@ -146,9 +146,19 @@ export const WhatsAppCustomPricingModal: React.FC<WhatsAppCustomPricingModalProp
       };
 
       const res: any = await api.customizeAndDispatchBooking(booking.id, payload);
-      toast.success('تم تسعير واعتماد الحجز والفاتورة بنجاح! 🚀');
+      toast.success('تم تسعير واعتماد الحجز والفاتورة بنجاح!');
       if (onSuccess) {
-        onSuccess(res?.data || { ...booking, ...payload, status: 'confirmed' });
+        onSuccess(res?.data || {
+          ...booking,
+          ...payload,
+          service_name: customServiceName,
+          total_at_booking: total,
+          service_price_at_booking: total,
+          discount_at_booking: discount,
+          booking_fee_at_booking: deposit,
+          custom_line_items: items,
+          status: 'confirmed',
+        });
       }
       onClose();
     } catch (err: any) {

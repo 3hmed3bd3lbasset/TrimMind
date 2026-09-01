@@ -32,15 +32,24 @@ export const ThermalInvoice: React.FC<ThermalInvoiceProps> = ({ booking, isOpen,
   const service = services.find((s) => s.id === booking.service_id);
 
   const displayBarberName = barber?.full_name || (booking as any).barber_name || (booking as any).barberName || 'محمد الحداد';
-  const displayServiceName = service?.name || (booking as any).service_name || (booking as any).serviceName || 'قص شعر وتصفيف كلاسيكي';
-  const effectiveServicePrice = Number(booking.service_price_at_booking || service?.price || 180);
+  const displayServiceName = (booking as any).service_name || (booking as any).serviceName || service?.name || 'قص شعر وتصفيف كلاسيكي';
+  const hasCustomItems = Array.isArray(booking.custom_line_items) && booking.custom_line_items.length > 0;
+  const effectiveServicePrice = Number(
+    booking.service_price_at_booking !== undefined && Number(booking.service_price_at_booking) > 0
+      ? booking.service_price_at_booking
+      : (booking.total_at_booking || service?.price || 0)
+  );
   const additionalTotal = (booking.additional_service_ids || []).reduce((sum, addId) => {
     const s = services.find((srv) => srv.id === addId);
     return sum + Number(s?.price || 0);
   }, 0);
   const itemsTotal = (booking.items || []).reduce((sum, item) => sum + (Number(item.price_at_booking || (item as any).price || 0) * Number(item.quantity || 1)), 0);
-  const calculatedTotal = Number(booking.total_at_booking || (effectiveServicePrice + additionalTotal + itemsTotal - Number(booking.discount_at_booking || 0)));
-  const depositPaid = Number(booking.payment_proof?.transferred_amount || booking.booking_fee_at_booking || (booking.booking_type === 'vip' ? 100 : 50));
+  const calculatedTotal = Number(
+    booking.total_at_booking !== undefined && Number(booking.total_at_booking) > 0
+      ? booking.total_at_booking
+      : (effectiveServicePrice + additionalTotal + itemsTotal - Number(booking.discount_at_booking || 0))
+  );
+  const depositPaid = Number(booking.payment_proof?.transferred_amount || (booking.payment_proof as any)?.amount || booking.booking_fee_at_booking || (booking.booking_type === 'vip' ? 100 : 50));
   const remaining = Math.max(0, calculatedTotal - depositPaid);
   const salonTitle = settings?.salon_name || 'صالون TrimMind (الحداد VIP)';
 
@@ -53,15 +62,15 @@ export const ThermalInvoice: React.FC<ThermalInvoiceProps> = ({ booking, isOpen,
         }
       }}
     >
-      <div className="modal-container max-w-lg bg-[#121824] border border-[#233047] p-6 shadow-2xl space-y-6">
-        <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+      <div className="modal-container max-w-lg bg-white border border-border p-6 shadow-2xl space-y-6 rounded-3xl">
+        <div className="flex items-center justify-between border-b border-border pb-3">
           <div className="flex items-center gap-2">
-            <Printer className="w-5 h-5 text-amber-400" />
-            <h3 className="font-bold text-white text-sm font-cairo">معاينة الفاتورة الحرارية (80mm POS)</h3>
+            <Printer className="w-5 h-5 text-forest" />
+            <h3 className="font-bold text-ink text-sm font-serif">معاينة الفاتورة والطباعة</h3>
           </div>
           <button
             onClick={onClose}
-            className="p-1.5 text-slate-400 hover:text-white rounded-lg hover:bg-slate-800"
+            className="p-1.5 text-ink-mute hover:text-ink rounded-xl hover:bg-paper-warm"
           >
             <X className="w-5 h-5" />
           </button>
@@ -107,10 +116,20 @@ export const ThermalInvoice: React.FC<ThermalInvoiceProps> = ({ booking, isOpen,
               <span>البيان / الخدمة</span>
               <span>السعر</span>
             </div>
-            <div className="flex justify-between">
-              <span>{displayServiceName}</span>
-              <span>{formatCurrency(effectiveServicePrice)}</span>
-            </div>
+
+            {hasCustomItems ? (
+              booking.custom_line_items!.map((cItem: any, idx: number) => (
+                <div key={idx} className="flex justify-between">
+                  <span>{cItem.name}</span>
+                  <span>{formatCurrency(cItem.price)}</span>
+                </div>
+              ))
+            ) : (
+              <div className="flex justify-between">
+                <span>{displayServiceName}</span>
+                <span>{formatCurrency(effectiveServicePrice)}</span>
+              </div>
+            )}
 
             {/* Additional Services */}
             {booking.additional_service_ids?.map((addId) => {

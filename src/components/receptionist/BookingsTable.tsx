@@ -206,6 +206,9 @@ export const BookingsTable: React.FC<BookingsTableProps> = ({ branchId }) => {
             border: 'border-border',
           };
           const isConfirmed = b.status === 'confirmed' || b.status === 'completed';
+          const isCustom = b.service_id === 'srv-custom' || (b.status as any) === 'custom_pricing_requested' || Boolean(b.notes && (b.notes.includes('[طلب تخصيص خدمة]') || b.notes.includes('طلب خدمة مخصصة')));
+          const hasCustomLineItems = Array.isArray(b.custom_line_items) && b.custom_line_items.length > 0;
+          const isPricedCustom = isCustom && (hasCustomLineItems || (b.status === 'confirmed' && Number(b.total_at_booking) > 0));
 
           return (
             <div
@@ -236,24 +239,31 @@ export const BookingsTable: React.FC<BookingsTableProps> = ({ branchId }) => {
                   </span>
                 </div>
 
-                {isConfirmed ? (
-                  <span className="inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-bold bg-emerald-600 text-white shadow-xs">
-                    <CheckCircle className="w-3.5 h-3.5" />
-                    <span>حجز مؤكد ✓</span>
-                  </span>
-                ) : b.status === 'pending_review' || b.payment_proof ? (
-                  <button
-                    onClick={() => setSelectedProofBooking(b)}
-                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold bg-amber-500 hover:bg-amber-600 text-white shadow-xs cursor-pointer transition-all active:scale-95"
-                  >
-                    <Eye className="w-3.5 h-3.5" />
-                    <span>عرض صورة الإيصال 🖼️</span>
-                  </button>
-                ) : (
-                  <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-[10.5px] font-bold border ${statusCfg.bg} ${statusCfg.text} ${statusCfg.border}`}>
-                    {statusCfg.label}
-                  </span>
-                )}
+                <div className="flex items-center gap-1.5">
+                  {isPricedCustom && (
+                    <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-md text-[10.5px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-300">
+                      تم تسعير هذه الفاتورة ✓
+                    </span>
+                  )}
+                  {isConfirmed ? (
+                    <span className="inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-bold bg-emerald-600 text-white shadow-xs">
+                      <CheckCircle className="w-3.5 h-3.5" />
+                      <span>حجز مؤكد ✓</span>
+                    </span>
+                  ) : b.status === 'pending_review' || b.payment_proof ? (
+                    <button
+                      onClick={() => setSelectedProofBooking(b)}
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold bg-amber-500 hover:bg-amber-600 text-white shadow-xs cursor-pointer transition-all active:scale-95"
+                    >
+                      <Eye className="w-3.5 h-3.5" />
+                      <span>عرض صورة الإيصال 🖼️</span>
+                    </button>
+                  ) : (
+                    <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-[10.5px] font-bold border ${statusCfg.bg} ${statusCfg.text} ${statusCfg.border}`}>
+                      {statusCfg.label}
+                    </span>
+                  )}
+                </div>
               </div>
 
               {/* Customer & Service Info */}
@@ -285,20 +295,35 @@ export const BookingsTable: React.FC<BookingsTableProps> = ({ branchId }) => {
                 </div>
                 <div className="text-left">
                   <span className="text-[10px] text-ink-mute block">الإجمالي:</span>
-                  <p className="font-serif font-bold text-forest text-sm">{formatCurrency(b.total_at_booking || (b as any).totalAmount || primarySrv?.price || 180)}</p>
+                  <p className="font-serif font-bold text-forest text-sm">
+                    {isCustom && !isPricedCustom && Number(b.total_at_booking) === 0
+                      ? 'بانتظار التسعير'
+                      : formatCurrency(b.total_at_booking || (b as any).totalAmount || primarySrv?.price || 180)}
+                  </p>
                 </div>
               </div>
 
               {/* Actions Footer */}
               <div className="flex items-center justify-between pt-1 border-t border-border/70 gap-2 relative z-10">
-                {(b.status === 'custom_pricing_requested' || b.service_id === 'srv-custom') ? (
-                  <button
-                    onClick={() => setSelectedCustomPricingBooking(b)}
-                    className="flex-1 py-2 px-3 rounded-xl bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs shadow-xs flex items-center justify-center gap-1.5 transition-all animate-pulse"
-                  >
-                    <Sparkles className="w-3.5 h-3.5 text-amber-200" />
-                    <span>تسعير واعتماد الحجز 🛠️</span>
-                  </button>
+                {isCustom ? (
+                  isPricedCustom ? (
+                    <button
+                      onClick={() => setSelectedCustomPricingBooking(b)}
+                      className="flex-1 py-2 px-3 rounded-xl bg-paper-warm hover:bg-forest hover:text-white text-forest border border-forest/30 font-bold text-xs shadow-xs flex items-center justify-center gap-1.5 transition-all cursor-pointer"
+                      title="هل تريد تعديل التسعير؟"
+                    >
+                      <Sparkles className="w-3.5 h-3.5 text-amber-600" />
+                      <span>تعديل التسعير 🛠️</span>
+                    </button>
+                  ) : (
+                    <button
+                      onClick={() => setSelectedCustomPricingBooking(b)}
+                      className="flex-1 py-2 px-3 rounded-xl bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs shadow-xs flex items-center justify-center gap-1.5 transition-all animate-pulse cursor-pointer"
+                    >
+                      <Sparkles className="w-3.5 h-3.5 text-amber-200" />
+                      <span>تسعير واعتماد الحجز 🛠️</span>
+                    </button>
+                  )
                 ) : null}
 
                 <div className="flex items-center gap-1.5 ml-auto">
@@ -436,16 +461,37 @@ export const BookingsTable: React.FC<BookingsTableProps> = ({ branchId }) => {
 
                     <td className="py-3.5 px-4 text-center">
                       <div className="flex items-center justify-center gap-1">
-                        {(b.status === 'custom_pricing_requested' || b.service_id === 'srv-custom') && (
-                          <button
-                            onClick={() => setSelectedCustomPricingBooking(b)}
-                            className="px-2.5 py-1.5 rounded-lg bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs shadow-xs flex items-center gap-1 transition-all animate-pulse"
-                            title="تسعير الخدمة المخصصة وتأكيد الحجز"
-                          >
-                            <Sparkles className="w-3.5 h-3.5 text-amber-200" />
-                            <span>تسعير واعتماد 🛠️</span>
-                          </button>
-                        )}
+                        {(() => {
+                          const isCustom = b.service_id === 'srv-custom' || (b.status as any) === 'custom_pricing_requested' || Boolean(b.notes && (b.notes.includes('[طلب تخصيص خدمة]') || b.notes.includes('طلب خدمة مخصصة')));
+                          const hasCustomLineItems = Array.isArray(b.custom_line_items) && b.custom_line_items.length > 0;
+                          const isPricedCustom = isCustom && (hasCustomLineItems || (b.status === 'confirmed' && Number(b.total_at_booking) > 0));
+
+                          if (isCustom) {
+                            if (isPricedCustom) {
+                              return (
+                                <button
+                                  onClick={() => setSelectedCustomPricingBooking(b)}
+                                  className="px-2.5 py-1.5 rounded-lg bg-paper-warm hover:bg-forest hover:text-white text-forest border border-forest/30 font-bold text-xs shadow-xs flex items-center gap-1 transition-all cursor-pointer"
+                                  title="هل تريد تعديل التسعير؟"
+                                >
+                                  <Sparkles className="w-3.5 h-3.5 text-amber-600" />
+                                  <span>تعديل التسعير 🛠️</span>
+                                </button>
+                              );
+                            }
+                            return (
+                              <button
+                                onClick={() => setSelectedCustomPricingBooking(b)}
+                                className="px-2.5 py-1.5 rounded-lg bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs shadow-xs flex items-center gap-1 transition-all animate-pulse cursor-pointer"
+                                title="تسعير الخدمة المخصصة وتأكيد الحجز"
+                              >
+                                <Sparkles className="w-3.5 h-3.5 text-amber-200" />
+                                <span>تسعير واعتماد 🛠️</span>
+                              </button>
+                            );
+                          }
+                          return null;
+                        })()}
                         <button
                           onClick={() => openEditModal(b)}
                           className="p-1.5 rounded-lg bg-paper-warm hover:bg-white text-forest border border-border"
@@ -511,11 +557,27 @@ export const BookingsTable: React.FC<BookingsTableProps> = ({ branchId }) => {
           onClose={() => setSelectedCustomPricingBooking(null)}
           onSuccess={(updated) => {
             if (updated) {
-              updateBookingDetails(updated.id, {
-                serviceId: updated.service_id,
-                additionalServiceIds: updated.additional_service_ids,
-                discount: updated.discount_at_booking,
-              }, 'تم التسعير والاعتماد المخصص لحجز الواتساب');
+              const currentBookings = useSalonStore.getState().bookings;
+              const newTotal = Number(updated.total_at_booking || updated.totalPrice || updated.totalAmount || 0);
+              const newDiscount = Number(updated.discount_at_booking !== undefined ? updated.discount_at_booking : (updated.discount || 0));
+              const updatedList = currentBookings.map((b) => {
+                if (b.id === updated.id) {
+                  return {
+                    ...b,
+                    ...updated,
+                    service_name: updated.service_name || updated.serviceName || b.service_name,
+                    total_at_booking: newTotal,
+                    service_price_at_booking: newTotal,
+                    discount_at_booking: newDiscount,
+                    custom_line_items: updated.custom_line_items || updated.items || b.custom_line_items,
+                    status: 'confirmed' as const,
+                    barber_id: updated.barber_id || updated.barberId || b.barber_id,
+                    barber_name: updated.barber_name || updated.barberName || b.barber_name,
+                  };
+                }
+                return b;
+              });
+              useSalonStore.setState({ bookings: updatedList });
             }
           }}
         />

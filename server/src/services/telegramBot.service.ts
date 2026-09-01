@@ -452,13 +452,15 @@ export async function trackQueueAndBooking(queryStr: string): Promise<string> {
     Boolean(match.notes && (match.notes.includes('[طلب تخصيص خدمة]') || match.notes.includes('طلب خدمة مخصصة')));
 
   const hasBeenPriced =
+    (match.status === 'confirmed' && totalAmount > 0) ||
     Boolean(
-      (match.custom_line_items && match.custom_line_items !== '[]' && (typeof match.custom_line_items === 'object' ? match.custom_line_items.length > 0 : true)) ||
-      (match.status === 'confirmed' && totalAmount > 0 && match.status !== 'custom_pricing_requested' && !isCustomBooking)
+      match.custom_line_items &&
+      match.custom_line_items !== '[]' &&
+      (typeof match.custom_line_items === 'object' ? match.custom_line_items.length > 0 : String(match.custom_line_items).length > 2)
     );
 
   let financialSummary = '';
-  if (isCustomBooking && (!hasBeenPriced || match.status === 'custom_pricing_requested' || match.status === 'pending_review')) {
+  if (match.status === 'custom_pricing_requested' || (isCustomBooking && !hasBeenPriced && totalAmount === 0)) {
     financialSummary = `💵 <b>السعر الإجمالي:</b> <i>سوف يتم تحديد السعر من موظف الاستقبال عند تأكيد الحجز</i>\n💳 <b>عربون الحجز المسدد:</b> <code>${depositAmount} ج.م</code>`;
   } else {
     financialSummary = `💵 <b>السعر الإجمالي المعتمد:</b> <code>${totalAmount} ج.م</code>\n💳 <b>العربون المسدد:</b> <code>${depositAmount} ج.م</code>\n💰 <b>المتبقي للدفع بالصالون:</b> <code>${remainingAmount} ج.م</code>`;
