@@ -19,8 +19,8 @@ export const createBookingSchema = z
     chairId: z.string().optional().nullable(),
     serviceId: z.string().optional().default('srv-haircut'),
     serviceName: z.string().optional(),
-    servicePrice: z.number().optional(),
-    totalAmount: z.number().optional(),
+    servicePrice: z.coerce.number().optional(),
+    totalAmount: z.coerce.number().optional(),
     additionalServiceIds: z.array(z.string()).optional().default([]),
     bookingType: z.enum(['normal', 'vip']).default('normal'),
     startsAt: z.string().optional(),
@@ -30,7 +30,7 @@ export const createBookingSchema = z
       .array(
         z.object({
           productId: z.string(),
-          quantity: z.number().int().positive().max(50),
+          quantity: z.coerce.number().int().positive().max(50).optional().default(1),
         })
       )
       .optional()
@@ -40,14 +40,14 @@ export const createBookingSchema = z
         paymentMethod: z.string().optional().default('instapay'),
         senderPhone: z.string().optional().nullable(),
         imagePath: z.string().optional().nullable(),
-        amount: z.number().optional().default(50),
+        amount: z.coerce.number().optional().default(50),
       })
       .optional()
       .nullable(),
     source: z.string().optional().default('web'),
     status: z.string().optional(),
     aiBrief: z.string().optional().nullable(),
-    confidenceScore: z.number().optional(),
+    confidenceScore: z.coerce.number().optional(),
     needsHumanAttention: z.boolean().optional(),
     customLineItems: z.array(z.any()).optional().default([]),
   })
