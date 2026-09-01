@@ -56,10 +56,11 @@ export const helmetMiddleware = helmet({
   contentSecurityPolicy: {
     directives: {
       defaultSrc: ["'self'"],
-      scriptSrc: ["'self'", "'unsafe-inline'"],
+      scriptSrc: ["'self'", "'unsafe-inline'", "'unsafe-eval'", "blob:"],
+      workerSrc: ["'self'", "blob:"],
       styleSrc: ["'self'", "'unsafe-inline'", 'https://fonts.googleapis.com'],
       fontSrc: ["'self'", 'https://fonts.gstatic.com', 'data:'],
-      imgSrc: ["'self'", 'data:', 'https://images.unsplash.com', 'blob:', 'https://*.railway.app'],
+      imgSrc: ["'self'", 'data:', 'https://images.unsplash.com', 'blob:', 'https://*.railway.app', 'https://*.up.railway.app'],
       connectSrc: [
         "'self'",
         clientUrl,
@@ -68,6 +69,7 @@ export const helmetMiddleware = helmet({
         'https://generativelanguage.googleapis.com',
         'https://*.googleapis.com',
         'https://*.railway.app',
+        'https://*.up.railway.app',
       ],
       frameAncestors: ["'none'"], // Total Clickjacking Immunity
       objectSrc: ["'none'"],

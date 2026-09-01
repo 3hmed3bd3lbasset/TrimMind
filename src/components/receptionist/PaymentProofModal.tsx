@@ -182,7 +182,24 @@ export const PaymentProofModal: React.FC<PaymentProofModalProps> = ({
             </label>
 
             <div className="rounded-2xl overflow-hidden border border-border bg-paper-warm aspect-[3/4] flex items-center justify-center relative shadow-inner">
-              {isImageExpired ? (
+              {imageSrc ? (
+                <div className="relative group w-full h-full flex items-center justify-center bg-white/50">
+                  <img
+                    src={imageSrc}
+                    alt="Receipt"
+                    className="w-full h-full object-contain p-2 transition-transform duration-300 group-hover:scale-105"
+                  />
+                  <a
+                    href={imageSrc}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="absolute bottom-3 right-3 bg-forest text-white text-[11px] font-bold py-2 px-3.5 rounded-xl shadow-lg flex items-center gap-1.5 transition-all hover:bg-forest-light cursor-pointer active:scale-95"
+                  >
+                    <ZoomIn className="w-3.5 h-3.5" />
+                    <span>فتح الصورة بالحجم الكامل 🔍</span>
+                  </a>
+                </div>
+              ) : isImageExpired ? (
                 <div className="text-center p-6 space-y-2 text-ink-mute">
                   <Trash2 className="w-10 h-10 text-terra mx-auto opacity-70" />
                   <p className="font-serif font-bold text-xs text-ink">تم إتلاف الصورة تلقائياً</p>
@@ -190,14 +207,12 @@ export const PaymentProofModal: React.FC<PaymentProofModalProps> = ({
                     مرت أكثر من ساعتين على اعتماد الحساب وتأكيد الموعد، وتم حذف ملف الصورة لتوفير مساحة التخزين.
                   </p>
                 </div>
-              ) : imageSrc ? (
-                <img
-                  src={imageSrc}
-                  alt="Receipt"
-                  className="w-full h-full object-contain p-2 hover:scale-105 transition-transform duration-300"
-                />
               ) : (
-                <p className="text-ink-mute">لا توجد صورة إيصال مرفقة</p>
+                <div className="text-center p-6 space-y-2 text-ink-mute">
+                  <Receipt className="w-10 h-10 text-forest/40 mx-auto" />
+                  <p className="font-bold text-xs text-ink">بيانات الإيصال مسجلة</p>
+                  <p className="text-[10px]">المبلغ: {formatCurrency(proof?.transferred_amount || booking.booking_fee_at_booking)}</p>
+                </div>
               )}
             </div>
           </div>

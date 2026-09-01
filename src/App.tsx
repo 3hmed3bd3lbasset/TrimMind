@@ -96,28 +96,31 @@ function AppLayout() {
     // 1. Hydrate state from MySQL DB
     const hydrateFromBackend = async () => {
       try {
-        const [branchesRes, barbersRes, chairsRes, servicesRes, productsRes, settingsRes, bookingsRes, profilesRes, meRes] = await Promise.allSettled([
+        const isStaff = currentUser && currentUser.role && currentUser.role !== 'customer';
+
+        const publicRequests: Promise<any>[] = [
           api.getBranches(),
           api.getBarbers(),
           api.getChairs(),
           api.getServices(),
           api.getProducts(),
           api.getSettings(),
-          api.getBookings(),
-          api.getProfiles(),
-          api.getMe(),
-        ]);
+        ];
+
+        if (isStaff) {
+          publicRequests.push(api.getBookings());
+          publicRequests.push(api.getProfiles());
+        }
+
+        const results = await Promise.allSettled(publicRequests);
+        const [branchesRes, barbersRes, chairsRes, servicesRes, productsRes, settingsRes, bookingsRes, profilesRes] = results;
 
         const stateUpdates: any = {};
 
-        if (meRes.status === 'fulfilled' && (meRes.value as any)?.success && (meRes.value as any)?.data) {
-          stateUpdates.currentUser = (meRes.value as any).data;
-        }
-
-        if (branchesRes.status === 'fulfilled' && (branchesRes.value as any)?.success && Array.isArray((branchesRes.value as any)?.data) && (branchesRes.value as any).data.length > 0) {
+        if (branchesRes?.status === 'fulfilled' && (branchesRes.value as any)?.success && Array.isArray((branchesRes.value as any)?.data) && (branchesRes.value as any).data.length > 0) {
           stateUpdates.branches = (branchesRes.value as any).data;
         }
-        if (barbersRes.status === 'fulfilled' && (barbersRes.value as any)?.success && Array.isArray((barbersRes.value as any)?.data) && (barbersRes.value as any).data.length > 0) {
+        if (barbersRes?.status === 'fulfilled' && (barbersRes.value as any)?.success && Array.isArray((barbersRes.value as any)?.data) && (barbersRes.value as any).data.length > 0) {
           const backendBarbers = (barbersRes.value as any).data;
           const localBarbers = useSalonStore.getState().barbers || [];
           stateUpdates.barbers = backendBarbers.map((bb: any) => {
@@ -128,22 +131,22 @@ function AppLayout() {
             };
           });
         }
-        if (chairsRes.status === 'fulfilled' && (chairsRes.value as any)?.success && Array.isArray((chairsRes.value as any)?.data) && (chairsRes.value as any).data.length > 0) {
+        if (chairsRes?.status === 'fulfilled' && (chairsRes.value as any)?.success && Array.isArray((chairsRes.value as any)?.data) && (chairsRes.value as any).data.length > 0) {
           stateUpdates.chairs = (chairsRes.value as any).data;
         }
-        if (servicesRes.status === 'fulfilled' && (servicesRes.value as any)?.success && Array.isArray((servicesRes.value as any)?.data) && (servicesRes.value as any).data.length > 0) {
+        if (servicesRes?.status === 'fulfilled' && (servicesRes.value as any)?.success && Array.isArray((servicesRes.value as any)?.data) && (servicesRes.value as any).data.length > 0) {
           stateUpdates.services = (servicesRes.value as any).data;
         }
-        if (productsRes.status === 'fulfilled' && (productsRes.value as any)?.success && Array.isArray((productsRes.value as any)?.data) && (productsRes.value as any).data.length > 0) {
+        if (productsRes?.status === 'fulfilled' && (productsRes.value as any)?.success && Array.isArray((productsRes.value as any)?.data) && (productsRes.value as any).data.length > 0) {
           stateUpdates.products = (productsRes.value as any).data;
         }
-        if (settingsRes.status === 'fulfilled' && (settingsRes.value as any)?.success && (settingsRes.value as any)?.data) {
+        if (settingsRes?.status === 'fulfilled' && (settingsRes.value as any)?.success && (settingsRes.value as any)?.data) {
           stateUpdates.settings = { ...useSalonStore.getState().settings, ...(settingsRes.value as any).data };
         }
-        if (bookingsRes.status === 'fulfilled' && (bookingsRes.value as any)?.success && Array.isArray((bookingsRes.value as any)?.data)) {
+        if (isStaff && bookingsRes?.status === 'fulfilled' && (bookingsRes.value as any)?.success && Array.isArray((bookingsRes.value as any)?.data)) {
           stateUpdates.bookings = (bookingsRes.value as any).data;
         }
-        if (profilesRes.status === 'fulfilled' && (profilesRes.value as any)?.success && Array.isArray((profilesRes.value as any)?.data) && (profilesRes.value as any).data.length > 0) {
+        if (isStaff && profilesRes?.status === 'fulfilled' && (profilesRes.value as any)?.success && Array.isArray((profilesRes.value as any)?.data) && (profilesRes.value as any).data.length > 0) {
           stateUpdates.profiles = (profilesRes.value as any).data;
         }
 
@@ -151,7 +154,7 @@ function AppLayout() {
           useSalonStore.setState(stateUpdates);
         }
       } catch (err) {
-        console.warn('Backend hydration notice:', err);
+        // Silently catch initial public hydration notes
       }
     };
 

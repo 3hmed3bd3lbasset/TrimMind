@@ -159,57 +159,6 @@ export const BookingsTable: React.FC<BookingsTableProps> = ({ branchId }) => {
   return (
     <div className="space-y-4 font-sans text-ink">
 
-      {/* WhatsApp Booking Hub Bar */}
-      <div className="flex flex-wrap items-center justify-between gap-2 bg-paper-warm/90 p-2.5 rounded-2xl border border-border">
-        <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar py-0.5">
-          <button
-            onClick={() => { setFilterSource('all'); }}
-            className={`px-3 py-1.5 rounded-xl font-bold text-xs transition-all ${
-              filterSource === 'all'
-                ? 'bg-forest text-paper shadow-xs'
-                : 'bg-white/80 text-ink-soft hover:bg-white'
-            }`}
-          >
-            جميع الحجوزات ({branchBookings.length})
-          </button>
-          <button
-            onClick={() => { setFilterSource('whatsapp'); }}
-            className={`px-3 py-1.5 rounded-xl font-bold text-xs flex items-center gap-1.5 transition-all ${
-              filterSource === 'whatsapp'
-                ? 'bg-emerald-700 text-white shadow-xs'
-                : 'bg-emerald-50 text-emerald-900 hover:bg-emerald-100 border border-emerald-200'
-            }`}
-          >
-            <Bot className="w-3.5 h-3.5 text-emerald-600" />
-            حجوزات واتساب AI ({whatsappBookingsCount})
-          </button>
-          <button
-            onClick={() => { setFilterSource('custom_pricing'); }}
-            className={`px-3 py-1.5 rounded-xl font-bold text-xs flex items-center gap-1.5 transition-all ${
-              filterSource === 'custom_pricing'
-                ? 'bg-amber-600 text-white shadow-xs'
-                : 'bg-amber-50 text-amber-900 hover:bg-amber-100 border border-amber-300'
-            }`}
-          >
-            <Sparkles className="w-3.5 h-3.5 text-amber-600" />
-            طلبات تسعير مخصصة ({customPricingCount})
-            {customPricingCount > 0 && (
-              <span className="w-2 h-2 rounded-full bg-rose-500 animate-ping inline-block" />
-            )}
-          </button>
-          <button
-            onClick={() => { setFilterSource('web'); }}
-            className={`px-3 py-1.5 rounded-xl font-bold text-xs transition-all ${
-              filterSource === 'web'
-                ? 'bg-blue-700 text-white shadow-xs'
-                : 'bg-blue-50 text-blue-900 hover:bg-blue-100 border border-blue-200'
-            }`}
-          >
-            المنصة الإلكترونية 🌐
-          </button>
-        </div>
-      </div>
-
       {/* Search and Filters Bar */}
       <div className="clinic-card p-4 flex flex-col sm:flex-row items-center justify-between gap-3 shadow-clinic-1 bg-white/90">
         <div className="relative w-full sm:w-80">
@@ -225,7 +174,7 @@ export const BookingsTable: React.FC<BookingsTableProps> = ({ branchId }) => {
 
         <div className="flex items-center gap-2 w-full sm:w-auto overflow-x-auto no-scrollbar pb-1 sm:pb-0 text-xs">
           <span className="text-ink-mute text-[11px] whitespace-nowrap">الحالة:</span>
-          {['all', 'custom_pricing_requested', 'pending_review', 'confirmed', 'customer_arrived', 'in_service', 'completed'].map(
+          {['all', 'pending_review', 'confirmed', 'customer_arrived', 'in_service', 'completed'].map(
             (st) => (
               <button
                 key={st}
@@ -238,8 +187,6 @@ export const BookingsTable: React.FC<BookingsTableProps> = ({ branchId }) => {
               >
                 {st === 'all'
                   ? 'الكل'
-                  : st === 'custom_pricing_requested'
-                  ? 'طلب تسعير ✂️'
                   : BOOKING_STATUS_CONFIG[st as BookingStatus]?.label || st}
               </button>
             )
@@ -252,43 +199,55 @@ export const BookingsTable: React.FC<BookingsTableProps> = ({ branchId }) => {
         {filteredBookings.map((b) => {
           const barber = barbers.find((bar) => bar.id === b.barber_id);
           const primarySrv = services.find((s) => s.id === b.service_id);
-          const statusCfg = BOOKING_STATUS_CONFIG[b.status];
-          const isWhatsApp = b.source === 'whatsapp' || Boolean(b.ai_brief);
+          const statusCfg = BOOKING_STATUS_CONFIG[b.status] || {
+            label: b.status,
+            bg: 'bg-paper-warm',
+            text: 'text-ink',
+            border: 'border-border',
+          };
+          const isConfirmed = b.status === 'confirmed' || b.status === 'completed';
 
           return (
             <div
               key={b.id}
-              className={`clinic-card p-4 space-y-3 shadow-clinic-1 bg-white border ${
-                isWhatsApp ? 'border-emerald-500/30' : 'border-border'
+              className={`clinic-card p-4 space-y-3 shadow-clinic-1 relative overflow-hidden transition-all ${
+                isConfirmed
+                  ? 'bg-emerald-50/75 border-2 border-emerald-400 shadow-emerald-600/10'
+                  : 'bg-white border border-border'
               }`}
             >
-              {/* Header: ID + Source + Status */}
-              <div className="flex items-center justify-between border-b border-border/70 pb-2.5">
+              {/* Prominent Faint Green Watermark for Confirmed Bookings */}
+              {isConfirmed && (
+                <div className="absolute inset-0 pointer-events-none flex items-center justify-center overflow-hidden z-0 select-none opacity-[0.08]">
+                  <span className="text-5xl font-black text-emerald-900 rotate-[-15deg] font-serif tracking-widest whitespace-nowrap">
+                    حجز مؤكد ✓
+                  </span>
+                </div>
+              )}
+
+              {/* Header: ID + Time + Status Badge */}
+              <div className="flex items-center justify-between border-b border-border/70 pb-2.5 relative z-10">
                 <div className="flex items-center gap-2">
                   <span className="font-mono font-bold text-forest text-xs bg-forest/10 px-2.5 py-1 rounded-lg border border-forest/20">
                     {b.id}
                   </span>
-                  {isWhatsApp ? (
-                    <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-800 border border-emerald-300 flex items-center gap-1">
-                      <MessageSquare className="w-2.5 h-2.5" />
-                      واتساب AI
-                    </span>
-                  ) : (
-                    <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-blue-50 text-blue-800 border border-blue-200">
-                      منصة
-                    </span>
-                  )}
                   <span className="text-[11px] text-ink-mute font-mono font-bold">
                     {format12Hour(b.starts_at)}
                   </span>
                 </div>
-                {b.status === 'pending_review' || b.payment_proof ? (
+
+                {isConfirmed ? (
+                  <span className="inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-bold bg-emerald-600 text-white shadow-xs">
+                    <CheckCircle className="w-3.5 h-3.5" />
+                    <span>حجز مؤكد ✓</span>
+                  </span>
+                ) : b.status === 'pending_review' || b.payment_proof ? (
                   <button
                     onClick={() => setSelectedProofBooking(b)}
-                    className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10.5px] font-bold bg-amber-50 text-amber-900 border border-amber-300 hover:bg-amber-100 shadow-xs cursor-pointer"
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold bg-amber-500 hover:bg-amber-600 text-white shadow-xs cursor-pointer transition-all active:scale-95"
                   >
-                    <Eye className="w-3 h-3 text-amber-700" />
-                    <span>عرض إثبات الدفع 🔍</span>
+                    <Eye className="w-3.5 h-3.5" />
+                    <span>عرض صورة الإيصال 🖼️</span>
                   </button>
                 ) : (
                   <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-[10.5px] font-bold border ${statusCfg.bg} ${statusCfg.text} ${statusCfg.border}`}>
@@ -297,25 +256,8 @@ export const BookingsTable: React.FC<BookingsTableProps> = ({ branchId }) => {
                 )}
               </div>
 
-              {/* Human Handoff Warning if active */}
-              {b.needs_human_attention && (
-                <div className="p-2.5 rounded-xl bg-rose-50 border border-rose-200 flex items-center justify-between gap-2">
-                  <div className="flex items-center gap-1.5 text-rose-800 text-xs font-bold">
-                    <ShieldAlert className="w-4 h-4 animate-bounce text-rose-600" />
-                    <span>العميل طلب التحدث مع موظف بشري!</span>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => handleToggleHandoff(b.customer_phone, true)}
-                    className="text-[10.5px] font-bold px-2 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white transition-colors"
-                  >
-                    استئناف الـ AI 🟢
-                  </button>
-                </div>
-              )}
-
               {/* Customer & Service Info */}
-              <div className="grid grid-cols-2 gap-3 text-xs">
+              <div className="grid grid-cols-2 gap-3 text-xs relative z-10">
                 <div className="min-w-0">
                   <span className="text-[10px] text-ink-mute block">العميل:</span>
                   <p className="font-serif font-bold text-ink text-sm truncate">{b.customer_name}</p>
@@ -324,38 +266,22 @@ export const BookingsTable: React.FC<BookingsTableProps> = ({ branchId }) => {
                 <div className="min-w-0 text-left sm:text-right">
                   <span className="text-[10px] text-ink-mute block">الكابتن:</span>
                   <p className="font-bold text-forest truncate">{barber?.full_name || (b as any).barber_name || (b as any).barberName || 'محمد الحداد'}</p>
-                  {b.confidence_score && (
-                    <span className="text-[10px] text-emerald-700 font-bold block mt-0.5">
-                      🎯 دقة الطلب: {b.confidence_score}%
-                    </span>
-                  )}
                 </div>
               </div>
 
-              {/* AI Brief Box for WhatsApp Bookings */}
-              {b.ai_brief && (
-                <div className="p-2.5 bg-emerald-50/60 rounded-xl border border-emerald-200/70 text-[11.5px] text-emerald-950">
-                  <div className="font-bold text-emerald-800 mb-1 flex items-center gap-1">
-                    <Sparkles className="w-3 h-3 text-emerald-600" />
-                    ملخص الذكاء الاصطناعي:
-                  </div>
-                  <p className="whitespace-pre-line text-emerald-900 leading-relaxed font-sans">{b.ai_brief}</p>
-                </div>
-              )}
-
-              {/* Service & Total Box */}
-              <div className="p-2.5 bg-paper-warm/80 rounded-xl border border-border flex items-center justify-between">
+              {/* Service & Total Box with Dedicated Receipt Image Button */}
+              <div className="p-2.5 bg-paper-warm/80 rounded-xl border border-border flex items-center justify-between relative z-10">
                 <div>
                   <p className="font-bold text-ink text-xs">{b.service_name || primarySrv?.name || (b as any).serviceName || 'قص وتصفيف كلاسيكي'}</p>
-                  {b.custom_line_items && b.custom_line_items.length > 0 ? (
-                    <p className="text-[10px] text-forest font-semibold">
-                      {b.custom_line_items.length} بنود مخصصة بالفاتورة
-                    </p>
-                  ) : b.additional_service_ids && b.additional_service_ids.length > 0 ? (
-                    <p className="text-[10px] text-forest font-semibold">
-                      +{b.additional_service_ids.length} خدمات إضافية
-                    </p>
-                  ) : null}
+                  {b.payment_proof && (
+                    <button
+                      onClick={() => setSelectedProofBooking(b)}
+                      className="mt-1.5 inline-flex items-center gap-1 text-[11px] text-forest font-bold bg-forest/10 hover:bg-forest/20 px-2.5 py-1 rounded-lg border border-forest/20 shadow-2xs transition-all cursor-pointer"
+                    >
+                      <Eye className="w-3.5 h-3.5" />
+                      <span>عرض صورة الإيصال 🖼️</span>
+                    </button>
+                  )}
                 </div>
                 <div className="text-left">
                   <span className="text-[10px] text-ink-mute block">الإجمالي:</span>
@@ -364,19 +290,7 @@ export const BookingsTable: React.FC<BookingsTableProps> = ({ branchId }) => {
               </div>
 
               {/* Actions Footer */}
-              <div className="flex items-center justify-between pt-1 border-t border-border/70 gap-2">
-                {isWhatsApp ? (
-                  <button
-                    onClick={() => setSelectedCustomPricingBooking(b)}
-                    className="flex-1 py-2 px-3 rounded-xl bg-gradient-to-r from-emerald-600 to-emerald-700 hover:from-emerald-500 hover:to-emerald-600 text-white font-bold text-xs shadow-xs flex items-center justify-center gap-1.5 transition-all"
-                  >
-                    <Sparkles className="w-3.5 h-3.5 text-amber-300" />
-                    <span>تسعير واعتماد 🛠️</span>
-                  </button>
-                ) : (
-                  <span className="text-[11px] text-ink-mute">حجز منصة</span>
-                )}
-
+              <div className="flex items-center justify-end pt-1 border-t border-border/70 gap-2 relative z-10">
                 <div className="flex items-center gap-1.5">
                   <button
                     onClick={() => openEditModal(b)}
@@ -412,9 +326,9 @@ export const BookingsTable: React.FC<BookingsTableProps> = ({ branchId }) => {
           <table className="w-full text-right text-xs">
             <thead className="bg-paper-warm/80 border-b border-border text-ink-soft font-serif">
               <tr>
-                <th className="py-3.5 px-4 font-bold">رقم الحجز والمصدر</th>
+                <th className="py-3.5 px-4 font-bold">رقم الحجز</th>
                 <th className="py-3.5 px-4 font-bold">العميل</th>
-                <th className="py-3.5 px-4 font-bold">الخدمة والملخص الذكي</th>
+                <th className="py-3.5 px-4 font-bold">الخدمة</th>
                 <th className="py-3.5 px-4 font-bold">كابتن الحلاقة</th>
                 <th className="py-3.5 px-4 font-bold">الموعد</th>
                 <th className="py-3.5 px-4 font-bold">الحساب والإيصال</th>
@@ -426,57 +340,40 @@ export const BookingsTable: React.FC<BookingsTableProps> = ({ branchId }) => {
               {filteredBookings.map((b) => {
                 const barber = barbers.find((bar) => bar.id === b.barber_id);
                 const primarySrv = services.find((s) => s.id === b.service_id);
-                const statusCfg = BOOKING_STATUS_CONFIG[b.status];
-                const isWhatsApp = b.source === 'whatsapp' || Boolean(b.ai_brief);
+                const statusCfg = BOOKING_STATUS_CONFIG[b.status] || {
+                  label: b.status,
+                  bg: 'bg-paper-warm',
+                  text: 'text-ink',
+                  border: 'border-border',
+                };
+                const isConfirmed = b.status === 'confirmed' || b.status === 'completed';
 
                 return (
-                  <tr key={b.id} className="hover:bg-paper-warm/40 transition-colors">
+                  <tr
+                    key={b.id}
+                    className={`transition-colors ${
+                      isConfirmed
+                        ? 'bg-emerald-50/45 hover:bg-emerald-50/75 border-r-4 border-r-emerald-500'
+                        : 'hover:bg-paper-warm/40'
+                    }`}
+                  >
                     <td className="py-3.5 px-4">
-                      <div className="space-y-1">
-                        <span className="font-mono font-bold text-forest block">
-                          {b.id}
-                        </span>
-                        {isWhatsApp ? (
-                          <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-800 border border-emerald-300">
-                            <MessageSquare className="w-2.5 h-2.5" />
-                            واتساب AI
-                          </span>
-                        ) : (
-                          <span className="inline-flex items-center text-[10px] font-bold px-2 py-0.5 rounded-full bg-blue-50 text-blue-800 border border-blue-200">
-                            منصة 🌐
-                          </span>
-                        )}
-                      </div>
+                      <span className="font-mono font-bold text-forest block">
+                        {b.id}
+                      </span>
                     </td>
 
                     <td className="py-3.5 px-4">
                       <div>
-                        <div className="flex items-center gap-1.5">
-                          <p className="font-serif font-bold text-ink">{b.customer_name}</p>
-                          {b.needs_human_attention && (
-                            <span className="inline-block w-2 h-2 rounded-full bg-rose-500 animate-ping" title="طلب تدخل بشري" />
-                          )}
-                        </div>
+                        <p className="font-serif font-bold text-ink">{b.customer_name}</p>
                         <p className="text-[11px] text-ink-mute font-mono">{b.customer_phone}</p>
-                        {b.needs_human_attention && (
-                          <button
-                            onClick={() => handleToggleHandoff(b.customer_phone, true)}
-                            className="mt-1 text-[9.5px] text-rose-700 bg-rose-50 hover:bg-rose-100 border border-rose-200 px-1.5 py-0.5 rounded font-bold transition-colors"
-                          >
-                            تدخل بشري نشط 🛑 (استئناف AI)
-                          </button>
-                        )}
                       </div>
                     </td>
 
                     <td className="py-3.5 px-4 max-w-xs">
                       <div>
                         <p className="font-bold text-ink">{b.service_name || primarySrv?.name || (b as any).serviceName || 'قص وتصفيف كلاسيكي'}</p>
-                        {b.ai_brief ? (
-                          <p className="text-[10.5px] text-emerald-800 bg-emerald-50/80 p-1.5 rounded-lg border border-emerald-200/60 mt-1 line-clamp-2" title={b.ai_brief}>
-                            💡 {b.ai_brief}
-                          </p>
-                        ) : b.additional_service_ids && b.additional_service_ids.length > 0 ? (
+                        {b.additional_service_ids && b.additional_service_ids.length > 0 ? (
                           <p className="text-[10px] text-forest font-semibold">
                             +{b.additional_service_ids.length} خدمات إضافية
                           </p>
@@ -486,11 +383,6 @@ export const BookingsTable: React.FC<BookingsTableProps> = ({ branchId }) => {
 
                     <td className="py-3.5 px-4 text-ink-soft font-medium">
                       {barber?.full_name || (b as any).barber_name || (b as any).barberName || 'محمد الحداد'}
-                      {b.confidence_score && (
-                        <span className="text-[10px] text-emerald-700 font-bold block mt-0.5">
-                          🎯 {b.confidence_score}% دقة
-                        </span>
-                      )}
                     </td>
 
                     <td className="py-3.5 px-4 text-ink-soft">
@@ -502,22 +394,27 @@ export const BookingsTable: React.FC<BookingsTableProps> = ({ branchId }) => {
                       {b.payment_proof && (
                         <button
                           onClick={() => setSelectedProofBooking(b)}
-                          className="mt-1 inline-flex items-center gap-1 text-[10px] text-terra-deep hover:underline font-bold"
+                          className="mt-1.5 inline-flex items-center gap-1 text-[11px] text-forest font-bold bg-forest/10 hover:bg-forest/20 px-2.5 py-1 rounded-lg border border-forest/20 shadow-2xs transition-all cursor-pointer"
                         >
-                          <Eye className="w-3 h-3" />
-                          <span>معاينة الإيصال</span>
+                          <Eye className="w-3.5 h-3.5" />
+                          <span>عرض صورة الإيصال 🖼️</span>
                         </button>
                       )}
                     </td>
 
                     <td className="py-3.5 px-4">
-                      {b.status === 'pending_review' || b.payment_proof ? (
+                      {isConfirmed ? (
+                        <span className="inline-flex items-center gap-1 px-3 py-1.5 rounded-full text-xs font-bold bg-emerald-600 text-white shadow-xs">
+                          <CheckCircle className="w-3.5 h-3.5" />
+                          <span>حجز مؤكد ✓</span>
+                        </span>
+                      ) : b.status === 'pending_review' || b.payment_proof ? (
                         <button
                           onClick={() => setSelectedProofBooking(b)}
-                          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold bg-amber-50 text-amber-900 border border-amber-300 hover:bg-amber-100 hover:border-amber-400 shadow-xs cursor-pointer transition-all"
+                          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold bg-amber-500 hover:bg-amber-600 text-white shadow-xs cursor-pointer transition-all active:scale-95"
                           title="عرض إيصال التحويل للاعتماد أو الرفض"
                         >
-                          <Eye className="w-3.5 h-3.5 text-amber-700" />
+                          <Eye className="w-3.5 h-3.5" />
                           <span>عرض إثبات الدفع 🔍</span>
                         </button>
                       ) : (
@@ -529,25 +426,6 @@ export const BookingsTable: React.FC<BookingsTableProps> = ({ branchId }) => {
 
                     <td className="py-3.5 px-4 text-center">
                       <div className="flex items-center justify-center gap-1">
-                        {b.status === 'custom_pricing_requested' ? (
-                          <button
-                            onClick={() => setSelectedCustomPricingBooking(b)}
-                            className="px-2.5 py-1.5 rounded-lg bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs shadow-xs flex items-center gap-1 transition-all animate-pulse"
-                            title="تسعير باقة الواتساب المخصصة وإرسال الفاتورة للعميل"
-                          >
-                            <Sparkles className="w-3 h-3 text-amber-200" />
-                            <span>تسعير الباقة ✂️💵</span>
-                          </button>
-                        ) : isWhatsApp ? (
-                          <button
-                            onClick={() => setSelectedCustomPricingBooking(b)}
-                            className="px-2.5 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs shadow-xs flex items-center gap-1 transition-all"
-                            title="تسعير واعتماد حجز الواتساب وإرسال الفاتورة"
-                          >
-                            <Sparkles className="w-3 h-3 text-amber-300" />
-                            <span>تسعير 🛠️</span>
-                          </button>
-                        ) : null}
                         <button
                           onClick={() => openEditModal(b)}
                           className="p-1.5 rounded-lg bg-paper-warm hover:bg-white text-forest border border-border"
