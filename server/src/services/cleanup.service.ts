@@ -502,23 +502,7 @@ export async function ensureInitialDbData() {
         console.log('✅ Auto-seeded initial branch-elhdad into MySQL DB');
       }
 
-      // 2. Check & Seed Barbers
-      const barbers = await query<any[]>('SELECT id FROM barbers LIMIT 1');
-      if (!barbers || barbers.length === 0) {
-        const barberList = [
-          ['barber-mohamed', 'branch-elhdad', 'محمد الحداد', '01285694670', 'كبير الحلاقين وقصات VIP الملكية', 1, '[]'],
-          ['barber-karim', 'branch-elhdad', 'كريم السيد', '01123456789', 'قص شعر وتدريج عصري Fade', 1, '[]'],
-          ['barber-omar', 'branch-elhdad', 'عمر خالد', '01098765432', 'عناية كاملة باللحية والبشرة', 1, '[]'],
-        ];
-        for (const b of barberList) {
-          await query(`
-            INSERT INTO barbers (id, branch_id, full_name, phone, specialty, is_active, service_ids)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
-            ON DUPLICATE KEY UPDATE full_name=VALUES(full_name)
-          `, b);
-        }
-        console.log('✅ Auto-seeded initial barbers into MySQL DB');
-      }
+      // 2. Barbers are managed dynamically by the manager
 
       // 3. Check & Seed Chairs
       const chairs = await query<any[]>('SELECT id FROM chairs LIMIT 1');

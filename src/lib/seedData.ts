@@ -27,41 +27,7 @@ export const INITIAL_BRANCHES: Branch[] = [
   },
 ];
 
-export const INITIAL_BARBERS: Barber[] = [
-  {
-    id: 'barber-mohamed',
-    branch_id: 'branch-elhdad',
-    full_name: 'محمد الحداد',
-    phone: '01285694670',
-    specialty: 'كبير الحلاقين وقصات VIP الملكية',
-    rating: 5.0,
-    rating_count: 120,
-    is_active: true,
-    created_at: new Date().toISOString(),
-  },
-  {
-    id: 'barber-karim',
-    branch_id: 'branch-elhdad',
-    full_name: 'كريم السيد',
-    phone: '01123456789',
-    specialty: 'قص شعر وتدريج عصري Fade',
-    rating: 4.9,
-    rating_count: 85,
-    is_active: true,
-    created_at: new Date().toISOString(),
-  },
-  {
-    id: 'barber-omar',
-    branch_id: 'branch-elhdad',
-    full_name: 'عمر خالد',
-    phone: '01098765432',
-    specialty: 'عناية كاملة باللحية والبشرة',
-    rating: 4.9,
-    rating_count: 94,
-    is_active: true,
-    created_at: new Date().toISOString(),
-  },
-];
+export const INITIAL_BARBERS: Barber[] = [];
 
 export const INITIAL_CHAIRS: Chair[] = [
   {

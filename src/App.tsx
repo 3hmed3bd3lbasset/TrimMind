@@ -117,27 +117,19 @@ function AppLayout() {
 
         const stateUpdates: any = {};
 
-        if (branchesRes?.status === 'fulfilled' && (branchesRes.value as any)?.success && Array.isArray((branchesRes.value as any)?.data) && (branchesRes.value as any).data.length > 0) {
+        if (branchesRes?.status === 'fulfilled' && (branchesRes.value as any)?.success && Array.isArray((branchesRes.value as any)?.data)) {
           stateUpdates.branches = (branchesRes.value as any).data;
         }
-        if (barbersRes?.status === 'fulfilled' && (barbersRes.value as any)?.success && Array.isArray((barbersRes.value as any)?.data) && (barbersRes.value as any).data.length > 0) {
-          const backendBarbers = (barbersRes.value as any).data;
-          const localBarbers = useSalonStore.getState().barbers || [];
-          stateUpdates.barbers = backendBarbers.map((bb: any) => {
-            const match = localBarbers.find((lb) => lb.id === bb.id);
-            return {
-              ...bb,
-              photo_url: bb.photo_url || match?.photo_url || '',
-            };
-          });
+        if (barbersRes?.status === 'fulfilled' && (barbersRes.value as any)?.success && Array.isArray((barbersRes.value as any)?.data)) {
+          stateUpdates.barbers = (barbersRes.value as any).data;
         }
-        if (chairsRes?.status === 'fulfilled' && (chairsRes.value as any)?.success && Array.isArray((chairsRes.value as any)?.data) && (chairsRes.value as any).data.length > 0) {
+        if (chairsRes?.status === 'fulfilled' && (chairsRes.value as any)?.success && Array.isArray((chairsRes.value as any)?.data)) {
           stateUpdates.chairs = (chairsRes.value as any).data;
         }
-        if (servicesRes?.status === 'fulfilled' && (servicesRes.value as any)?.success && Array.isArray((servicesRes.value as any)?.data) && (servicesRes.value as any).data.length > 0) {
+        if (servicesRes?.status === 'fulfilled' && (servicesRes.value as any)?.success && Array.isArray((servicesRes.value as any)?.data)) {
           stateUpdates.services = (servicesRes.value as any).data;
         }
-        if (productsRes?.status === 'fulfilled' && (productsRes.value as any)?.success && Array.isArray((productsRes.value as any)?.data) && (productsRes.value as any).data.length > 0) {
+        if (productsRes?.status === 'fulfilled' && (productsRes.value as any)?.success && Array.isArray((productsRes.value as any)?.data)) {
           stateUpdates.products = (productsRes.value as any).data;
         }
         if (settingsRes?.status === 'fulfilled' && (settingsRes.value as any)?.success && (settingsRes.value as any)?.data) {
@@ -146,7 +138,7 @@ function AppLayout() {
         if (isStaff && bookingsRes?.status === 'fulfilled' && (bookingsRes.value as any)?.success && Array.isArray((bookingsRes.value as any)?.data)) {
           stateUpdates.bookings = (bookingsRes.value as any).data;
         }
-        if (isStaff && profilesRes?.status === 'fulfilled' && (profilesRes.value as any)?.success && Array.isArray((profilesRes.value as any)?.data) && (profilesRes.value as any).data.length > 0) {
+        if (isStaff && profilesRes?.status === 'fulfilled' && (profilesRes.value as any)?.success && Array.isArray((profilesRes.value as any)?.data)) {
           stateUpdates.profiles = (profilesRes.value as any).data;
         }
 

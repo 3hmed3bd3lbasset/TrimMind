@@ -1,6 +1,5 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { useSalonStore } from '../../lib/store';
-import { INITIAL_BRANCHES, INITIAL_BARBERS } from '../../lib/seedData';
 import { Service, Barber, Chair, Product, Booking } from '../../types';
 import { formatCurrency, formatTime, generateToken, format12Hour, compressImage } from '../../lib/utils';
 import { ServiceCard } from './ServiceCard';
@@ -188,8 +187,8 @@ export const BookingWizard: React.FC = () => {
     }
   }, [settings?.weekly_off_days]);
 
-  const effectiveBranchId = branchId || selectedBranchId || branches[0]?.id || 'branch-elhdad';
-  const currentBranch = branches.find((b) => b.id === effectiveBranchId) || branches[0] || INITIAL_BRANCHES[0];
+  const effectiveBranchId = branchId || selectedBranchId || branches[0]?.id || '';
+  const currentBranch = branches.find((b) => b.id === effectiveBranchId) || branches[0];
 
   // Auto-sync branchId & serviceId when data loads
   useEffect(() => {
@@ -206,19 +205,19 @@ export const BookingWizard: React.FC = () => {
 
   // Robust Barbers list resolution: always shows all active barbers for the branch
   const branchBarbers = useMemo(() => {
-    const rawList = barbers && barbers.length > 0 ? barbers : INITIAL_BARBERS;
-    const activeBarbers = rawList.filter((b) => b.is_active !== false);
-    const matched = activeBarbers.filter((b) => !b.branch_id || b.branch_id === effectiveBranchId);
+    const rawList: Barber[] = barbers || [];
+    const activeBarbers = rawList.filter((b: Barber) => b.is_active !== false);
+    const matched = activeBarbers.filter((b: Barber) => !b.branch_id || b.branch_id === effectiveBranchId);
     return matched.length > 0 ? matched : activeBarbers;
   }, [barbers, effectiveBranchId]);
 
   useEffect(() => {
-    if ((!barberId || !branchBarbers.some((b) => b.id === barberId)) && branchBarbers.length > 0) {
+    if ((!barberId || !branchBarbers.some((b: Barber) => b.id === barberId)) && branchBarbers.length > 0) {
       setBarberId(branchBarbers[0].id);
     }
   }, [branchBarbers, barberId]);
 
-  const currentBarber = branchBarbers.find((b) => b.id === barberId) || branchBarbers[0] || INITIAL_BARBERS[0];
+  const currentBarber = branchBarbers.find((b: Barber) => b.id === barberId) || branchBarbers[0];
 
   // Calculate pricing
   const primaryService = services.find((s) => s.id === selectedServiceId);
