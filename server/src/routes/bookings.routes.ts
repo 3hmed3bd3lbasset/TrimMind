@@ -444,9 +444,19 @@ router.patch(
             booking.barber_id || null,
             depositFee,
             pMethod,
-            booking.id
+            booking.id,
           ]
         ).catch((err) => console.warn('Financial record insert error:', err));
+
+        if (customerPhone) {
+          import('../services/whatsapp.service.js')
+            .then(({ sendBookingConfirmationWhatsApp }) => {
+              sendBookingConfirmationWhatsApp(updated || booking).catch((e) =>
+                console.error('WA Status Confirmation Error:', e)
+              );
+            })
+            .catch(() => {});
+        }
       }
 
       // 2. WhatsApp Notification on Calling Customer to Chair (دورك جه الآن) + Proactive Queue Approaching (باقي 1 أو 2)

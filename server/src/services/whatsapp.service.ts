@@ -929,30 +929,46 @@ export async function sendBookingConfirmationWhatsApp(booking: any): Promise<boo
   const customerPhone = booking.customer_phone || booking.customerPhone;
   if (!customerPhone) return false;
 
-  const clientName = booking.customer_name || booking.customerName || 'عزيزنا العميل';
+  const rawName = booking.customer_name || booking.customerName || 'عميلنا العزيز';
+  const clientName = rawName.replace(/عميل واتساب|\(|\)|\d+/g, '').trim() || 'عميلنا العزيز';
   const bookingId = booking.id || booking.bookingId || 'BK-1000';
   const queueNumber = booking.queue_number || booking.queueNumber || 1;
   const barberName = booking.barber_name || booking.barberName || 'محمد الحداد';
   
   let serviceName = booking.service_name || booking.serviceName || 'قص شعر وتصفيف كلاسيكي';
+  if (booking.custom_line_items) {
+    try {
+      const parsedItems = typeof booking.custom_line_items === 'string' ? JSON.parse(booking.custom_line_items) : booking.custom_line_items;
+      if (Array.isArray(parsedItems) && parsedItems.length > 0) {
+        return sendCustomPricingApprovedWhatsApp(
+          booking,
+          parsedItems,
+          Number(booking.total_at_booking || booking.totalAmount || 0),
+          Number(booking.booking_fee_at_booking || (booking.booking_type === 'vip' ? 100 : 50)),
+          Number(booking.discount_at_booking || 0)
+        );
+      }
+    } catch {}
+  }
+
   if (booking.additional_services && Array.isArray(booking.additional_services) && booking.additional_services.length > 0) {
     serviceName += ' + ' + booking.additional_services.map((s: any) => (typeof s === 'string' ? s : s.name)).join(' + ');
   }
 
   // Calculate pricing
-  const totalAmount = Number(booking.total_at_booking || booking.totalAmount || booking.service_price || 180);
+  const totalAmount = Number(booking.total_at_booking || booking.totalAmount || booking.service_price_at_booking || booking.service_price || 180);
   const depositPaid = Number(booking.booking_fee_at_booking || booking.depositRequired || (booking.booking_type === 'vip' ? 100 : 50));
   const remainingAmount = Math.max(0, totalAmount - depositPaid);
 
   // Format date and time in Cairo Timezone
-  let formattedDateTime = 'اليوم';
+  let formattedDateTime = 'خلال مواعيد العمل اليوم';
   if (booking.starts_at || booking.startsAt) {
     try {
       const d = new Date(booking.starts_at || booking.startsAt);
       formattedDateTime = d.toLocaleString('ar-EG', {
         timeZone: 'Africa/Cairo',
         weekday: 'long',
-        month: 'short',
+        month: 'long',
         day: 'numeric',
         hour: 'numeric',
         minute: 'numeric',
@@ -963,31 +979,101 @@ export async function sendBookingConfirmationWhatsApp(booking: any): Promise<boo
     }
   }
 
-  const vipBadge = booking.booking_type === 'vip' ? 'VIP' : 'باقة مميزة';
-  const branchName = 'صالون الحداد';
   const trackingUrl = `https://trimmind.up.railway.app/track?q=${bookingId}`;
 
-  const message = `👑 تم تأكيد حجزك بنجاح! 💈✨
+  const message = `أهلاً بك يا ${clientName}، تم تأكيد وقبول حجزك في صالون الحداد بنجاح.
 
-📋 رقم الحجز: ${bookingId}
-💈 الكابتن: ${barberName}
-✂️ الخدمة: ${serviceName}
-📅 الموعد: ${formattedDateTime}
-👑 ${vipBadge} – ${branchName}
+تفاصيل الحجز:
+- رقم الحجز: ${bookingId}
+- الخدمة: ${serviceName}
+- كابتن الحلاقة: ${barberName}
+- الموعد: ${formattedDateTime}
+- الدور في الطابور: دور رقم ${queueNumber}
 
-💰 الإجمالي: ${totalAmount} ج
-💳 العربون: ${depositPaid} ج
-💵 المتبقي: ${remainingAmount} ج
+الفاتورة والحساب:
+- إجمالي الحساب: ${totalAmount} جنيه
+- العربون المسدد: ${depositPaid} جنيه
+- المتبقي للدفع بالصالون: ${remainingAmount} جنيه
 
-📍 تابع دورك لحظة بلحظة:
+تقدر تتابع تفاصيل حجزك ودورك لحظة بلحظة من الرابط التالي:
 ${trackingUrl}
 
-🔔 هنبلغك قبل دورك بـ5 دقائق.
-نتشرف بزيارتك ❤️`;
+مستنيينك تنورنا ونتمنى لك تجربة راقية ومميزة ❤️`;
 
   const success = await sendWhatsAppText(customerPhone, message);
   if (success) {
     logDebug('BOOKING_CONFIRMATION_WHATSAPP_SENT_OK', { customerPhone, bookingId, queueNumber });
+  }
+  return success;
+}
+
+// ============================================================================
+// Custom-Priced & Approved Booking WhatsApp Dispatcher
+// ============================================================================
+export async function sendCustomPricingApprovedWhatsApp(
+  booking: any,
+  items: Array<{ name: string; price: number }>,
+  total: number,
+  deposit: number,
+  discount: number = 0
+): Promise<boolean> {
+  const customerPhone = booking.customer_phone || booking.customerPhone;
+  if (!customerPhone) return false;
+
+  const rawName = booking.customer_name || booking.customerName || 'عميلنا العزيز';
+  const clientName = rawName.replace(/عميل واتساب|\(|\)|\d+/g, '').trim() || 'عميلنا العزيز';
+  const bookingId = booking.id || booking.bookingId || 'BK-1000';
+  const queueNumber = booking.queue_number || booking.queueNumber || 1;
+  const barberName = booking.barber_name || booking.barberName || 'محمد الحداد';
+  const remainingAmount = Math.max(0, total - deposit);
+
+  let formattedDateTime = 'خلال مواعيد العمل اليوم';
+  if (booking.starts_at || booking.startsAt) {
+    try {
+      const d = new Date(booking.starts_at || booking.startsAt);
+      formattedDateTime = d.toLocaleString('ar-EG', {
+        timeZone: 'Africa/Cairo',
+        weekday: 'long',
+        month: 'long',
+        day: 'numeric',
+        hour: 'numeric',
+        minute: 'numeric',
+        hour12: true,
+      });
+    } catch {
+      formattedDateTime = (booking.starts_at || booking.startsAt).replace('T', ' ').substring(0, 16);
+    }
+  }
+
+  const trackingUrl = `https://trimmind.up.railway.app/track?q=${bookingId}`;
+
+  const itemsList = items && items.length > 0
+    ? items.map((it) => `- ${it.name}: ${it.price} جنيه`).join('\n')
+    : `- الخدمة المخصصة: ${total} جنيه`;
+
+  const message = `أهلاً بك يا ${clientName}، تم تسعير واعتماد باقتك وطلبك المخصص في صالون الحداد بنجاح.
+
+تفاصيل الخدمات المعتمدة:
+${itemsList}
+- كابتن الحلاقة: ${barberName}
+- الموعد: ${formattedDateTime}
+- رقم الحجز: ${bookingId}
+- الدور في الطابور: دور رقم ${queueNumber}
+
+الفاتورة المعتمدة:
+- إجمالي الفاتورة: ${total} جنيه` +
+(discount > 0 ? `\n- الخصم المطبق: ${discount} جنيه` : '') +
+`\n- العربون المسدد: ${deposit} جنيه
+- المتبقي للدفع بالصالون: ${remainingAmount} جنيه
+
+تقدر تتابع تفاصيل حجزك ودورك لحظة بلحظة من الرابط التالي:
+${trackingUrl}
+
+مستنيينك تنورنا ونتمنى لك تجربة راقية ومميزة ❤️`;
+
+  const success = await sendWhatsAppText(customerPhone, message);
+  if (success) {
+    logDebug('CUSTOM_PRICING_APPROVED_WHATSAPP_SENT_OK', { customerPhone, bookingId, queueNumber });
   }
   return success;
 }

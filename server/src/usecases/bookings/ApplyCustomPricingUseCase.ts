@@ -104,30 +104,31 @@ export class ApplyCustomPricingUseCase {
       status: 'confirmed',
     });
 
-    // Send WhatsApp Invoice to Customer
-    if (booking.customerPhone) {
-      const itemsListStr = payload.items.map((i) => `• ${i.name}: ${i.price} ج.م`).join('\n');
-      const waMessage = `🎉 *تم تسعير واعتماد باقتك المخصصة في صالون TrimMind VIP!* 💈👑\n\n` +
-        `يا هلا بأستاذنا الفاضل *${booking.customerName || 'الكريم'}* 🌟\n\n` +
-        `🧾 *تفاصيل الفاتورة المعتمدة من الاستقبال:*\n` +
-        `${itemsListStr}\n\n` +
-        `💵 *الإجمالي:* ${finalTotal} ج.م\n` +
-        (finalDiscount > 0 ? `🎁 *الخصم المطبق:* ${finalDiscount} ج.م\n` : '') +
-        `💳 *العربون المطلوب لتأكيد الحجز:* ${finalDeposit} ج.م\n` +
-        `💰 *المتبقي للدفع بالصالون:* ${Math.max(0, finalTotal - finalDeposit)} ج.م\n\n` +
-        `📲 *طرق تحويل العربون:*\n` +
-        `• InstaPay: \`01005437633\`\n` +
-        `• Vodafone Cash: \`01005437633\`\n\n` +
-        `📸 *يرجى إرسال صورة إيصال التحويل هنا في المحادثة* ليتم اعتماد حجزك فوراً وتثبيت موعدك!\n\n` +
-        `📍 *رابط متابعة الحجز والدور المباشر:*\n` +
-        `https://trimmind.up.railway.app/track?q=${booking.id}`;
-
-      this.notificationGateway.sendWhatsApp(booking.customerPhone, waMessage).catch(() => {});
+    // Send Clean WhatsApp Invoice to Customer
+    const phoneToNotify = (booking as any).customer_phone || (booking as any).customerPhone;
+    if (phoneToNotify) {
+      const { sendCustomPricingApprovedWhatsApp } = await import('../../services/whatsapp.service.js');
+      sendCustomPricingApprovedWhatsApp(
+        {
+          ...(booking || {}),
+          id: payload.bookingId,
+          bookingId: payload.bookingId,
+          customer_name: (booking as any).customer_name || (booking as any).customerName,
+          customer_phone: phoneToNotify,
+          barber_name: payload.barberName || (booking as any).barber_name || (booking as any).barberName,
+          starts_at: (booking as any).starts_at || (booking as any).startsAt,
+          queue_number: (booking as any).queue_number || (booking as any).queueNumber,
+        },
+        payload.items,
+        finalTotal,
+        finalDeposit,
+        finalDiscount
+      ).catch((err) => console.warn('Custom pricing WA error:', err));
     }
 
     return {
       success: true,
-      message: 'تم تسعير الحجز واعتماده وإرسال الفاتورة للعميل على الواتساب بنجاح! 🚀',
+      message: 'تم تسعير الحجز واعتماده وإرسال الفاتورة للعميل على الواتساب بنجاح',
       booking: updatedBooking,
     };
   }
