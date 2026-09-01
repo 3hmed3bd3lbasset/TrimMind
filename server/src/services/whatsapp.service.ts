@@ -400,13 +400,22 @@ export async function initWhatsApp(): Promise<WhatsAppState> {
       if (connection === 'close') {
         isSocketOpen = false;
         const statusCode = (lastDisconnect?.error as any)?.output?.statusCode;
-        const shouldReconnect = statusCode !== DisconnectReason.loggedOut;
+        const isLoggedOut = statusCode === DisconnectReason.loggedOut || statusCode === 401;
         state.status = 'disconnected';
         state.qrCodeDataUrl = null;
         state.pairingCode = null;
         isInitializing = false;
 
-        if (shouldReconnect) {
+        if (isLoggedOut) {
+          logDebug('LOGGED_OUT_WIPING_STALE_CREDS', { statusCode, authDir: AUTH_DIR });
+          try {
+            if (fs.existsSync(AUTH_DIR)) {
+              fs.rmSync(AUTH_DIR, { recursive: true, force: true });
+              fs.mkdirSync(AUTH_DIR, { recursive: true });
+            }
+          } catch {}
+          setTimeout(() => initWhatsApp(), 1500);
+        } else {
           setTimeout(() => initWhatsApp(), 4000);
         }
       } else if (connection === 'open') {
