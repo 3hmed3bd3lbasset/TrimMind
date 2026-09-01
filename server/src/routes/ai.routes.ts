@@ -18,10 +18,10 @@ const ROLE_KEYS: Record<string, string> = {
 };
 
 const candidateModels = [
-  'gemini-3.6-flash',
-  'gemini-3.5-flash',
-  'gemini-3.1-flash-lite',
-  'gemini-flash-latest',
+  'gemini-2.0-flash',
+  'gemini-1.5-flash',
+  'gemini-1.5-flash-8b',
+  'gemini-1.5-pro',
 ];
 
 router.post('/chat', aiLimiter, optionalAuth, async (req: AuthenticatedRequest, res: Response): Promise<void> => {
@@ -344,14 +344,37 @@ ${barbersListStr}`;
     }
 
     if (!responseText) {
-      // Intelligent dynamic fallback when AI API is unavailable
-      if (userText.match(/^(ازيك|السلام عليكم|سلام|مرحبا|هاي|صباح|مساء)/i)) {
-        responseText = `يا هلا بيك يا فندم، منور صالون TrimMind VIP! 💈👑 أقدر أساعدك بإيه النهاردة في الحجز أو الخدمات؟`;
-      } else if (userText.match(/^(ايوا|اه|تمام|ماشي|اوك|حاضر)/i)) {
-        responseText = `تحت أمرك يا فندم! تحب نحجز لحضرتك موعد معين أو تختار كابتن محدد من فريقنا؟`;
+      const normU = userText
+        .toLowerCase()
+        .replace(/[أإآ]/g, 'ا')
+        .replace(/ة/g, 'ه')
+        .replace(/ى/g, 'ي')
+        .replace(/[\u064B-\u065F]/g, '')
+        .trim();
+
+      if (normU.includes('مستعجل') || normU.includes('اقرب وقت') || normU.includes('دلوقتي') || normU.includes('حالاً') || normU.includes('بسرعه')) {
+        responseText = `لو مستعجل وعايز تدخل على الكرسي فوراً بدون دقيقة انتظار واحدة ⚡، بنرشحلك فوراً **حجز جناح كبار الزوار (VIP Suite 👑)**:\n\n• **دخول فوري مباشر:** الكرسي محجوز ومجهز لك فور وصولك.\n• **خصوصية تامة:** جناح خاص معزول ومكيف مع كرسي مساج وشاشات ترفيه وضيافة ملكية.\n• **كبار الحلاقين:** الخدمة بواسطة كبار كباتن الصالون.\n• **عربون التثبيت:** ${deposits.vip} ج.م فقط (يُخصم من إجمالي الفاتورة).\n\nأو يمكنك اختيار الحجز العادي في أقرب دور متاح بالصالة العامة ✂️.`;
+      } else if (normU.includes('جناح vip') || normU.includes('حجز vip') || normU.includes('باقات vip') || normU.includes('vip')) {
+        responseText = `أهلاً بك في جناح كبار الزوار (VIP Suite 👑✨) بصالون **TrimMind VIP**!\n\nمزايا الجناح الملكي:\n• جناح خاص ومكيف بخصوصية تامة وشاشات ترفيه وكرسي مساج.\n• دخول فوري ومباشر بدون أي انتظار في الطابور.\n• كبار الحلاقين وضيافة كاملة ومشروبات فاخرة مجاناً.\n• عربون تثبيت الجناح: **${deposits.vip} ج.م** فقط يُخصم من الفاتورة.\n\nتفضل بحجز جناحك الآن واختيار موعدك المفضل!`;
+      } else if (normU.includes('الفرق بين') || normU.includes('مميزات vip') || normU.includes('ليه vip')) {
+        responseText = `إليك الفرق بين الحجز العادي وجناح VIP الملكي 💈👑:\n\n👑 **جناح كبار الزوار (VIP Suite):**\n• دخول فوري بدون أي انتظار نهائياً.\n• جناح خاص مستقل ومعزول مع شاشات ترفيه وضيافة فاخرة مجانية.\n• كبار الحلاقين وعربون الحجز **${deposits.vip} ج.م** فقط.\n\n✂️ **الحجز العادي (الصالة العامة):**\n• في صالة الصالون العامة مع طاقم الحلاقين المحترف.\n• حجز مسبق يضمن دورك في الطابور الذكي.\n• عربون الحجز **${deposits.normal} ج.م** فقط (يُخصم من الفاتورة).`;
+      } else if (normU.includes('احجز') || normU.includes('حجز') || normU.includes('موعد') || normU.includes('بكره') || normU.includes('النهارده')) {
+        responseText = `تشرفنا وتنورنا في **TrimMind VIP** يا فندم! 💈✨\n\nتقدر تختار موعدك وكابتنك المفضل بخطوات سريعة عبر صفحة الحجز الإلكتروني، وتأكيد الحجز برقم تليفونك وعربون بسيط (${deposits.normal} ج.م للعادي / ${deposits.vip} ج.م للـ VIP) لضمان تجهيز الكرسي لك في الموعد المحدد.`;
+      } else if (normU.includes('مطور') || normU.includes('مبرمج') || normU.includes('مين عمل') || normU.includes('احمد عبدالباسط')) {
+        responseText = `مطور ومبرمج هذه المنصة هو المهندس المبدع **أحمد عبدالباسط (Ahmed Abdelbaset)** 💻✨.\n\nطالب متميز بكلية الحاسبات والمعلومات والذكاء الاصطناعي، وحاصل على شهادات تدريبية معتمدة من معهد تكنولوجيا المعلومات القومي (**ITI**).\n\n📞 للتواصل مع المطور: **01285694670**`;
+      } else if (normU.includes('عنوان') || normU.includes('فرع') || normU.includes('مكان') || normU.includes('مواعيد') || normU.includes('شغالين')) {
+        responseText = `صالون **TrimMind VIP (الحداد)** 💈📍:\n• العنوان: سقيل - مركز أوسيم (شارع جمال عبد الناصر)\n• مواعيد العمل: يومياً من 10:00 صباحاً حتى 11:30 مساءً (الحجز الإلكتروني متاح 24/7)\n• هاتف الحجز والاستفسارات: 01285694670`;
+      } else if (normU.includes('حلاق') || normU.includes('كابتن') || normU.includes('مين احسن')) {
+        responseText = `طاقم كباتن صالون **TrimMind VIP** ✂️👑:\n${barbersListStr}\n\nجميع الكباتن على أعلى درجات الاحترافية والخبرة، ويمكنك اختيار كابتنك المفضل عند حجز الموعد!`;
+      } else if (normU.includes('عربون') || normU.includes('دفع') || normU.includes('فودافون') || normU.includes('انستاباي')) {
+        responseText = `سياسة العربون والدفع في صالون **TrimMind VIP** 💳:\n• عربون الحجز العادي: **${deposits.normal} ج.م** (يُخصم بالكامل من إجمالي الفاتورة).\n• عربون جناح VIP: **${deposits.vip} ج.م** (يُخصم بالكامل من إجمالي الفاتورة).\n• طرق التحويل المعتمدة: إنستاباي (InstaPay) أو فودافون كاش أو كاش بالصالون.`;
+      } else if (normU.match(/^(ازيك|السلام عليكم|سلام|مرحبا|هاي|صباح|مساء|عامل ايه)/i)) {
+        responseText = `يا هلا بيك يا فندم، منور صالون **TrimMind VIP**! 💈👑 أقدر أساعدك بإيه النهاردة في الحجز أو تفاصيل الخدمات؟`;
+      } else if (normU.match(/^(ايوا|اه|تمام|ماشي|اوك|حاضر|شكرا|تسلم|تسلملي)/i)) {
+        responseText = `تحت أمرك وفي خدمتك دايمًا يا فندم! 💈✨ تحب نحدد موعد لطلبك أو تستفسر عن أي خدمة تانية؟`;
       } else {
         const firstFew = liveServices.slice(0, 5).map((s) => `• **${s.name}:** ${s.price} ج.م`).join('\n');
-        responseText = `أهلاً بك في صالون **TrimMind VIP**! 💈👑\n\nخدماتنا المتاحة:\n${firstFew}\n\nتحب نحدد موعد لطلبك؟`;
+        responseText = `أهلاً بك في صالون **TrimMind VIP**! 💈👑\n\nأبرز خدماتنا المتاحة:\n${firstFew}\n\nتحب نحدد موعد لحضرتك أو تستفسر عن باقات الـ VIP الملكية؟`;
       }
     }
 

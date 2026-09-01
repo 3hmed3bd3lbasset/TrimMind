@@ -468,19 +468,110 @@ ${barbersSummary}
     console.warn('Backend AI proxy notice:', err?.message || err);
   }
 
-  // Natural contextual action payload (Attached ONLY when genuinely relevant to the query)
+  const vipDeposit = store.settings?.booking_fee_vip || 100;
+  const normalDeposit = store.settings?.booking_fee_normal || 50;
+
+  // Intelligent Contextual Action Payload & Intent Recognition
+  const isVipQuery =
+    normQuery.includes('جناح vip') ||
+    normQuery.includes('حجز vip') ||
+    normQuery.includes('باقات vip') ||
+    normQuery.includes('vip') ||
+    normQuery.includes('كبار الزوار') ||
+    normQuery.includes('ملكي');
+
+  const isUrgentQuery =
+    normQuery.includes('مستعجل') ||
+    normQuery.includes('اقرب وقت') ||
+    normQuery.includes('دلوقتي') ||
+    normQuery.includes('حالاً') ||
+    normQuery.includes('بسرعه') ||
+    normQuery.includes('فاضي دلوقتي') ||
+    normQuery.includes('اقرب دور');
+
+  const isVipVsNormalQuery =
+    normQuery.includes('الفرق بين') ||
+    normQuery.includes('مميزات vip') ||
+    normQuery.includes('ليه vip') ||
+    normQuery.includes('مقارنه');
+
+  const isBookingQuery =
+    (normQuery.includes('احجز') ||
+      normQuery.includes('حجز موعد') ||
+      normQuery.includes('احجزلي') ||
+      normQuery.includes('موعد محدد') ||
+      normQuery.includes('بكره') ||
+      normQuery.includes('النهارده') ||
+      normQuery.includes('حجز')) &&
+    !normQuery.includes('الغاء') &&
+    !normQuery.includes('الغي');
+
   const isServicesCatalogQuery =
-    (normQuery.includes('كتالوج') || normQuery.includes('قائمه الاسعار') || normQuery.includes('اسعار الخدمات')) &&
+    (normQuery.includes('كتالوج') ||
+      normQuery.includes('قائمه الاسعار') ||
+      normQuery.includes('اسعار الخدمات') ||
+      normQuery.includes('الخدمات') ||
+      normQuery.includes('الاسعار') ||
+      normQuery.includes('باقات') ||
+      normQuery.includes('قص شعر') ||
+      normQuery.includes('لحيه') ||
+      normQuery.includes('تنظيف بشره') ||
+      normQuery.includes('استشوار')) &&
     !normQuery.includes('افتح');
 
   const isBranchesQuery =
-    (normQuery.includes('اماكن الفروع') || normQuery.includes('عناوين الفروع')) &&
+    (normQuery.includes('فروع') ||
+      normQuery.includes('فرع') ||
+      normQuery.includes('عنوان') ||
+      normQuery.includes('اماكن') ||
+      normQuery.includes('اللوكيشن') ||
+      normQuery.includes('مكانكم') ||
+      normQuery.includes('فين الصالون') ||
+      normQuery.includes('مواعيد العمل') ||
+      normQuery.includes('شغالين لحد')) &&
     !normQuery.includes('افتح');
 
-  if (isServicesCatalogQuery) {
+  const isBarbersQuery =
+    normQuery.includes('حلاق') ||
+    normQuery.includes('كابتن') ||
+    normQuery.includes('مين احسن') ||
+    normQuery.includes('محمد الحداد') ||
+    normQuery.includes('كريم') ||
+    normQuery.includes('عمر');
+
+  const isDepositQuery =
+    normQuery.includes('عربون') ||
+    normQuery.includes('دفع') ||
+    normQuery.includes('فودافون') ||
+    normQuery.includes('انستاباي') ||
+    normQuery.includes('طريقه الدفع') ||
+    normQuery.includes('كاش');
+
+  const isDeveloperQuery =
+    normQuery.includes('مطور') ||
+    normQuery.includes('مبرمج') ||
+    normQuery.includes('مين عمل') ||
+    normQuery.includes('مين برمج') ||
+    normQuery.includes('احمد عبدالباسط');
+
+  const isGreetingQuery =
+    normQuery.match(/^(ازيك|السلام عليكم|سلام|مرحبا|هاي|صباح|مساء|عامل ايه|منور|يا هلا)/i) !== null;
+
+  // Assign appropriate payload based on intent
+  if (isUrgentQuery || (isVipQuery && !isVipVsNormalQuery)) {
+    payload = { type: 'vip_pitch_card' };
+  } else if (isVipVsNormalQuery) {
+    payload = { type: 'choose_booking_type' };
+  } else if (isBookingQuery && !isServicesCatalogQuery) {
+    payload = {
+      type: 'navigation_action',
+      targetUrl: '/book',
+      buttonLabel: 'الانتقال لصفحة الحجز الإلكتروني 📅',
+    };
+  } else if (isServicesCatalogQuery) {
     payload = {
       type: 'services_list',
-      data: activeServices.slice(0, 4),
+      data: activeServices.slice(0, 6),
     };
   } else if (isBranchesQuery) {
     payload = {
@@ -489,19 +580,57 @@ ${barbersSummary}
     };
   }
 
-  // Intelligent conversational fallback if network is completely offline
+  // Fallback Generation when network response is not returned
   if (!responseContent) {
-    if (normQuery.includes('مطور') || normQuery.includes('مبرمج') || normQuery.includes('مين عمل') || normQuery.includes('احمد عبدالباسط')) {
-      responseContent = `مطور ومبرمج هذه المنصة هو المهندس المبدع **أحمد عبدالباسط** 💻✨.\n\nطالب متميز بكلية الحاسبات والمعلومات والذكاء الاصطناعي، وحاصل على شهادات تدريبية معتمدة من معهد تكنولوجيا المعلومات القومي (**ITI**).\n\nمن أبرز مشاريعه:\n• **منصة صالون النخبة VIP:** هذا النظام المتكامل لإدارة الحجوزات والذكاء الاصطناعي.\n• **منصة إدارة العيادات الطبية:** نظام سحابي متطور لإدارة العيادات والمرضى (يقوم بتطويره مع فريقه).\n• **منصة إدارة الجيمات والصالات الرياضية:** لإدارة الأعضاء والاشتراكات.\n• **منصة القرآن الكريم والأذكار:** منصة إسلامية متميزة للاستماع للقرآن الكريم وتصفح الأذكار والأدعية.\n\n📞 للتواصل مع المطور: **01285694670**`;
-    } else if (normQuery.includes('عامل ايه') || normQuery.includes('ازيك') || normQuery.includes('صباح') || normQuery.includes('مساء')) {
-      responseContent = `تمام الحمد لله 😄، كله بخير! إنت عامل إيه؟ قولي أقدر أساعدك بإيه؟`;
-    } else if (normQuery.includes('كتالوج') || normQuery.includes('خدمات') || normQuery.includes('اسعار')) {
-      const servicesList = activeServices.map((s) => `• **${s.name}:** ${s.price} ج.م (${s.duration_minutes || 30} دقيقة)`).join('\n');
-      responseContent = `أهلاً بك يا فندم في **${salonName}**! 💈👑\n\nإليك كتالوج خدماتنا وباقاتنا الرسمية المعتمدة:\n\n${servicesList}\n\nتحب نحجزلك موعد لأي خدمة فيهم النهارده؟ ✨`;
-    } else if (normQuery.includes('خزنه') || normQuery.includes('ارباح')) {
-      responseContent = `عذراً يا فندم، بيانات الخزنة والأرباح السرية هي بيانات خاصة بحساب المالك الرئيسي وغير متاحة في الشات لحماية سرية الحسابات.`;
+    if (isUrgentQuery) {
+      responseContent = `لو مستعجل وعايز تدخل على الكرسي فوراً بدون دقيقة انتظار واحدة ⚡، بنرشحلك فوراً **حجز جناح كبار الزوار (VIP Suite 👑)**:\n\n• **دخول فوري ومباشر:** الكرسي محجوز ومجهز لك فور وصولك.\n• **خصوصية مطلقة:** جناح خاص معزول ومكيف مع كرسي مساج وشاشات ترفيه وضيافة ملكية كاملة.\n• **كبار الحلاقين:** الخدمة بواسطة كبار كباتن الصالون.\n• **عربون التثبيت:** **${vipDeposit} ج.م** فقط (يُخصم من إجمالي الفاتورة).\n\nأو يمكنك اختيار **الحجز العادي** في أقرب دور متاح بالصالة العامة ✂️.`;
+      payload = { type: 'vip_pitch_card' };
+    } else if (isVipVsNormalQuery) {
+      responseContent = `إليك مقارنة سريعة بين الحجز العادي وجناح VIP في **${salonName}** 💈👑:\n\n👑 **جناح كبار الزوار (VIP Suite):**\n• دخول فوري ومباشر بدون دقيقة انتظار واحدة.\n• جناح خاص ومكيف بخصوصية تامة مع كرسي مساج وشاشات سينمائية وضيافة فاخرة مجانية.\n• الخدمة مع كبار الحلاقين المحترفين.\n• عربون تثبيت الجناح: **${vipDeposit} ج.م** (يُخصم من إجمالي الفاتورة).\n\n✂️ **الحجز العادي (الصالة العامة):**\n• الحلاقة في صالة الصالون العامة مع طاقم الحلاقين الماهر.\n• حجز مسبق يضمن دورك المنظم في الطابور الذكي.\n• عربون تثبيت الموعد: **${normalDeposit} ج.م** (يُخصم من إجمالي الفاتورة).`;
+      payload = { type: 'choose_booking_type' };
+    } else if (isVipQuery) {
+      responseContent = `أهلاً بك في جناح كبار الزوار (VIP Suite 👑✨) بصالون **${salonName}**!\n\nمزايا الجناح الملكي:\n• جناح خاص مكيف معزول بالكامل بخصوصية مطلقة.\n• دخول فوري ومباشر بدون أي انتظار في الطابور.\n• كرسي مساج مريح، شاشات ترفيه، وضيافة مشروبات فاخرة مجاناً.\n• الخدمة مع كبار الحلاقين.\n• عربون تثبيت الجناح: **${vipDeposit} ج.م** فقط يُخصم من الفاتورة.\n\nتفضل بحجز جناحك الآن واختيار موعدك المفضل!`;
+      payload = { type: 'vip_pitch_card' };
+    } else if (isBookingQuery && !isServicesCatalogQuery) {
+      responseContent = `تشرفنا وتنورنا في **${salonName}** يا فندم! 💈✨\n\nتقدر تختار موعدك وكابتنك المفضل بخطوات سريعة وسهلة عبر صفحة الحجز الإلكتروني، وتأكيد الحجز برقم هاتفك وعربون بسيط (${normalDeposit} ج.م للعادي / ${vipDeposit} ج.م للـ VIP) لضمان تجهيز الكرسي لك في الوقت المحدد.`;
+      payload = {
+        type: 'navigation_action',
+        targetUrl: '/book',
+        buttonLabel: 'الانتقال لصفحة الحجز الإلكتروني 📅',
+      };
+    } else if (isServicesCatalogQuery) {
+      const servicesList = activeServices
+        .map((s) => `• **${s.name}:** ${s.price} ج.م (${s.duration_minutes || 30} دقيقة) ${s.is_vip_only ? '👑 VIP' : ''}`)
+        .join('\n');
+      responseContent = `أهلاً بك يا فندم في **${salonName}**! 💈👑\n\nإليك قائمة خدماتنا وباقاتنا الرسمية المعتمدة:\n\n${servicesList}\n\nتحب نحجزلك موعد لأي خدمة فيهم النهارده؟ ✨`;
+      payload = {
+        type: 'services_list',
+        data: activeServices.slice(0, 6),
+      };
+    } else if (isBranchesQuery) {
+      const branchesList = activeBranches
+        .map((b) => `📍 **${b.name}:** ${b.address}\n⏰ مواعيد العمل: من ${b.opening_time} حتى ${b.closing_time}\n📞 هاتف الفرع: ${b.phone}`)
+        .join('\n\n');
+      responseContent = `فروع ومواعيد عمل صالون **${salonName}** 💈📍:\n\n${branchesList}\n\n💡 الحجز الإلكتروني متاح 24/7 عبر المنصة!`;
+      payload = {
+        type: 'branches_list',
+        data: activeBranches,
+      };
+    } else if (isBarbersQuery) {
+      const barbersList = activeBarbers
+        .map((b) => `• **كابتن ${b.full_name}:** ${b.specialty} (تقييم: ${b.rating || 5.0} ⭐)`)
+        .join('\n');
+      responseContent = `طاقم كباتن وحلاقي صالون **${salonName}** ✂️👑:\n\n${barbersList}\n\nجميع الكباتن على أعلى درجات المهارة والاحترافية، ويمكنك اختيار كابتنك المفضل عند حجز الموعد!`;
+    } else if (isDepositQuery) {
+      responseContent = `سياسة العربون وطرق الدفع في صالون **${salonName}** 💳✨:\n\n• **عربون الحجز العادي:** **${normalDeposit} ج.م** (يُخصم بالكامل من إجمالي الفاتورة عند الحلاقة).\n• **عربون جناح VIP:** **${vipDeposit} ج.م** (يُخصم بالكامل من إجمالي الفاتورة عند الحلاقة).\n\n📱 **طرق التحويل المعتمدة:**\n1. تطبيق إنستاباي (InstaPay)\n2. محفظة فودافون كاش\n3. كاش بالصالون عند تأكيد الاستقبال\n\nالعربون يضمن تثبيت كرسيك وتجهيز الأدوات المعقمة فور وصولك!`;
+    } else if (isDeveloperQuery) {
+      responseContent = `مطور ومبرمج هذه المنصة هو المهندس المبدع **أحمد عبدالباسط (Ahmed Abdelbaset)** 💻✨.\n\nطالب متميز بكلية الحاسبات والمعلومات والذكاء الاصطناعي، وحاصل على شهادات تدريبية معتمدة من معهد تكنولوجيا المعلومات القومي (**ITI**).\n\nمن أبرز مشاريعه:\n• **منصة صالون TrimMind VIP:** نظام متكامل لإدارة الحجوزات، الطابور، الكراسي، والمساعد الذكي.\n• **منصة إدارة العيادات والمراكز الطبية:** نظام سحابي لإدارة المرضى والمواعيد والروشتات.\n• **منصة إدارة الجيمات والصالات الرياضية:** لإدارة الاشتراكات والمدربين.\n• **منصة القرآن الكريم والأذكار:** منصة إسلامية شاملة لتلاوات كبار القراء والأدعية.\n\n📞 للتواصل مع المطور: **01285694670**`;
+    } else if (isGreetingQuery) {
+      responseContent = `يا هلا بيك يا فندم، منور صالون **${salonName}**! 💈👑\nأنا مساعدك الذكي.. جاهز أساعدك في حجز موعدك، تفاصيل الباقات والخدمات، أو أي استفسار تحتاجه.\n\nكيف يمكنني خدمتك اليوم؟`;
+      payload = { type: 'quick_actions_customer' };
     } else {
-      responseContent = `أنا معاك وسامعك بكل وضوح! تفضل بطرح سؤالك أو موضوعك وسأساعدك فيه فوراً.`;
+      responseContent = `أهلاً بك يا فندم في **${salonName}**! 💈👑\n\nأنا مساعدك الذكي ومستشارك في الصالون، يسعدني مساعدتك في كل ما يخص خدمات الحلاقة والعناية، حجز جناح الـ VIP الملكي، أو معرفة المواعيد والأسعار.\n\nتفضل باختيار استفسارك من الخيارات السريعة أدناه:`;
+      payload = { type: 'quick_actions_customer' };
     }
   }
 
